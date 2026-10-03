@@ -30,7 +30,7 @@ Stubs to run while building: `stubs/fake_node.py` (gives views real ADVISORY/TRU
 | A3 | `web/index.html?role=cockpitA`: own aircraft moving, Gamepad API → INPUT at 30 Hz, keyboard fallback. Test with `fake_node`. | 1:00 PM ✔ status | [x] |
 | A4 | `web/index.html?role=god`: KDVT map (flat image OK), all aircraft, labels. | 1:00 PM ✔ status | [x] |
 | A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` flag (aircraft with no node). | 2:30 | [x] |
-| A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [ ] |
+| A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [x] Cesium (2D fallback) |
 | A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [x] |
 | A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [x] |
 | A9 | God view: predicted paths from PREDICTION frames, conflict markers, layer rings, METAR text, DA slider → `SET_DA`. | 5:30 | [ ] |

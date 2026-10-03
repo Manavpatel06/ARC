@@ -80,7 +80,11 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 @keyframes pulse { to { background: color-mix(in srgb, var(--lvl-takeover) 22%, var(--panel)); } }
 
 .ck-main { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8px; min-height: 0; }
-.ck-pfd, .ck-traffic { width: 100%; height: 100%; display: block; border-radius: 10px; border: 1px solid var(--line); min-height: 0; }
+.ck-traffic { width: 100%; height: 100%; display: block; border-radius: 10px; border: 1px solid var(--line); min-height: 0; }
+.ck-view { position: relative; min-height: 0; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--panel); }
+.ck-3d, .ck-pfd { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ck-3d .cesium-viewer-bottom { display: none; }   /* credits shown in .ck-3d-note instead */
+.ck-3d-note { position: absolute; left: 8px; bottom: 6px; font: 11px var(--mono); color: var(--text-2); text-shadow: 0 1px 2px #000; pointer-events: none; }
 .ck-side { display: grid; grid-template-rows: 1fr auto auto; gap: 8px; min-height: 0; }
 
 .ck-bounds { background: var(--panel); border: 2px solid var(--lvl-takeover); border-radius: 10px; padding: 10px 14px; }

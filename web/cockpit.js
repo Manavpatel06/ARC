@@ -5,6 +5,7 @@
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
 import { sayAdvisory } from "./voice.js";
+import { AIRCRAFT_MODEL, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -12,7 +13,8 @@ const D2R = Math.PI / 180;
 export function startCockpit(role) {
   document.body.classList.add("is-cockpit");
   $("cockpit").hidden = false;
-  const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: -Infinity, link: "connecting" };
+  const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: -Infinity, link: "connecting",
+              fieldElevFt: 1478, interp: new Interp(), v3: null };
 
   const link = connect(role, (m) => {
     switch (m.type) {
@@ -20,8 +22,9 @@ export function startCockpit(role) {
         s.acId = m.ac_id;
         $("ck-id").textContent = m.ac_id;
         document.title = `FLOCK cockpit ${m.ac_id}`;
+        if (m.static && m.static.airport) s.fieldElevFt = m.static.airport.elev_ft;
         break;
-      case "OWNSHIP": s.own = m; break;
+      case "OWNSHIP": s.own = m; s.interp.push(m); break;
       case "ADVISORY":
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
@@ -39,10 +42,14 @@ export function startCockpit(role) {
 
   const inp = startInput((v) => s.acId && link.send({ type: "INPUT", ac_id: s.acId, ...v }));
 
+  if (new URLSearchParams(location.search).get("view") !== "2d") start3D(s);
+
   const pfd = $("ck-pfd"), tfc = $("ck-traffic");
   const frame = () => {
     fit(pfd); fit(tfc);
-    drawPFD(pfd, s.own);
+    if (s.v3) update3D(s);
+    const chase = !!(s.v3 && s.v3.chase);
+    drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase);
     drawTraffic(tfc, s.own, s.trust, s.adv);
     renderBanner(s);
     renderBounds(s);
@@ -51,6 +58,82 @@ export function startCockpit(role) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- 3D out-the-window view (synthetic vision) ----------
+// Camera = own aircraft (first person) or behind it (chase, key C). Traffic is drawn only where
+// this aircraft's node says it is (TRUST rel), never from world truth.
+const MODEL_HDG_OFFSET = -90;   // Cesium_Air.glb nose points along +X; heading 0 = north
+
+async function start3D(s) {
+  const note = $("ck-3d-note");
+  note.textContent = "loading 3D...";
+  try {
+    const Cesium = await loadCesium();
+    const { viewer, terrain } = await makeViewer(Cesium, $("ck-3d"));
+    viewer.scene.screenSpaceCameraController.enableInputs = false;   // the sim flies the camera
+    s.v3 = { Cesium, viewer, terrain, chase: new URLSearchParams(location.search).get("cam") === "chase",
+             own: null, targets: new Map() };
+    window.__flock3d = s.v3;                                         // console debugging
+    note.textContent = terrain ? "3D: Cesium World Terrain · © Cesium ion · C = chase cam"
+                               : "3D: flat · © OpenStreetMap contributors · C = chase cam · add ?ion=<token> for terrain";
+    addEventListener("keydown", (e) => { if (e.code === "KeyC" && s.v3) s.v3.chase = !s.v3.chase; });
+  } catch (e) {
+    console.warn("[3d]", e);
+    note.textContent = `2D only: ${e.message}`;
+  }
+}
+
+function update3D(s) {
+  const { Cesium: C, viewer, terrain } = s.v3;
+  const p = s.interp.sample();
+  if (!p) return;
+  const h = heightM(p.alt_msl_ft, terrain, s.fieldElevFt);
+  const pos = C.Cartesian3.fromDegrees(p.lon, p.lat, h);
+  const fpa = Math.atan2(p.vs_fpm, Math.max(p.gs_kt, 30) * 101.27) / D2R;
+
+  if (!s.v3.own) s.v3.own = viewer.entities.add({ model: { uri: AIRCRAFT_MODEL, minimumPixelSize: 48 } });
+  const hpr = new C.HeadingPitchRoll(C.Math.toRadians(p.hdg_deg + MODEL_HDG_OFFSET), C.Math.toRadians(fpa), C.Math.toRadians(p.bank_deg));
+  s.v3.own.position = pos;
+  s.v3.own.orientation = C.Transforms.headingPitchRollQuaternion(pos, hpr);
+  s.v3.own.show = s.v3.chase;
+
+  if (s.v3.chase) {
+    const [blat, blon] = offsetLL(p.lat, p.lon, p.track_deg + 180, 70);
+    viewer.camera.setView({
+      destination: C.Cartesian3.fromDegrees(blon, blat, h + 18),
+      orientation: { heading: C.Math.toRadians(p.track_deg), pitch: C.Math.toRadians(-12), roll: 0 },
+    });
+  } else {
+    viewer.camera.setView({
+      destination: C.Cartesian3.fromDegrees(p.lon, p.lat, h + 1.5),
+      orientation: { heading: C.Math.toRadians(p.hdg_deg), pitch: C.Math.toRadians(fpa), roll: C.Math.toRadians(p.bank_deg) },
+    });
+  }
+
+  // node-reported traffic (TRUST rel) as 3D markers
+  const seen = new Set();
+  for (const t of (s.trust && s.trust.targets) || []) {
+    if (!t.rel || t.state === "CAMERA_ONLY") continue;
+    seen.add(t.id);
+    const [lat, lon] = offsetLL(p.lat, p.lon, t.rel.brg_deg, t.rel.rng_m);
+    const th = heightM(p.alt_msl_ft + (t.rel.dalt_ft || 0), terrain, s.fieldElevFt);
+    const col = C.Color.fromCssColorString(css(TRUST_COLOR[t.state] || "#fff"));
+    let e = s.v3.targets.get(t.id);
+    if (!e) {
+      e = viewer.entities.add({
+        point: { pixelSize: 12, color: col, outlineColor: C.Color.BLACK, outlineWidth: 2 },
+        label: { text: t.id, font: `600 14px ${SANS}`, fillColor: col, outlineColor: C.Color.BLACK, outlineWidth: 3,
+                 style: C.LabelStyle.FILL_AND_OUTLINE, pixelOffset: new C.Cartesian2(0, -18) },
+      });
+      s.v3.targets.set(t.id, e);
+    }
+    e.position = C.Cartesian3.fromDegrees(lon, lat, th);
+    e.point.color = t.state === "FAKE" ? C.Color.TRANSPARENT : col;     // FAKE: hollow
+    e.point.outlineColor = t.state === "FAKE" ? col : C.Color.BLACK;
+    e.label.fillColor = col;
+  }
+  for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
 }
 
 function fit(cv) {
@@ -118,50 +201,60 @@ function renderStatus(s, inp) {
 }
 
 // ---------- primary flight display ----------
-function drawPFD(cv, o) {
+// svt = true: transparent overlay on the 3D view (no sky/ground fill). With the camera's vertical
+// field of view the pitch ladder is conformal: the PFD horizon sits on the rendered horizon.
+function drawPFD(cv, o, svt = false, fovy = null, att = true) {
   const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = W / 640;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = css("var(--panel)"); ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, H);
+  if (!svt) { ctx.fillStyle = css("var(--panel)"); ctx.fillRect(0, 0, W, H); }
   if (!o) { label(ctx, W / 2, H / 2, "waiting for OWNSHIP…", 18 * k, "center"); return; }
 
-  const cx = W / 2, cy = H * 0.46, R = Math.min(W * 0.32, H * 0.38);
+  const cx = W / 2, cy = svt ? H / 2 : H * 0.46, R = Math.min(W * 0.32, H * 0.38);
   const fpa = Math.atan2(o.vs_fpm, Math.max(o.gs_kt, 30) * 101.27) / D2R;   // flight-path angle, deg
-  const ppd = R / 25;                                                     // px per degree of pitch
+  const ppd = fovy ? (H / 2) / Math.tan(fovy / 2) * D2R : R / 25;         // px per degree of pitch
 
-  // attitude sphere
-  ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
-  ctx.translate(cx, cy); ctx.rotate(-o.bank_deg * D2R); ctx.translate(0, fpa * ppd);
-  ctx.fillStyle = css("var(--sky)"); ctx.fillRect(-2 * R, -4 * R, 4 * R, 4 * R);
-  ctx.fillStyle = css("var(--ground)"); ctx.fillRect(-2 * R, 0, 4 * R, 4 * R);
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k;
-  ctx.beginPath(); ctx.moveTo(-2 * R, 0); ctx.lineTo(2 * R, 0); ctx.stroke();
-  ctx.lineWidth = 1.5 * k; ctx.fillStyle = "#fff"; ctx.font = `${11 * k}px ${MONO}`;
-  for (let p = -20; p <= 20; p += 5) {
-    if (!p) continue;
-    const y = -p * ppd, half = (p % 10 === 0 ? 0.28 : 0.14) * R;
-    ctx.beginPath(); ctx.moveTo(-half, y); ctx.lineTo(half, y); ctx.stroke();
-    if (p % 10 === 0) { ctx.textAlign = "left"; ctx.fillText(Math.abs(p), half + 4 * k, y + 4 * k); }
+  if (att) {   // attitude: hidden in chase view, where it would not line up with the scene
+    // attitude sphere
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.translate(cx, cy); ctx.rotate(-o.bank_deg * D2R); ctx.translate(0, fpa * ppd);
+    if (!svt) {
+      ctx.fillStyle = css("var(--sky)"); ctx.fillRect(-2 * R, -4 * R, 4 * R, 4 * R);
+      ctx.fillStyle = css("var(--ground)"); ctx.fillRect(-2 * R, 0, 4 * R, 4 * R);
+    }
+    ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = svt ? 3 * k : 0;
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k;
+    ctx.beginPath(); ctx.moveTo(-2 * R, 0); ctx.lineTo(2 * R, 0); ctx.stroke();
+    ctx.lineWidth = 1.5 * k; ctx.fillStyle = "#fff"; ctx.font = `${11 * k}px ${MONO}`;
+    for (let p = -20; p <= 20; p += 5) {
+      if (!p) continue;
+      const y = -p * ppd, half = (p % 10 === 0 ? 0.28 : 0.14) * R;
+      ctx.beginPath(); ctx.moveTo(-half, y); ctx.lineTo(half, y); ctx.stroke();
+      if (p % 10 === 0) { ctx.textAlign = "left"; ctx.fillText(Math.abs(p), half + 4 * k, y + 4 * k); }
+    }
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    // bank scale + pointer
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k;
+    for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
+      const r0 = R + 4 * k, r1 = R + (a % 30 === 0 ? 16 : 9) * k, t = (a - 90) * D2R;
+      ctx.beginPath(); ctx.moveTo(cx + r0 * Math.cos(t), cy + r0 * Math.sin(t));
+      ctx.lineTo(cx + r1 * Math.cos(t), cy + r1 * Math.sin(t)); ctx.stroke();
+    }
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-o.bank_deg * D2R);
+    ctx.fillStyle = Math.abs(o.bank_deg) > 30 ? css("var(--lvl-resolve)") : "#fff";
+    ctx.beginPath(); ctx.moveTo(0, -R + 2 * k); ctx.lineTo(-7 * k, -R + 14 * k); ctx.lineTo(7 * k, -R + 14 * k); ctx.fill();
+    ctx.restore();
+
+    // fixed aircraft symbol
+    ctx.strokeStyle = css("var(--own)"); ctx.lineWidth = 4 * k; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx - R * 0.45, cy); ctx.lineTo(cx - R * 0.15, cy); ctx.lineTo(cx, cy + R * 0.08);
+    ctx.lineTo(cx + R * 0.15, cy); ctx.lineTo(cx + R * 0.45, cy); ctx.stroke();
+
   }
-  ctx.restore();
-
-  // bank scale + pointer
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k;
-  for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
-    const r0 = R + 4 * k, r1 = R + (a % 30 === 0 ? 16 : 9) * k, t = (a - 90) * D2R;
-    ctx.beginPath(); ctx.moveTo(cx + r0 * Math.cos(t), cy + r0 * Math.sin(t));
-    ctx.lineTo(cx + r1 * Math.cos(t), cy + r1 * Math.sin(t)); ctx.stroke();
-  }
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-o.bank_deg * D2R);
-  ctx.fillStyle = Math.abs(o.bank_deg) > 30 ? css("var(--lvl-resolve)") : "#fff";
-  ctx.beginPath(); ctx.moveTo(0, -R + 2 * k); ctx.lineTo(-7 * k, -R + 14 * k); ctx.lineTo(7 * k, -R + 14 * k); ctx.fill();
-  ctx.restore();
-
-  // fixed aircraft symbol
-  ctx.strokeStyle = css("var(--own)"); ctx.lineWidth = 4 * k; ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(cx - R * 0.45, cy); ctx.lineTo(cx - R * 0.15, cy); ctx.lineTo(cx, cy + R * 0.08);
-  ctx.lineTo(cx + R * 0.15, cy); ctx.lineTo(cx + R * 0.45, cy); ctx.stroke();
 
   // speed / altitude readouts (tapes simplified to boxes + trend)
   const boxW = 96 * k, boxH = 40 * k;
