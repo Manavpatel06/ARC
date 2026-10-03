@@ -45,6 +45,10 @@ class TrustTable:
     def update(self, peer: str, score: float, evidence: Optional[list] = None, camera_only: bool = False) -> None:
         self._ev[peer] = (max(0.0, min(1.0, score)), list(evidence or []), camera_only)
 
+    @property
+    def has_scorer(self) -> bool:
+        return self._scorer is not None
+
     def refresh(self, peer: str, track: dict) -> None:
         if self._scorer is not None:
             score, ev = self._scorer(peer, track)
