@@ -24,8 +24,10 @@ export function startCockpit(role) {
         $("ck-id").textContent = m.ac_id;
         document.title = `FLOCK cockpit ${m.ac_id}`;
         if (m.static && m.static.airport) s.fieldElevFt = m.static.airport.elev_ft;
+        if (m.static && m.static.wx) s.wx = m.static.wx;
         break;
       case "OWNSHIP": s.own = m; s.interp.push(m); break;
+      case "WX": s.wx = m; break;
       case "ADVISORY":
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
@@ -60,7 +62,8 @@ export function startCockpit(role) {
     for (const t of (s.trust && s.trust.targets) || []) {
       if (t.state === "TRUSTED" && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
     }
-    return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest };
+    return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest,
+             turb: s.own ? s.own.turb || 0 : 0 };
   });
   s.hap = hap;
 
@@ -82,8 +85,9 @@ export function startCockpit(role) {
   const frame = () => {
     fit(pfd); fit(tfc);
     if (s.v3) update3D(s);
+    renderVisibility(s);
     const chase = !!(s.v3 && s.v3.chase);
-    drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase);
+    drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase, s.wx);
     drawTraffic(tfc, s.own, s.trust, s.adv);
     renderBanner(s);
     renderBounds(s);
@@ -92,6 +96,29 @@ export function startCockpit(role) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- weather out of the window: haze, dust, cloud (3D only) ----------
+// Visibility is what the pilot sees; it hides traffic outside but not the FLOCK radar.
+function renderVisibility(s) {
+  const el = $("ck-haze"), w = s.wx, o = s.own;
+  let alpha = 0, color = "rgba(170,178,190,1)";
+  if (s.v3 && w && o) {
+    const vis = Math.max(0.1, +w.visibility_sm || 10);
+    alpha = 0.9 * Math.pow(Math.max(0, 1 - vis / 10), 2);
+    if ((+w.wind_kt || 0) >= 20 && vis < 3) color = "rgba(160,118,72,1)";        // dust storm
+    const base = +w.ceiling_ft_agl || 0;
+    if (base && o.agl_ft > base - 150) {                                          // entering cloud
+      alpha = Math.max(alpha, Math.min(0.95, (o.agl_ft - (base - 150)) / 150 * 0.95));
+      color = "rgba(214,218,224,1)";
+    }
+    if (s.v3.viewer && s.v3.lastVis !== vis) {                                    // denser Cesium fog too
+      s.v3.viewer.scene.fog.density = 2.0e-4 + 2.0e-3 * Math.max(0, 1 - vis / 10);
+      s.v3.lastVis = vis;
+    }
+  }
+  el.style.backgroundColor = color;
+  el.style.opacity = alpha.toFixed(2);
 }
 
 // ---------- 3D out-the-window view (synthetic vision) ----------
@@ -252,7 +279,7 @@ function renderStatus(s, inp) {
 // ---------- primary flight display ----------
 // svt = true: transparent overlay on the 3D view (no sky/ground fill). With the camera's vertical
 // field of view the pitch ladder is conformal: the PFD horizon sits on the rendered horizon.
-function drawPFD(cv, o, svt = false, fovy = null, att = true) {
+function drawPFD(cv, o, svt = false, fovy = null, att = true, wx = null) {
   const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = W / 640;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
@@ -309,7 +336,17 @@ function drawPFD(cv, o, svt = false, fovy = null, att = true) {
   const boxW = 96 * k, boxH = 40 * k;
   readout(ctx, cx - R - 30 * k - boxW, cy - boxH / 2, boxW, boxH, `${Math.round(o.ias_kt)}`, "KT IAS", k,
           o.ias_kt < 62 ? "var(--lvl-resolve)" : null);
-  readout(ctx, cx + R + 30 * k, cy - boxH / 2, boxW + 14 * k, boxH, `${Math.round(o.alt_press_ft)}`, "FT ALT", k);
+  // altimeter: indicated altitude with this aircraft's setting (amber if it differs from the reported QNH)
+  const ind = o.alt_ind_ft != null ? o.alt_ind_ft : o.alt_press_ft;
+  readout(ctx, cx + R + 30 * k, cy - boxH / 2, boxW + 14 * k, boxH, `${Math.round(ind)}`, "FT ALT", k);
+  if (o.baro_set_inhg != null) {
+    const qnh = wx && wx.qnh_inhg != null ? +wx.qnh_inhg : null;
+    const stale = qnh != null && Math.abs(qnh - o.baro_set_inhg) > 0.005;
+    const col = stale ? css("var(--lvl-traffic)") : css("var(--text-2)");
+    label(ctx, cx + R + 30 * k, cy + boxH / 2 + 58 * k, `BARO ${(+o.baro_set_inhg).toFixed(2)}`, 12 * k, "left", col);
+    if (stale) label(ctx, cx + R + 30 * k, cy + boxH / 2 + 74 * k, `ATIS ${qnh.toFixed(2)}`, 12 * k, "left", col);
+  }
+  if (wx && wx.metar_style) label(ctx, 10 * k, 20 * k, wx.metar_style, 12 * k, "left", css("var(--text-2)"));
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 18 * k, `AGL ${Math.round(o.agl_ft)}`, 13 * k, "left",
         o.agl_ft < 300 ? css("var(--lvl-traffic)") : css("var(--text-2)"));
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 38 * k, `VS ${o.vs_fpm > 0 ? "+" : ""}${Math.round(o.vs_fpm / 10) * 10}`, 13 * k, "left", css("var(--text-2)"));

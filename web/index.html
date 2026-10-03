@@ -33,6 +33,7 @@
     <section class="ck-main">
       <div class="ck-view">
         <div id="ck-3d" class="ck-3d"></div>
+        <div id="ck-haze" class="ck-haze"></div>
         <canvas id="ck-pfd" class="ck-pfd"></canvas>
         <span id="ck-3d-note" class="ck-3d-note"></span>
         <div id="ck-toast" class="ck-toast" hidden></div>
@@ -63,7 +64,10 @@
       <header><h1>FLOCK · KDVT</h1><span id="god-link" class="pill" data-state="connecting">…</span></header>
       <p id="god-scn" class="muted"></p>
       <h2>Weather</h2>
-      <p id="god-metar" class="mono"></p>
+      <p class="muted wx-src">METAR (what nodes know): <span id="god-metar" class="mono"></span></p>
+      <p id="god-wx-line" class="mono wx-line"></p>
+      <p id="god-wx-note" class="muted wx-note"></p>
+      <div id="god-wx" class="wx-controls"></div>
       <label class="da">
         <span>Density altitude <b id="god-da-val">--</b></span>
         <input id="god-da" type="range" min="0" max="10000" step="100" value="4980">

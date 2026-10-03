@@ -6,7 +6,7 @@
    "start": {
     "leg": "DOWNWIND",
     "runway": "25L",
-    "offset_s": 28.0
+    "offset_s": 25.0
    },
    "ap": true,
    "human": true
@@ -16,7 +16,7 @@
    "start": {
     "leg": "BASE",
     "runway": "25L",
-    "offset_s": -82.0
+    "offset_s": -86.0
    },
    "ap": true
   },
@@ -37,5 +37,5 @@
  "weather": "cached",
  "spoofer": false,
  "camera_target": false,
- "note": "tuned by world/find_conflict.py from seed_three.json: N101-N204: 723 ft / 60 ft at t=126 s (FINAL/FINAL); N101-N399: 38 ft / 85 ft at t=124 s (FINAL/STRAIGHT_IN) NMAC; N204-N399: 703 ft / 24 ft at t=124 s (FINAL/STRAIGHT_IN) (no avoidance; window 60-170 s)"
+ "note": "tuned by world/find_conflict.py from three_on_final.json: N101-N204: 626 ft / 52 ft at t=129 s (FINAL/FINAL); N101-N399: 149 ft / 95 ft at t=125 s (FINAL/STRAIGHT_IN) NMAC; N204-N399: 507 ft / 40 ft at t=125 s (FINAL/STRAIGHT_IN) (no avoidance; window 60-170 s)"
 }
