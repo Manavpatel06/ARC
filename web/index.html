@@ -66,9 +66,13 @@
       </label>
       <h2>Aircraft</h2>
       <table class="god-table">
-        <thead><tr><th>ID</th><th>Leg</th><th>Alt</th><th>IAS</th><th>Mode</th><th>Node</th></tr></thead>
+        <thead><tr><th>ID</th><th>Leg</th><th>Alt</th><th>VS</th><th>IAS</th><th>Mode</th><th>Node</th></tr></thead>
         <tbody id="god-table"></tbody>
       </table>
+      <h2>Decisions</h2>
+      <ol id="god-events" class="events"><li class="muted">no decisions yet</li></ol>
+      <h2>Layers</h2>
+      <div id="god-layers" class="layers"></div>
       <h2>Legend</h2>
       <ul class="legend">
         <li><i style="--c: var(--own)"></i>judge aircraft</li>
@@ -78,7 +82,10 @@
         <li><i class="ring" style="--c: var(--lvl-seq)"></i>sequence</li>
         <li><i class="ring" style="--c: var(--lvl-traffic)"></i>traffic</li>
         <li><i class="ring" style="--c: var(--lvl-resolve)"></i>resolve</li>
-        <li><i class="line" style="--c: var(--pred)"></i>node prediction</li>
+        <li><i class="line" style="--c: var(--pred)"></i>turn-aware prediction</li>
+        <li><i class="line" style="--c: var(--lvl-traffic)"></i>fallback / conf &lt; 0.6</li>
+        <li><i class="ring" style="--c: var(--lvl-takeover)"></i>takeover</li>
+        <li><i class="cross" style="--c: var(--lvl-resolve)">×</i>predicted conflict</li>
       </ul>
     </aside>
   </main>
