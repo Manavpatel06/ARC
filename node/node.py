@@ -322,6 +322,9 @@ class Node:
         if self._on_ground(self.own_st.gs, self.own_st.z):          # rolling out / parked: nothing airborne to avoid
             return conflicts, {}
         own_xy = (self.own_st.x, self.own_st.y)
+        if self.trust.has_scorer:                        # Lane C evidence (signature, kinematics, RF, corroboration)
+            for pid in self.peers:
+                self.trust.refresh(pid, {})
         usable = {pid: (t.x, t.y) for pid, t in self.peers.items()
                   if self.trust.cap(pid) is not None and not self._on_ground(t.gs, t.alt_press_ft * FT + self.baro_offset_m)}
         near = conflict_mod.k_nearest(own_xy, usable)
@@ -607,18 +610,26 @@ class Node:
 
 
 # ---------------------------------------------------------------------- asyncio shell
-def _radio_client(ac_id: str, via_channel: Optional[str]):
+def _radio_client(ac_id: str, via_channel: Optional[str], direct: bool = False):
+    """Lane C's radio/client.py when it exists (signed, slotted, via channel.py), else the loopback stub."""
     try:
         from radio.client import RadioClient
     except Exception:
         from stubs.loopback_radio import RadioClient
-    return RadioClient(ac_id=ac_id, via_channel=via_channel)
+        return RadioClient(ac_id=ac_id, via_channel=via_channel)
+    return RadioClient(ac_id=ac_id, via_channel=via_channel, direct=direct)
 
 
-async def run(ac_id: str, world: str, via_channel: Optional[str] = None, verbose: bool = False) -> None:
+async def run(ac_id: str, world: str, via_channel: Optional[str] = None, verbose: bool = False,
+              direct: bool = False) -> None:
     import websockets
     node = Node(ac_id, verbose=verbose)
-    radio = _radio_client(ac_id, via_channel)
+    radio = _radio_client(ac_id, via_channel, direct)
+    evidence = None
+    if hasattr(radio, "set_neighbor_report"):                       # the real radio: trust by evidence, not broadcast
+        from radio.evidence import TrustEvidence
+        evidence = TrustEvidence.attach(radio)
+        node.trust.set_scorer(evidence.scorer)
     radio.on_message(node.on_radio)
     await radio.start()
     url = f"{world}?role=node:{ac_id}"
@@ -649,6 +660,8 @@ async def run(ac_id: str, world: str, via_channel: Optional[str] = None, verbose
                 if own is None or own["t"] == last_t:
                     continue
                 last_t = own["t"]
+                if evidence is not None:
+                    evidence.on_ownship(own)
                 frames, radios = node.tick(own)
                 await send_frames(frames, radios)
         finally:
@@ -661,9 +674,10 @@ if __name__ == "__main__":
     ap.add_argument("--id", default="N101")
     ap.add_argument("--world", default="ws://localhost:8765")
     ap.add_argument("--via-channel", default=None, help="ws://<ip>:8765 when multicast is blocked")
+    ap.add_argument("--direct", action="store_true", help="real radio without channel.py (like the stub; no RF emulation)")
     ap.add_argument("-v", "--verbose", action="store_true", help="log leg classification once per second")
     a = ap.parse_args()
     try:
-        asyncio.run(run(a.id, a.world, a.via_channel, a.verbose))
+        asyncio.run(run(a.id, a.world, a.via_channel, a.verbose, a.direct))
     except KeyboardInterrupt:
         pass
