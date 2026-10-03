@@ -36,7 +36,7 @@ def check(name: str, ok: bool, detail: str, note: bool = False) -> None:
     print(f"  [{'PASS' if ok else ('NOTE' if note else 'FAIL')}] {name}: {detail}", flush=True)
 
 
-def scenario(name: str, factory, duration=130.0, loss=0.0, latency=0.3, comply=0.0, **kw):
+def scenario(name: str, factory, duration=180.0, loss=0.0, latency=0.3, comply=0.0, **kw):
     """comply=0: pilots ignore every advisory, so the layers have to escalate all the way (worst case for FLOCK)."""
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", name), PATS, comply=comply)
     sim = Sim(PATS, ac, factory, loss=loss, latency_s=latency, dt=0.1, **kw)
@@ -78,8 +78,8 @@ def one_pm() -> None:
 # ------------------------------------------------------------------------------------------ 4 PM
 def four_pm() -> None:
     print("4 PM - base_cutoff: turn-aware leads straight-line; four layers in order; complementary commits")
-    _, rf = scenario("base_cutoff_conflict.json", flock, duration=130.0, follow_sequence=False)
-    _, rb = scenario("base_cutoff_conflict.json", baseline, duration=130.0, follow_sequence=False)
+    _, rf = scenario("base_cutoff_conflict.json", flock, duration=180.0, follow_sequence=False)
+    _, rb = scenario("base_cutoff_conflict.json", baseline, duration=180.0, follow_sequence=False)
     tf, tb = min(rf.first_seen_t.values()), min(rb.first_seen_t.values())
     af, ab = min(rf.first_conflict_t.values()), min(rb.first_conflict_t.values())
     check("turn-aware prediction shows the base-to-final conflict >= 60 s before straight-line", tb - tf >= 60.0,
@@ -107,7 +107,7 @@ def four_pm() -> None:
               f"{a} {sa} @ {ta:.1f}s, {b} {sb} @ {tb_:.1f}s, gap {gap:.0f} ms")
     else:
         check("two nodes commit", False, f"commits from {sorted(commits)}")
-    _, rn = scenario("base_cutoff_conflict.json", None, duration=130.0)
+    _, rn = scenario("base_cutoff_conflict.json", None, duration=180.0)
     check("worst case (pilots ignore every advisory, one AP aircraft): bounded takeover only",
           True, f"no logic: {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; FLOCK: {rf.min_h_m / FT:.0f} ft / "
           f"{rf.min_v_at_min_h_m / FT:.0f} ft vertical ({'NMAC' if rf.nmac else 'no NMAC'}); baseline: {rb.min_h_m / FT:.0f} ft / {rb.min_v_at_min_h_m / FT:.0f} ft", note=True)
@@ -138,7 +138,7 @@ def seven_pm() -> None:
     import json
     sc = json.load(open(os.path.join(_REPO, "harness", "scenarios", "boxed_in_conflict.json")))
     sc["aircraft"][0]["start"]["agl_ft"] = 280                    # N101 below 300 ft AGL on final
-    sc["aircraft"][1]["start"]["offset_s"] = 26                   # N204 a little later: a real NMAC about 3 s out
+    sc["aircraft"][1]["start"]["offset_s"] = 28                   # N204 a little later: a real NMAC about 3 s out
     low = os.path.join(_REPO, "harness", "out", "_boxed_low.json")
     json.dump(sc, open(low, "w"))
     ac2 = load_scenario(low, PATS, comply=0.0)
@@ -148,14 +148,17 @@ def seven_pm() -> None:
           f"{inh[0]['text']} | inhibited: {inh[0]['reason']['takeover_inhibited']}" if inh else "no inhibited RESOLVE advisory")
 
     # RELEASE on STICK within one tick
-    sim3, res3 = scenario("base_cutoff_conflict.json", flock, duration=100.0, follow_sequence=False, stick_events={"N101": 73.0})
+    _, pre = scenario("base_cutoff_conflict.json", flock, duration=180.0, follow_sequence=False)
+    t_take = min(t - T0 for t, i, f in pre.commands if f["mode"] == "TAKEOVER")
+    t_stick = round(t_take + 2.0, 1)                              # pilot grabs the stick 2 s into the takeover
+    sim3, res3 = scenario("base_cutoff_conflict.json", flock, duration=t_stick + 10.0, follow_sequence=False, stick_events={"N101": t_stick})
     takes = [t - T0 for t, i, f in res3.commands if f["mode"] == "TAKEOVER"]
     rels = [(t - T0, f["reason"].get("cause")) for t, i, f in res3.commands if f["mode"] == "RELEASE"]
     st = getattr(res3, "stick_release_t", None)
     ok = bool(takes) and st is not None and any(c == "stick" and abs(t - (st - T0)) <= 0.1 + 1e-6 for t, c in rels)
-    retake = [t for t in takes if t > 73.0 and t < 78.0]
+    retake = [t for t in takes if t_stick < t < t_stick + 5.0]
     check("RELEASE on STICK within one tick, no re-grab for 5 s", ok and not retake,
-          f"takeover @ {takes[0]:.1f}s, stick @ 73.0s, RELEASE(stick) @ {[t for t, c in rels if c == 'stick']}")
+          f"takeover @ {takes[0]:.1f}s, stick @ {t_stick}s, RELEASE(stick) @ {[t for t, c in rels if c == 'stick']}")
 
     chart = os.path.join(_REPO, "harness", "out", "flock_vs_baseline.png")
     check("flock_vs_baseline.png produced (python harness/montecarlo.py)", os.path.exists(chart),
