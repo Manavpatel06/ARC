@@ -4,7 +4,8 @@
 
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
-import { sayAdvisory } from "./voice.js";
+import { sayAdvisory, sayNow } from "./voice.js";
+import { startHaptics } from "./haptics.js";
 import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
@@ -23,25 +24,31 @@ export function startCockpit(role) {
         $("ck-id").textContent = m.ac_id;
         document.title = `FLOCK cockpit ${m.ac_id}`;
         if (m.static && m.static.airport) s.fieldElevFt = m.static.airport.elev_ft;
+        if (m.static && m.static.wx) s.wx = m.static.wx;
         break;
       case "OWNSHIP": s.own = m; s.interp.push(m); break;
+      case "WX": s.wx = m; break;
       case "ADVISORY":
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
         break;
       case "TRUST": s.trust = m; break;
       case "COMMAND": s.cmd = m; break;
-      case "STICK": s.stickT = performance.now(); break;
+      case "STICK": s.stickT = performance.now(); hap.bump(); break;
       case "AP_STATUS":
-        if (!m.ok) toast(`AP: ${m.reason}`, "warn");
+        if (!m.ok) { toast(`AP: ${m.reason}`, "warn", 6000); say("autopilot unavailable"); }
         else if (m.engaged) { toast(`AUTOPILOT ON · ${m.phase || ""}`, "ap"); say("autopilot engaged"); }
         else toast("AUTOPILOT OFF", "info");
         break;
       case "WORLD_EVENT":
         if (m.a !== s.acId) break;
-        if (m.event === "TOUCHDOWN") toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        if (m.event === "TOUCHDOWN") {
+          if (m.surface === "TERRAIN_IMPACT") { toast(`TERRAIN IMPACT · ${m.ias_kt} kt ${m.vs_fpm} fpm`, "warn", 8000); sayNow("terrain impact"); hap.bump(); }
+          else if (m.surface === "OFF_RUNWAY") { toast(`OFF-RUNWAY LANDING · ${m.vs_fpm} fpm`, "warn", 6000); say("off runway"); }
+          else toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        }
         else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
-        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); }
+        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); hap.bump(); }
         break;
     }
   }, (status, detail) => {
@@ -52,6 +59,17 @@ export function startCockpit(role) {
   });
 
   const inp = startInput((v) => s.acId && link.send({ type: "INPUT", ac_id: s.acId, ...v }));
+
+  // controller rumble from node data only (advisory level, takeover, TRUSTED target range)
+  const hap = startHaptics(() => {
+    let nearest = null;
+    for (const t of (s.trust && s.trust.targets) || []) {
+      if (t.state === "TRUSTED" && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
+    }
+    return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest,
+             turb: s.own ? s.own.turb || 0 : 0, taws: s.own ? s.own.taws : null };
+  });
+  s.hap = hap;
 
   // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
   const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
@@ -71,8 +89,10 @@ export function startCockpit(role) {
   const frame = () => {
     fit(pfd); fit(tfc);
     if (s.v3) update3D(s);
+    renderVisibility(s);
+    renderTaws(s);
     const chase = !!(s.v3 && s.v3.chase);
-    drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase);
+    drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase, s.wx);
     drawTraffic(tfc, s.own, s.trust, s.adv);
     renderBanner(s);
     renderBounds(s);
@@ -81,6 +101,44 @@ export function startCockpit(role) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- terrain awareness (world/taws.py, own aircraft only) ----------
+const TAWS_TEXT = { "PULL UP": ["PULL UP", "warning", "pull up, pull up"], "TERRAIN": ["TERRAIN", "warning", "terrain, terrain"],
+                    "SINK RATE": ["SINK RATE", "caution", "sink rate"], "TOO LOW TERRAIN": ["TOO LOW · TERRAIN", "caution", "too low, terrain"] };
+function renderTaws(s) {
+  const el = $("ck-taws"), al = s.own && s.own.taws;
+  if (!al || !TAWS_TEXT[al]) { el.hidden = true; s.tawsSaid = null; return; }
+  const [text, level, speak] = TAWS_TEXT[al];
+  if (el.textContent !== text) el.textContent = text;
+  el.dataset.level = level; el.hidden = false;
+  const now = performance.now();
+  if (s.tawsSaid !== al || now - (s.tawsAt || 0) > (level === "warning" ? 2200 : 3500)) {   // repeat while it lasts
+    sayNow(speak); s.tawsSaid = al; s.tawsAt = now;
+  }
+}
+
+// ---------- weather out of the window: haze, dust, cloud (3D only) ----------
+// Visibility is what the pilot sees; it hides traffic outside but not the FLOCK radar.
+function renderVisibility(s) {
+  const el = $("ck-haze"), w = s.wx, o = s.own;
+  let alpha = 0, color = "rgba(170,178,190,1)";
+  if (s.v3 && w && o) {
+    const vis = Math.max(0.1, +w.visibility_sm || 10);
+    alpha = 0.9 * Math.pow(Math.max(0, 1 - vis / 10), 2);
+    if ((+w.wind_kt || 0) >= 20 && vis < 3) color = "rgba(160,118,72,1)";        // dust storm
+    const base = +w.ceiling_ft_agl || 0;
+    if (base && o.agl_ft > base - 150) {                                          // entering cloud
+      alpha = Math.max(alpha, Math.min(0.95, (o.agl_ft - (base - 150)) / 150 * 0.95));
+      color = "rgba(214,218,224,1)";
+    }
+    if (s.v3.viewer && s.v3.lastVis !== vis) {                                    // denser Cesium fog too
+      s.v3.viewer.scene.fog.density = 2.0e-4 + 2.0e-3 * Math.max(0, 1 - vis / 10);
+      s.v3.lastVis = vis;
+    }
+  }
+  el.style.backgroundColor = color;
+  el.style.opacity = alpha.toFixed(2);
 }
 
 // ---------- 3D out-the-window view (synthetic vision) ----------
@@ -163,11 +221,11 @@ function update3D(s) {
 
 // ---------- short notices (AP, touchdown, liftoff) ----------
 let toastTimer = 0;
-function toast(text, kind = "info") {
+function toast(text, kind = "info", ms = 3500) {
   const el = $("ck-toast");
   el.textContent = text; el.dataset.kind = kind; el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 function say(text) { sayAdvisory({ level: "INFO", layer: 0, speak: text }); }
 
@@ -232,6 +290,8 @@ function renderStatus(s, inp) {
   $("ck-mode").textContent = o ? (o.ap && o.mode === "AUTOPILOT" ? `AP · ${o.ap_phase || ""}` : o.mode || "") : "--";
   $("ck-mode").dataset.mode = o ? o.mode : "";
   $("ck-ap").dataset.on = o && o.ap ? "1" : "";
+  const hs = s.hap && s.hap.status;
+  $("ck-haptics").textContent = !hs || !hs.enabled ? "rumble off" : hs.supported ? "rumble ✓" : hs.pad ? "no rumble on this pad" : "";
   $("ck-input").textContent = inp.engaged ? `${inp.source} · thr ${Math.round(inp.throttle * 100)}%` : inp.pad ? "gamepad ready - move a stick" : "keys: arrows + W/S";
   $("ck-thr").style.setProperty("--v", inp.throttle);
 }
@@ -239,7 +299,7 @@ function renderStatus(s, inp) {
 // ---------- primary flight display ----------
 // svt = true: transparent overlay on the 3D view (no sky/ground fill). With the camera's vertical
 // field of view the pitch ladder is conformal: the PFD horizon sits on the rendered horizon.
-function drawPFD(cv, o, svt = false, fovy = null, att = true) {
+function drawPFD(cv, o, svt = false, fovy = null, att = true, wx = null) {
   const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = W / 640;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
@@ -296,7 +356,17 @@ function drawPFD(cv, o, svt = false, fovy = null, att = true) {
   const boxW = 96 * k, boxH = 40 * k;
   readout(ctx, cx - R - 30 * k - boxW, cy - boxH / 2, boxW, boxH, `${Math.round(o.ias_kt)}`, "KT IAS", k,
           o.ias_kt < 62 ? "var(--lvl-resolve)" : null);
-  readout(ctx, cx + R + 30 * k, cy - boxH / 2, boxW + 14 * k, boxH, `${Math.round(o.alt_press_ft)}`, "FT ALT", k);
+  // altimeter: indicated altitude with this aircraft's setting (amber if it differs from the reported QNH)
+  const ind = o.alt_ind_ft != null ? o.alt_ind_ft : o.alt_press_ft;
+  readout(ctx, cx + R + 30 * k, cy - boxH / 2, boxW + 14 * k, boxH, `${Math.round(ind)}`, "FT ALT", k);
+  if (o.baro_set_inhg != null) {
+    const qnh = wx && wx.qnh_inhg != null ? +wx.qnh_inhg : null;
+    const stale = qnh != null && Math.abs(qnh - o.baro_set_inhg) > 0.005;
+    const col = stale ? css("var(--lvl-traffic)") : css("var(--text-2)");
+    label(ctx, cx + R + 30 * k, cy + boxH / 2 + 58 * k, `BARO ${(+o.baro_set_inhg).toFixed(2)}`, 12 * k, "left", col);
+    if (stale) label(ctx, cx + R + 30 * k, cy + boxH / 2 + 74 * k, `ATIS ${qnh.toFixed(2)}`, 12 * k, "left", col);
+  }
+  if (wx && wx.metar_style) label(ctx, 10 * k, 20 * k, wx.metar_style, 12 * k, "left", css("var(--text-2)"));
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 18 * k, `AGL ${Math.round(o.agl_ft)}`, 13 * k, "left",
         o.agl_ft < 300 ? css("var(--lvl-traffic)") : css("var(--text-2)"));
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 38 * k, `VS ${o.vs_fpm > 0 ? "+" : ""}${Math.round(o.vs_fpm / 10) * 10}`, 13 * k, "left", css("var(--text-2)"));

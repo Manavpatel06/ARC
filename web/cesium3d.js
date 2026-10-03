@@ -13,7 +13,7 @@ const GEOID_N_M = -31.0;     // EGM96 geoid height at KDVT: ellipsoid height = M
 const FT = 0.3048;
 
 let loading = null;
-export function loadCesium(timeoutMs = 12000) {
+export function loadCesium(timeoutMs = 30000) {   // generous: venue hotspots can be slow
   if (window.Cesium) return Promise.resolve(window.Cesium);
   if (loading) return loading;
   window.CESIUM_BASE_URL = BASE;

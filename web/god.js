@@ -23,7 +23,18 @@ const KT = 0.514444;
 const TRAIL_S = 60, ADV_TTL_S = 12, PRED_TTL_S = 4, STICK_FLASH_S = 4, EVENTS_MAX = 12, SEP_MARK_S = 20;
 const LAYER_R_M = { 1: 900, 2: 650, 3: 450, 4: 300 };   // ring radius by layer (visual only)
 const CONFLICT_LEVELS = new Set(["SEQUENCE", "TRAFFIC", "RESOLVE", "TAKEOVER", "NO_SOLUTION"]);
-const LAYERS = { pred: "Predictions", sigma: "Uncertainty", conflict: "Conflicts", trails: "Trails", pattern: "Pattern", labels: "Labels" };
+const LAYERS = { pred: "Predictions", sigma: "Uncertainty", conflict: "Conflicts", trails: "Trails", pattern: "Pattern", labels: "Labels", weather: "Thermals" };
+// world weather controls (SET_WX fields): [field, label, min, max, step, format]
+const WX_SLIDERS = [
+  ["wind_from_deg", "Wind from", 0, 359, 5, (v) => `${String(Math.round(v)).padStart(3, "0")}°`],
+  ["wind_kt", "Wind", 0, 40, 1, (v) => `${v} kt`],
+  ["gust_kt", "Gusts to", 0, 50, 1, (v) => (+v ? `${v} kt` : "none")],
+  ["shear_kt", "Shear <400 ft", 0, 20, 1, (v) => (+v ? `-${v} kt` : "none")],
+  ["thermals", "Thermals", 0, 1, 0.1, (v) => (+v ? `${Math.round(v * 100)} %` : "none")],
+  ["visibility_sm", "Visibility", 0.25, 10, 0.25, (v) => `${v} SM`],
+  ["ceiling_ft_agl", "Cloud base", 0, 5000, 100, (v) => (+v ? `${v} ft AGL` : "none")],
+  ["qnh_inhg", "QNH", 28.9, 30.6, 0.01, (v) => `${(+v).toFixed(2)}`],
+];
 
 export function climbFpm(da) {   // same table as data/metar.py climb_fpm
   const pts = [[0, 730], [5000, 500], [8000, 300], [12000, 100]];
@@ -41,7 +52,7 @@ export function startGod() {
   const s = {
     stat: null, local: null, ac: new Map(), trails: new Map(), adv: new Map(), pred: new Map(),
     trust: new Map(), crystal: new Map(), cmd: new Map(), stick: new Map(), events: [],
-    nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 },
+    nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 }, wx: null, thermals: [],
     t: 0, da: null, show: loadToggles(),
     view: { cx: 0, cy: 0, scale: 0.08, fitted: false },
   };
@@ -54,6 +65,8 @@ export function startGod() {
           s.stat = m.static;
           s.local = new Local(m.static.airport.lat, m.static.airport.lon);
           s.da = m.static.da_field_ft;
+          s.wx = m.static.wx || null;
+          buildWxControls(s, link, m.static.presets || []);
           renderWeather(s);
           renderDA(s);
         }
@@ -94,6 +107,8 @@ export function startGod() {
       case "TRUST": s.trust.set(m.ac_id, m); break;
       case "CRYSTAL": s.crystal.set(m.ac_id, m); break;
       case "ENV": s.da = m.da_field_ft; renderDA(s); break;
+      case "WX": s.wx = m; s.da = m.da_field_ft; renderWeather(s); renderDA(s); break;
+      case "WX_FIELD": s.thermals = m.thermals || []; break;
     }
   }, (status) => {
     $("god-link").textContent = status === "open" ? "LIVE" : status.toUpperCase();
@@ -129,8 +144,13 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "TAWS") {
+    if (m.alert) pushEvent(s, m.t, m.a, m.alert === "PULL UP" || m.alert === "TERRAIN" ? "NMAC" : "TRAFFIC",
+                           `TAWS ${m.alert} · ${m.agl_ft} ft AGL, ${m.vs_fpm} fpm`);
+    return;
   } else if (m.event === "TOUCHDOWN" || m.event === "LIFTOFF" || m.event === "AP_DISCONNECT") {
-    const txt = m.event === "TOUCHDOWN" ? `${m.hard ? "HARD LANDING" : "touchdown"} ${m.vs_fpm} fpm`
+    const where = m.surface && m.surface !== "RUNWAY" ? ` ${m.surface.replace("_", " ").toLowerCase()}` : "";
+    const txt = m.event === "TOUCHDOWN" ? `${m.surface === "TERRAIN_IMPACT" ? "TERRAIN IMPACT" : m.hard ? "HARD LANDING" : "touchdown"}${where && m.surface !== "TERRAIN_IMPACT" ? where : ""} ${m.vs_fpm} fpm`
       : m.event === "LIFTOFF" ? `liftoff ${m.ias_kt} kt` : "autopilot disconnect (stick)";
     pushEvent(s, m.t, m.a, m.hard ? "NMAC" : "CLEAR", txt);
     return;
@@ -168,6 +188,58 @@ function renderWeather(s) {
     ? `${w.station} ${w.observed || ""}  ${String(w.wind_dir_deg ?? "---").padStart(3, "0")}@${w.wind_kt ?? "-"}kt  ${w.temp_c ?? "-"}°C  A${w.altimeter_inhg ?? "-"}`
     : "no METAR");
   $("god-scn").textContent = `${s.stat.scenario} · x${s.stat.time_scale}`;
+  const x = s.wx;
+  if (!x) return;
+  $("god-wx-line").textContent = `world: ${x.metar_style}`;
+  const stale = x.stale_altimeters || 0;
+  $("god-wx-note").textContent = (x.note || (x.name === "custom" ? "custom weather" : ""))
+    + (stale ? ` · ${stale} aircraft on an old altimeter setting` : "");
+  // reflect the state in the controls unless the user is dragging one
+  const box = $("god-wx");
+  if (!box.firstChild) return;
+  const sel = box.querySelector("select[data-f=preset]");
+  if (sel && document.activeElement !== sel) sel.value = [...sel.options].some((o) => o.value === x.name) ? x.name : "custom";
+  const tsel = box.querySelector("select[data-f=turbulence]");
+  if (tsel && document.activeElement !== tsel) tsel.value = String(x.turbulence);
+  for (const [f, , , , , fmt] of WX_SLIDERS) {
+    const el = box.querySelector(`input[data-f=${f}]`);
+    const v = f === "ceiling_ft_agl" ? (x[f] || 0) : x[f];
+    if (el && document.activeElement !== el && v != null) el.value = v;
+    if (el) box.querySelector(`output[data-f=${f}]`).textContent = fmt(el.value);
+  }
+  const up = box.querySelector("button[data-f=update_altimeters]");
+  if (up) up.dataset.hot = stale ? "1" : "";
+}
+
+// World weather controls -> SET_WX (presets, sliders, turbulence, update altimeters)
+function buildWxControls(s, link, presets) {
+  const box = $("god-wx");
+  if (box.firstChild) return;
+  const opt = (v, label) => `<option value="${v}">${label}</option>`;
+  box.innerHTML =
+    `<label>Preset</label><select class="wide" data-f="preset">${presets.map((p) => opt(p, p.replaceAll("_", " "))).join("")}${opt("custom", "custom")}</select>`
+    + `<label>Turbulence</label><select class="wide" data-f="turbulence">${["none", "light", "moderate", "severe"].map((n, i) => opt(i, n)).join("")}</select>`
+    + WX_SLIDERS.map(([f, label, mn, mx, st]) =>
+      `<label>${label}</label><input type="range" data-f="${f}" min="${mn}" max="${mx}" step="${st}"><output data-f="${f}"></output>`).join("")
+    + `<span></span><button class="wide" type="button" data-f="update_altimeters" title="ATIS update: every aircraft dials in the current QNH">Update all altimeters to QNH</button>`;
+  const timers = {};
+  const send = (msg, key) => { clearTimeout(timers[key]); timers[key] = setTimeout(() => link.send({ type: "SET_WX", ...msg }), 150); };
+  box.addEventListener("input", (e) => {
+    const f = e.target.dataset.f;
+    if (!f || e.target.tagName !== "INPUT") return;
+    const sl = WX_SLIDERS.find((x) => x[0] === f);
+    box.querySelector(`output[data-f=${f}]`).textContent = sl[5](e.target.value);
+    const v = f === "ceiling_ft_agl" && +e.target.value === 0 ? null : +e.target.value;
+    send({ [f]: v }, f);
+  });
+  box.addEventListener("change", (e) => {
+    const f = e.target.dataset.f;
+    if (f === "preset" && e.target.value !== "custom") send({ preset: e.target.value }, "preset");
+    if (f === "turbulence") send({ turbulence: +e.target.value }, "turbulence");
+  });
+  box.addEventListener("click", (e) => {
+    if (e.target.dataset.f === "update_altimeters") link.send({ type: "SET_WX", update_altimeters: true });
+  });
 }
 
 function renderDA(s) {
@@ -315,6 +387,15 @@ function draw(cv, s) {
     const [x0, y0] = LL(e.lat, e.lon), [x1, y1] = LL(e.far_lat, e.far_lon);
     const d = Math.hypot(x1 - x0, y1 - y0) || 1, off = 14 * k;
     text(ctx, x0 - (x1 - x0) / d * off, y0 - (y1 - y0) / d * off + 4 * k, id, 12 * k, "center", css("var(--text)"));
+  }
+
+  // thermals (world weather): rising columns drifting with the wind
+  if (show.weather) for (const [e, n, r, pk] of s.thermals) {
+    const [x, y] = P(e, n);
+    ctx.globalAlpha = 0.18; ctx.fillStyle = css("var(--lvl-traffic)");
+    ctx.beginPath(); ctx.arc(x, y, Math.max(4 * k, r * v.scale), 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    if (show.labels && v.scale > 0.06) text(ctx, x, y + 4 * k, `+${pk} fpm`, 10 * k, "center", css("var(--lvl-traffic)"));
   }
 
   // trails
@@ -467,7 +548,8 @@ function draw(cv, s) {
 
 // Wind arrow (points where the wind blows TO) + DA, top-left of the map.
 function drawWind(ctx, s, W, k) {
-  const w = s.stat.metar || {};
+  const m = s.stat.metar || {};
+  const w = s.wx ? { wind_dir_deg: s.wx.wind_from_deg, wind_kt: s.wx.wind_kt, gust: s.wx.gust_kt } : m;
   const cx = 44 * k, cy = 48 * k, R = 22 * k;
   ctx.strokeStyle = css("var(--grid-strong)"); ctx.lineWidth = 1.5 * k;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
@@ -481,9 +563,19 @@ function drawWind(ctx, s, W, k) {
     ctx.lineTo(ex - 7 * k * Math.sin(to - 0.5), ey + 7 * k * Math.cos(to - 0.5));
     ctx.lineTo(ex - 7 * k * Math.sin(to + 0.5), ey + 7 * k * Math.cos(to + 0.5)); ctx.fill();
   }
-  const wind = w.wind_kt ? `${String(w.wind_dir_deg ?? 0).padStart(3, "0")}° ${w.wind_kt} kt` : "calm";
+  const wind = w.wind_kt ? `${String(Math.round(w.wind_dir_deg ?? 0)).padStart(3, "0")}° ${Math.round(w.wind_kt)} kt${w.gust > w.wind_kt ? ` G${Math.round(w.gust)}` : ""}` : "calm";
   text(ctx, cx + R + 10 * k, cy - 2 * k, `wind ${wind}`, 12 * k, "left", css("var(--text)"), true);
   if (s.da != null) text(ctx, cx + R + 10 * k, cy + 14 * k, `DA ${Math.round(s.da).toLocaleString()} ft · climb ${Math.round(climbFpm(s.da))} fpm`, 11 * k, "left", css("var(--text-2)"));
+  if (s.wx) {
+    const bits = [];
+    if (s.wx.turbulence) bits.push(`${s.wx.turbulence_name} turbulence`);
+    if (s.wx.shear_kt) bits.push(`shear -${s.wx.shear_kt} kt`);
+    if (s.wx.thermals) bits.push("thermals");
+    bits.push(`vis ${s.wx.visibility_sm} SM`);
+    if (s.wx.ceiling_ft_agl) bits.push(`base ${s.wx.ceiling_ft_agl} ft`);
+    bits.push(`QNH ${(+s.wx.qnh_inhg).toFixed(2)}`);
+    text(ctx, cx + R + 10 * k, cy + 29 * k, bits.join(" · "), 11 * k, "left", css(s.wx.turbulence >= 2 ? "var(--lvl-traffic)" : "var(--text-2)"));
+  }
 }
 
 function cross(ctx, x, y, r) {

@@ -29,6 +29,7 @@ from world.flight_model import BANK_RATE_DPS, FT, G, KT, Aircraft, Env, clamp, t
 PATTERN_BANK = 22.0
 XTRK_GAIN = 0.15               # deg of track correction per metre off course
 GROUND_ROLL_M = 300.0          # touch-and-go: roll this far before rotating
+AIM_POINT_M = 200.0            # final approach aiming point past the threshold
 JOIN_ENTRY_FRAC = 0.35         # JOIN aims at this fraction along the downwind (midfield-ish)
 JOIN_LEG_XTRK_M = 450.0        # already this close to a leg and roughly aligned -> join it directly
 JOIN_LEG_HDG_DEG = 50.0
@@ -146,7 +147,7 @@ class PatternPilot:
             return steer if ac.on_ground else 0.0, (9_999 if ac.ias_kt >= ROTATE_IAS else 0.0), TAKEOFF_IAS
         if self.phase == "ROLLOUT" and not ac.on_ground:
             # crossed the threshold still airborne: flare and settle onto the centreline
-            return clamp(1.6 * wrap180(L.brg - clamp(xtrk * 0.15, -20, 20) - ac.track_deg), -10, 10), -250.0, 60.0
+            return clamp(2.5 * wrap180(L.brg - clamp(xtrk * 0.45, -20, 20) - ac.track_deg), -15, 15), -250.0, 60.0
         if self.phase == "ROLLOUT" and ac.ias_kt < 1.0:
             self.phase = "STOPPED"
         return steer, 0.0, 0.0                                   # brake to a stop, hold
@@ -157,7 +158,7 @@ class PatternPilot:
         if self.phase in ("ROLLOUT", "STOPPED", "TAKEOFF"):
             return self._ground(ac, pos)
         if self.phase == "LEVEL":
-            if abs(ac.bank_deg) < 3 and abs(ac.vs_fpm) < 150:
+            if abs(ac.bank_ctl_deg) < 3 and abs(ac.vs_fpm) < 150:      # held bank, not turbulence roll
                 self._choose_join(ac, pos)
             else:
                 return 0.0, 0.0, clamp(ac.ias_kt, *LEVEL_IAS)
@@ -171,7 +172,7 @@ class PatternPilot:
             if math.hypot(de, dn) < 1.5 * r:                     # close enough: roll onto downwind
                 self.leg, self.phase = "DOWNWIND", "PATTERN"
             else:
-                vs = clamp(6.0 * (p.tpa_ft - ac.alt_msl_ft), -800, 9_999)
+                vs = clamp(6.0 * (p.tpa_ft - ac.indicated_ft), -800, 9_999)      # TPA on the altimeter
                 return self._steer_to(ac, math.degrees(math.atan2(de, dn)) % 360), vs, LEG_IAS["DOWNWIND"] + self.ias_bias
 
         L = p.legs[self.leg]
@@ -197,13 +198,22 @@ class PatternPilot:
             along, xtrk = L.project(pos)
 
         # lateral: desired ground track = leg bearing corrected for cross-track error
-        want_trk = L.brg - clamp(xtrk * XTRK_GAIN, -35, 35)
-        bank = clamp(1.6 * wrap180(want_trk - ac.track_deg), -self.bank, self.bank)
+        short_final = (self.leg in ("FINAL", "STRAIGHT_IN") and ac.agl_ft < 400) or (self.leg == "UPWIND" and along < 0)
+        gain = XTRK_GAIN * (3.0 if short_final else 1.0)           # tighter on short final: land on the centreline
+        want_trk = L.brg - clamp(xtrk * gain, -35, 35)
+        bank = clamp((2.5 if short_final else 1.6) * wrap180(want_trk - ac.track_deg), -self.bank, self.bank)
 
         # vertical: follow the leg's AGL profile, feed-forward the descent on descending legs
         ground = ac.alt_msl_ft - ac.agl_ft
-        tgt_alt = ground + L.agl_at(along)
-        vs = 6.0 * (tgt_alt - ac.alt_msl_ft) - ac.gs_kt * 101.27 * L.slope
+        if self.leg in ("CROSSWIND", "DOWNWIND", "BASE"):
+            # flown by the altimeter: published altitudes, read with this aircraft's setting
+            tgt_alt, cur = p.elev_ft + L.agl_at(along), ac.indicated_ft
+        else:
+            # upwind / final are flown visually against the ground
+            # final aims ~200 m past the threshold (crosses it at ~50 ft), like a real approach
+            aim = AIM_POINT_M if self.leg in ("FINAL", "STRAIGHT_IN") else 0.0
+            tgt_alt, cur = ground + L.agl_at(along - aim), ac.alt_msl_ft
+        vs = 6.0 * (tgt_alt - cur) - ac.gs_kt * 101.27 * L.slope
         if self.leg == "UPWIND" and along < 0:
             # over the runway after final: flare onto the wheels, roll, then climb (touch-and-go)
             on_runway_m = along + p.runway_len_m
@@ -212,7 +222,7 @@ class PatternPilot:
                 vs = -150.0 - 5.0 * ac.agl_ft
             else:
                 vs = 0.0 if ac.agl_ft < 5 and on_runway_m < GROUND_ROLL_M else 9_999
-        elif self.leg in ("UPWIND", "CROSSWIND") and ac.alt_msl_ft < tgt_alt - 50:
+        elif self.leg in ("UPWIND", "CROSSWIND") and cur < tgt_alt - 50:
             vs = 9_999                                             # best climb (capped by DA)
         if self.leg in ("FINAL", "STRAIGHT_IN") and ac.agl_ft < 40:
             vs = max(vs, -150.0 - 5.0 * ac.agl_ft)                # flare: ~-350 fpm at 40 ft to -150 at the wheels

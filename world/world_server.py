@@ -2,7 +2,7 @@
 world/world_server.py — Lane A. Authoritative simulation world + WebSocket hub (INTERFACE.md §1).
 
   python world/world_server.py --scenario harness/scenarios/judges.json [--port 8765]
-         [--http 8080] [--time-scale 1] [--da 4980]
+         [--http 8080] [--time-scale 1] [--da 4980] [--weather metar|calm_morning|hot_gusty_afternoon|haboob|low_ceiling|pressure_drop]
 
 Clients connect to ws://<host>:8765/?role=<role>:
   node:<id>        OWNSHIP at 10 Hz for its own aircraft only; STICK during a takeover
@@ -11,7 +11,10 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    A = first human aircraft in the scenario, B = second.
                    Cockpit -> world: INPUT, and (Lane A, proposed for v1.2) the AP button
                    {"type":"AP","ac_id","engage":true|false|null(toggle)} -> reply AP_STATUS.
-  god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL
+  god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL,
+                   WX (weather state) on change + WX_FIELD (thermal positions) every 2 s.
+                   God -> world: SET_DA, and (Lane A) SET_WX {"preset"?, field: value...} /
+                   {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH).
   log              LOG frames: decisions, radio (from channel), camera, world events
                    (incl. WORLD_EVENT NMAC / COLLISION / NMAC_END from world/separation.py)
   channel          TRUTH at 10 Hz (radio emulator decides delivery from it)
@@ -39,6 +42,7 @@ import schemas
 from world.scenario import World
 from world.flight_model import HARD_LANDING_FPM
 from world.separation import SeparationMonitor
+from world.taws import Taws
 
 PHYS_HZ = 20
 VALIDATE = {"ADVISORY": schemas.Advisory, "COMMAND": schemas.Command, "TRUST": schemas.Trust,
@@ -56,6 +60,8 @@ class Hub:
         self.sim_s = 0.0
         self.stats = {"ticks": 0, "busy_s": 0.0}
         self.sep = SeparationMonitor()                     # truth NMAC / collision events
+        self.taws = Taws(world.airport)                    # GPWS-style terrain alerts for judge aircraft
+        self.taws_state: dict[str, str | None] = {}
 
     # ---------- clock / io ----------
     def now(self) -> float:
@@ -194,7 +200,25 @@ class Hub:
                 ev = {"type": "ENV", "da_field_ft": self.w.env.da_field_ft}
                 self.send("god", ev)
                 self.log("god", "world", m)
+                self.publish_wx()
                 print(f"[world] density altitude at field -> {self.w.env.da_field_ft:.0f} ft")
+            elif t == "SET_WX":
+                what = []
+                if m.get("preset"):
+                    try:
+                        self.w.set_preset(str(m["preset"]))
+                        what.append(f"preset {m['preset']}")
+                    except KeyError as e:
+                        print(f"[world] SET_WX: {e}")
+                fields = {k: v for k, v in m.items() if k not in ("type", "preset", "update_altimeters")}
+                if fields:
+                    what += self.w.set_weather(**fields)
+                if m.get("update_altimeters"):
+                    n = self.w.update_altimeters()
+                    what.append(f"altimeters updated on {n} aircraft")
+                self.log("god", "world", m)
+                self.publish_wx()
+                print(f"[world] weather: {', '.join(what) or 'no change'} -> {self.w.env.wx.metar_style()}")
             return
 
         if role in ("channel", "camera", "data"):
@@ -203,10 +227,23 @@ class Hub:
                 self.send("god", m)
             self.log(m.get("from", m.get("src", role)), kind, m)
 
+    def publish_wx(self) -> None:
+        """Weather to god (full) and cockpits (what a pilot knows: METAR/ATIS, visibility, cloud)."""
+        st = self.w.wx_state()
+        self.send("god", {"type": "WX", **st})
+        pilot = {k: st[k] for k in ("name", "metar_style", "wind_from_deg", "wind_kt", "gust_kt", "visibility_sm",
+                                    "ceiling_ft_agl", "qnh_inhg", "turbulence_name")}
+        for ac_id in self.w.fleet:
+            self.send(f"cockpit:{ac_id}", {"type": "WX", **pilot})
+
     # ---------- physics loop ----------
     def cockpit_frame(self, ac, now: float) -> str:
         d = ac.ownship(now)
         d["mode"] = ac.mode
+        d["alt_ind_ft"] = round(ac.indicated_ft, 1)
+        d["baro_set_inhg"] = round(ac.baro_set_inhg, 2)
+        d["turb"] = round(ac.turb_now, 2)
+        d["taws"] = getattr(ac, "taws_alert", None)
         d["ap"] = ac.ap_engaged
         d["ap_phase"] = ac.ap_phase
         d["on_ground"] = ac.on_ground
@@ -224,7 +261,9 @@ class Hub:
                 ev = {"type": "WORLD_EVENT", "event": kind, "a": ac.id, "t": round(now, 3),
                       "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft)}
                 if kind == "TOUCHDOWN":
-                    ev.update(vs_fpm=val, hard=val < -HARD_LANDING_FPM)
+                    surface = self.taws.touchdown(ac, val)
+                    ev.update(vs_fpm=val, hard=val < -HARD_LANDING_FPM or surface == "TERRAIN_IMPACT",
+                              surface=surface, ias_kt=round(ac.ias_kt))
                 elif kind == "LIFTOFF":
                     ev.update(ias_kt=val)
                 else:
@@ -235,6 +274,23 @@ class Hub:
                     self.send("god", ev)
                 if ac.human or ev.get("hard") or kind == "AP_DISCONNECT":
                     print(f"[world] {kind} {ac.id} {val}" + (" HARD" if ev.get("hard") else ""))
+
+    def check_taws(self) -> None:
+        """Own-aircraft terrain alerts for judge aircraft; publish on change."""
+        for ac in self.w.fleet.values():
+            if not ac.human:
+                continue
+            al = self.taws.alert(ac, 0.1)
+            ac.taws_alert = al
+            if al != self.taws_state.get(ac.id):
+                self.taws_state[ac.id] = al
+                ev = {"type": "WORLD_EVENT", "event": "TAWS", "a": ac.id, "t": round(self.now(), 3), "alert": al,
+                      "agl_ft": round(ac.agl_ft), "vs_fpm": round(ac.vsi_fpm)}
+                self.send(f"cockpit:{ac.id}", ev)
+                self.send("god", ev)
+                self.log(ac.id, "world", ev)
+                if al:
+                    print(f"[world] TAWS {ac.id} {al} ({ac.agl_ft:.0f} ft AGL, {ac.vsi_fpm:.0f} fpm)")
 
     async def loop(self):
         period = 1.0 / PHYS_HZ
@@ -265,7 +321,11 @@ class Hub:
                     self.send("god", truth)
                     self.send("channel", truth)
                 # ground-truth separation: god + log only (never nodes; they must not see truth)
+                self.check_taws()
                 self.publish_aircraft_events(now)
+                if tick % 40 == 0 and self.roles.get("god"):          # every 2 s: thermal field for the map
+                    self.send("god", {"type": "WX_FIELD", "t": round(now, 3), "thermals":
+                                      [[round(x), round(y), round(r), round(pk)] for x, y, r, pk in self.w.env.wx.thermal_list(now)]})
                 for ev in self.sep.check(self.w.fleet, now):
                     self.send("god", ev)
                     self.log("world", "world", ev)
@@ -307,14 +367,15 @@ async def main():
     ap.add_argument("--http", type=int, default=8080, help="serve web/ on this port (0 = off)")
     ap.add_argument("--time-scale", type=float, help="1 for judges, 10 for A/B runs (overrides scenario)")
     ap.add_argument("--da", type=float, help="density altitude at the field, ft (overrides METAR/scenario)")
+    ap.add_argument("--weather", help="weather preset (world/weather.py): metar, calm_morning, hot_gusty_afternoon, haboob, low_ceiling, pressure_drop")
     a = ap.parse_args()
-    world = World(a.scenario, da_override=a.da, time_scale=a.time_scale)
+    world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather)
     hub = Hub(world)
     if a.http:
         serve_http(a.http)
     async with serve(hub.handler, "0.0.0.0", a.port, compression=None):
         print(f"[world] '{world.scenario.name}' on ws://0.0.0.0:{a.port}  aircraft={list(world.fleet)}  "
-              f"humans={world.humans}  DA={world.env.da_field_ft:.0f} ft  x{world.time_scale:g}")
+              f"humans={world.humans}  DA={world.env.da_field_ft:.0f} ft  x{world.time_scale:g}  wx {world.env.wx.name}: {world.env.wx.metar_style()}")
         await hub.loop()
 
 if __name__ == "__main__":
