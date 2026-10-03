@@ -1,0 +1,33 @@
+{
+ "name": "head_on_judges",
+ "aircraft": [
+  {
+   "id": "N101",
+   "start": {
+    "leg": "DOWNWIND",
+    "runway": "25L",
+    "offset_s": -36.0
+   },
+   "ap": true,
+   "human": true
+  },
+  {
+   "id": "N102",
+   "start": {
+    "leg": "DOWNWIND",
+    "runway": "07R",
+    "offset_s": -33.0
+   },
+   "ap": true,
+   "human": true
+  }
+ ],
+ "channel": {
+  "loss": 0.1,
+  "latency_s": 0.3
+ },
+ "weather": "cached",
+ "spoofer": false,
+ "camera_target": false,
+ "note": "tuned by world/find_conflict.py from seed_headon.json: N101-N102: 3 ft / 0 ft at t=74 s (DOWNWIND/DOWNWIND) COLLISION (no avoidance; window 70-120 s)"
+}
