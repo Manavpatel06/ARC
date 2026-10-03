@@ -164,7 +164,7 @@ class Sim:
     def __init__(self, patterns: dict, aircraft: list[SimAircraft], node_factory: Optional[Callable] = None,
                  loss: float = 0.1, latency_s: float = 0.3, dt: float = 0.1, seed: int = 0,
                  stick_events: Optional[dict] = None, verbose: bool = False, pair: Optional[tuple] = None,
-                 follow_sequence: bool = True):
+                 follow_sequence: bool = True, blackout: Optional[tuple] = None):
         self.patterns = patterns
         self.predictor = Predictor(patterns)
         self.aircraft = {a.id: a for a in aircraft}
@@ -179,6 +179,7 @@ class Sim:
         self.stick_events = stick_events or {}
         self.verbose = verbose
         self.follow_sequence = follow_sequence
+        self.blackout = blackout                          # (t_start, t_end) seconds from T0: the radio delivers nothing
         self.res = Result()
         self.pair = pair or tuple(list(self.aircraft)[:2])
         if node_factory:
@@ -193,6 +194,8 @@ class Sim:
         if msg == "MANEUVER_COMMIT":
             self.res.commits.append((self.t, src, body))
         a = self.aircraft[src]
+        if self.blackout and self.blackout[0] <= self.t - T0 < self.blackout[1]:
+            return
         for rid, r in self.aircraft.items():
             if rid == src or r.node is None:
                 continue

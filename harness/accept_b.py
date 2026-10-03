@@ -189,6 +189,25 @@ def live() -> None:
     check("node ADVISORY frames reach the world", bool(adv), adv[0] if adv else "none")
 
 
+def phase2_b12() -> None:
+    print("B12 - lost link after the conflict is seen, and three on final")
+    _, rl = scenario("base_cutoff_conflict.json", flock, duration=130.0, follow_sequence=False, blackout=(72.0, 110.0))
+    fb = [(t - T0, i, f) for t, i, f in rl.advisories if f["reason"].get("basis") == "fallback-link-lost"]
+    cm = {}
+    for t, i, b in rl.commits:
+        cm.setdefault(i, (t - T0, b["sense"]))
+    ok = len(cm) == 2 and all(s == "R" for _, s in cm.values()) and abs(cm["N101"][0] - cm["N399"][0]) <= 0.5
+    check("radio blackout: both nodes time out and commit sense R, no negotiation", ok,
+          f"commits {cm}; {len(fb)} advisories tagged fallback-link-lost; min sep {rl.min_h_m / FT:.0f} ft / {rl.min_v_at_min_h_m / FT:.0f} ft vertical")
+    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final.json"), PATS, comply=0.7)
+    r3 = Sim(PATS, ac, flock, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
+    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final.json"), PATS, comply=0.7)
+    rn = Sim(PATS, ac, None, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
+    check("three_on_final: FLOCK resolves what is an NMAC without it", rn.nmac and not r3.nmac,
+          f"no logic {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; FLOCK {r3.min_h_m / FT:.0f} ft / "
+          f"{r3.min_v_at_min_h_m / FT:.0f} ft vertical (10% loss, 70% pilot compliance)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true")
@@ -196,6 +215,7 @@ def main() -> None:
     one_pm()
     four_pm()
     seven_pm()
+    phase2_b12()
     if a.live:
         live()
     bad = [n for n, ok, _ in RESULTS if not ok]
