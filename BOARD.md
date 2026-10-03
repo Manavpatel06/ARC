@@ -26,16 +26,16 @@ Stubs to run while building: `stubs/fake_node.py` (gives views real ADVISORY/TRU
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| A1 | `world/world_server.py`: WebSocket hub with `?role=`, OWNSHIP to own node only, mirror ADVISORY/COMMAND/TRUST to cockpit/god/log, TRUTH to god+channel. Start by copying `stubs/fake_world.py`. | 12:30 | [ ] |
-| A2 | `world/flight_model.py`: 3-DOF, bank-to-turn, bank rate 15°/s, climb vs density altitude, speed envelope. | 1:00 PM | [ ] |
-| A3 | `web/index.html?role=cockpitA`: own aircraft moving, Gamepad API → INPUT at 30 Hz, keyboard fallback. Test with `fake_node`. | 1:00 PM ✔ status | [ ] |
-| A4 | `web/index.html?role=god`: KDVT map (flat image OK), all aircraft, labels. | 1:00 PM ✔ status | [ ] |
-| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` flag (aircraft with no node). | 2:30 | [ ] |
-| A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [ ] |
-| A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [ ] |
-| A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [ ] |
-| A9 | God view: predicted paths from PREDICTION frames, conflict markers, layer rings, METAR text, DA slider → `SET_DA`. | 5:30 | [ ] |
-| A10 | `world/scenario.py`: load `harness/scenarios/*.json`, `time_scale`, `density_altitude_override`. | 6:00 | [ ] |
+| A1 | `world/world_server.py`: WebSocket hub with `?role=`, OWNSHIP to own node only, mirror ADVISORY/COMMAND/TRUST to cockpit/god/log, TRUTH to god+channel. Start by copying `stubs/fake_world.py`. | 12:30 | [x] |
+| A2 | `world/flight_model.py`: 3-DOF, bank-to-turn, bank rate 15°/s, climb vs density altitude, speed envelope. | 1:00 PM | [x] |
+| A3 | `web/index.html?role=cockpitA`: own aircraft moving, Gamepad API → INPUT at 30 Hz, keyboard fallback. Test with `fake_node`. | 1:00 PM ✔ status | [x] |
+| A4 | `web/index.html?role=god`: KDVT map (flat image OK), all aircraft, labels. | 1:00 PM ✔ status | [x] |
+| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` flag (aircraft with no node). | 2:30 | [x] |
+| A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [x] Cesium (2D fallback) |
+| A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [x] |
+| A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [x] |
+| A9 | God view: predicted paths from PREDICTION frames, conflict markers, layer rings, METAR text, DA slider → `SET_DA`. | 5:30 | [x] |
+| A10 | `world/scenario.py`: load `harness/scenarios/*.json`, `time_scale`, `density_altitude_override`. | 6:00 | [x] |
 | A11 | Three views stable on three laptops over the hotspot. | 7:00 PM ✔ status | [ ] |
 | A12 | *Phase 2:* god-view overlay for trust state (FAKE drawn hollow red, CAMERA_ONLY as bearing wedge, not a dot). | 9:00 PM | [ ] |
 | A13 | *Phase 3 support:* render CRYSTAL frames (Escape Crystal) around own aircraft in god view. | after go/no-go | [ ] |
