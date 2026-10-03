@@ -17,9 +17,9 @@ for i in $(seq 1 60); do (echo > /dev/tcp/127.0.0.1/8765) 2>/dev/null && break; 
 if [ -f radio/channel.py ] && [ $STUBS = 0 ]; then start channel radio/channel.py --world $W --loss 0.1 --latency 0.3
 else if [ $SPOOF = 1 ]; then start channel-stub stubs/fake_channel.py --world $W --spoof; else start channel-stub stubs/fake_channel.py --world $W; fi; fi
 IDS=$($PY -c "import json,sys;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('flock',True)))")
-if [ -f node/node.py ] && [ $STUBS = 0 ]; then for id in $IDS; do start "node $id" node/node.py --id $id --world $W; done
+if [ -f node/node.py ] && [ $STUBS = 0 ]; then sleep 2; for id in $IDS; do start "node $id" node/node.py --id $id --world $W --via-channel ws://localhost:8766; done
 else start node-stub stubs/fake_node.py --id N101 --world $W; fi
-[ $SPOOF = 1 ] && [ -f radio/spoofer.py ] && start spoofer radio/spoofer.py --world $W
+[ $SPOOF = 1 ] && [ -f radio/spoofer.py ] && start spoofer radio/spoofer.py --mode unsigned --via-channel ws://localhost:8766
 IP=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
 echo "cockpit A http://$IP:8080/index.html?role=cockpitA | B ...role=cockpitB | god ...role=god | log http://$IP:8080/log.html"
 echo "logs in harness/out/run_*.log   stop: ./run_demo.sh --stop"
