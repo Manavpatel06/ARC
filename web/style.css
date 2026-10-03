@@ -80,7 +80,11 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 @keyframes pulse { to { background: color-mix(in srgb, var(--lvl-takeover) 22%, var(--panel)); } }
 
 .ck-main { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8px; min-height: 0; }
-.ck-traffic { width: 100%; height: 100%; display: block; border-radius: 10px; border: 1px solid var(--line); min-height: 0; }
+.ck-mapwrap { position: relative; min-height: 0; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: #05080c; }
+.ck-mapbg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ck-leaflet, .ck-leaflet.leaflet-container { position: absolute; transform-origin: 50% 50%; background: #05080c; }
+.ck-leaflet .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(1.6) contrast(1.35) saturate(0.7); }   /* dark map, roads readable */
+.ck-traffic { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
 .ck-view { position: relative; min-height: 0; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--panel); }
 .ck-3d, .ck-pfd { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .ck-3d .cesium-viewer-bottom { display: none; }   /* credits shown in .ck-3d-note instead */

@@ -6,6 +6,7 @@ import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js
 import { startInput } from "./input.js";
 import { sayAdvisory, sayNow } from "./voice.js";
 import { startHaptics } from "./haptics.js";
+import { MAP_ATTRIBUTION, startMapLayer } from "./maplayer.js";
 import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
@@ -84,6 +85,9 @@ export function startCockpit(role) {
   const hold = (on) => (e) => { inp.resetButton = on; if (on) rb.setPointerCapture && e.pointerId != null && rb.setPointerCapture(e.pointerId); };
   rb.addEventListener("pointerdown", hold(true));
   for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) rb.addEventListener(ev, hold(false));
+
+  // street map under the moving map (needs internet; ?basemap=0 turns it off)
+  if (new URLSearchParams(location.search).get("basemap") !== "0") startMapLayer($("ck-mapbg")).then((ml) => { s.mapLayer = ml; });
 
   // moving map: click / Z / D-pad up-down = range, N / D-pad left-right = north-up / heading-up
   const cycleRange = (d) => { s.map.range = (s.map.range + d + MAP_RANGES_NM.length) % MAP_RANGES_NM.length; saveMap(s.map); };
@@ -446,26 +450,32 @@ function label(ctx, x, y, text, size, align = "left", color) {
 // Own aircraft in the middle, charts (runways, pattern legs from HELLO static), where the aircraft is
 // headed (60 s path that curves with the current bank), the leg the autopilot is flying, and traffic.
 // Traffic comes ONLY from this aircraft's node (TRUST rel), never from world truth.
-const MAP_RANGES_NM = [1.5, 3, 6, 12];
+const MAP_RANGES_NM = [0.75, 1.5, 3, 6, 12];        // default 1.5 NM: close in, so the path ahead is clear
 
 function mapState() {
   let st = { range: 1, northUp: false };
-  try { st = { ...st, ...JSON.parse(localStorage.getItem("flock.cockpit.map") || "{}") }; } catch { /* private mode */ }
+  try { st = { ...st, ...JSON.parse(localStorage.getItem("flock.cockpit.map2") || "{}") }; } catch { /* private mode */ }
   st.range = Math.max(0, Math.min(MAP_RANGES_NM.length - 1, st.range | 0));
   return st;
 }
-function saveMap(m) { try { localStorage.setItem("flock.cockpit.map", JSON.stringify(m)); } catch { /* ignore */ } }
+function saveMap(m) { try { localStorage.setItem("flock.cockpit.map2", JSON.stringify(m)); } catch { /* ignore */ } }
 
 function drawNavMap(cv, s) {
   const o = s.own, m = s.map, ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = Math.min(W, H) / 480;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "#05080c"; ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, H);
+  if (!s.mapLayer) { ctx.fillStyle = "#05080c"; ctx.fillRect(0, 0, W, H); }
   if (!o) { label(ctx, W / 2, H / 2, "waiting for OWNSHIP…", 14 * k, "center", css("var(--text-2)")); return; }
   const rangeNm = MAP_RANGES_NM[m.range];
-  const cx = W / 2, cy = m.northUp ? H / 2 : H * 0.64;
-  const R = Math.min(W * 0.46, m.northUp ? H * 0.46 : H * 0.58);
+  const cx = W / 2, cy = m.northUp ? H / 2 : H * 0.70;            // heading-up: more room ahead
+  const R = Math.min(W * 0.46, m.northUp ? H * 0.46 : H * 0.64);
   const pxPerM = R / (rangeNm * NM);
   const up = m.northUp ? 0 : o.hdg_deg;
+  if (s.mapLayer) {                                             // street map underneath, same scale / rotation
+    const dpr = W / Math.max(1, cv.clientWidth);
+    s.mapLayer.update(o.lat, o.lon, dpr / pxPerM, up, cx / dpr, cy / dpr, W / dpr, H / dpr);
+    ctx.fillStyle = "rgba(5, 8, 12, 0.08)"; ctx.fillRect(0, 0, W, H);   // faint veil keeps overlays readable
+  }
   const kx = 111320 * Math.cos(o.lat * D2R);
   const fromEN = (e, n) => {                                  // metres east/north of own -> screen
     const r = Math.hypot(e, n) * pxPerM, a = Math.atan2(e, n) - up * D2R;
@@ -513,21 +523,30 @@ function drawNavMap(cv, s) {
     label(ctx, x0 - (x1 - x0) / d * 13 * k, y0 - (y1 - y0) / d * 13 * k + 4 * k, id, 11 * k, "center", css("var(--text)"));
   }
 
-  // where the aircraft is headed: 60 s ahead at the current ground speed, curving with the current bank
+  // where the aircraft is headed: up to 60 s ahead at the current ground speed, curving with the current
+  // bank, drawn until it leaves the map; marks every 10 s when zoomed in, every 30 s when zoomed out
   if (!o.on_ground && o.gs_kt > 20) {
     const v = o.gs_kt * 0.514444, tas = Math.max(o.ias_kt, 40) * 0.514444;
     const rate = (9.80665 * Math.tan(o.bank_deg * D2R) / tas) / D2R;     // turn rate now, deg/s
+    const every = rangeNm <= 1.5 ? 10 : 30;
     let e = 0, n = 0, trk = o.track_deg;
     const pts = [[cx, cy]], marks = [];
     for (let t = 1; t <= 60; t++) {
       trk += rate; e += v * Math.sin(trk * D2R); n += v * Math.cos(trk * D2R);
-      pts.push(fromEN(e, n));
-      if (t === 30 || t === 60) marks.push([t, ...fromEN(e, n)]);
+      const [x, y] = fromEN(e, n);
+      pts.push([x, y]);
+      if (t % every === 0) marks.push([t, x, y]);
+      if (Math.hypot(x - cx, y - cy) > R * 1.25) break;
     }
-    ctx.strokeStyle = css("var(--own)"); ctx.lineWidth = 2.2 * k; ctx.globalAlpha = 0.9;
-    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.fillStyle = css("var(--own)");
-    for (const [t, x, y] of marks) { ctx.beginPath(); ctx.arc(x, y, 3.5 * k, 0, Math.PI * 2); ctx.fill(); label(ctx, x + 6 * k, y + 4 * k, `${t}s`, 10 * k, "left", css("var(--own)")); }
+    const path = () => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); };
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.lineWidth = 6 * k; path();           // dark outline for contrast on the map
+    ctx.strokeStyle = css("var(--own)"); ctx.lineWidth = 3 * k; path();
+    ctx.fillStyle = css("var(--own)");
+    for (const [t, x, y] of marks) {
+      ctx.beginPath(); ctx.arc(x, y, 4 * k, 0, Math.PI * 2); ctx.fill();
+      label(ctx, x + 7 * k, y + 4 * k, `${t}s`, 11 * k, "left", css("var(--own)"));
+    }
   }
 
   // traffic (node-reported only)
@@ -569,7 +588,9 @@ function drawNavMap(cv, s) {
   ctx.restore();
   ctx.restore();
 
-  // header: orientation, north pointer, range, track / GS
+  // header: orientation, north pointer, range, track / GS (dark backing so it reads over the street map)
+  ctx.fillStyle = "rgba(5, 8, 12, 0.72)";
+  ctx.fillRect(0, 0, 210 * k, 44 * k); ctx.fillRect(W - 44 * k, 0, 44 * k, 48 * k); ctx.fillRect(W - 220 * k, H - 40 * k, 220 * k, 40 * k);
   const hdr = `${m.northUp ? "NORTH UP" : `HDG ${String(Math.round(o.hdg_deg) % 360).padStart(3, "0")} UP`} · ${rangeNm} NM`;
   label(ctx, 10 * k, 20 * k, hdr, 12 * k, "left", css("var(--text-2)"));
   label(ctx, 10 * k, 36 * k, `TRK ${String(Math.round(o.track_deg) % 360).padStart(3, "0")} · GS ${Math.round(o.gs_kt)} kt`, 12 * k, "left", css("var(--own)"));
@@ -578,6 +599,7 @@ function drawNavMap(cv, s) {
   ctx.beginPath(); ctx.moveTo(nx - 9 * k * Math.sin(na), ny + 9 * k * Math.cos(na)); ctx.lineTo(nx + 9 * k * Math.sin(na), ny - 9 * k * Math.cos(na)); ctx.stroke();
   label(ctx, nx + 13 * k * Math.sin(na), ny - 13 * k * Math.cos(na) + 4 * k, "N", 11 * k, "center", css("var(--text)"));
   label(ctx, W - 10 * k, H - 12 * k, "click / Z: range · N: north-up", 10 * k, "right", css("var(--text-2)"));
+  if (s.mapLayer) label(ctx, W - 10 * k, H - 26 * k, MAP_ATTRIBUTION, 9 * k, "right", css("var(--text-2)"));
   if (unplaced) label(ctx, 10 * k, H - 12 * k, `${unplaced} target(s) without position`, 11 * k, "left", css("var(--text-2)"));
 }
 
