@@ -9,14 +9,14 @@ const D2R = Math.PI / 180;
 const TRAIL_S = 60, ADV_TTL_MS = 12000, PRED_TTL_MS = 4000;
 const LAYER_R_M = { 1: 900, 2: 650, 3: 450, 4: 300 };   // ring radius by layer (visual only)
 
-export function climbFpm(da) {   // same table as world/flight_model.py
-  const pts = [[0, 730], [5000, 500], [8000, 300]];
-  if (da <= 0) return 730;
+export function climbFpm(da) {   // same table as data/metar.py climb_fpm
+  const pts = [[0, 730], [5000, 500], [8000, 300], [12000, 100]];
+  da = Math.max(0, da);
   for (let i = 1; i < pts.length; i++) if (da <= pts[i][0]) {
     const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
     return y0 + (y1 - y0) * (da - x0) / (x1 - x0);
   }
-  return Math.max(0, 300 + (300 - 500) / 3000 * (da - 8000));
+  return 100;
 }
 
 export function startGod() {
@@ -185,18 +185,18 @@ function draw(cv, s) {
       if (v.scale > 0.04) text(ctx, (x0 + x1) / 2, (y0 + y1) / 2 - 6 * k, `${p.runway} ${name.toLowerCase()}`, 10 * k, "center", css("var(--pattern)"));
     }
   }
-  // runways
-  for (const rw of s.stat.airport.runways) {
-    const ends = Object.entries(rw.ends);
-    const [x0, y0] = LL(ends[0][1].lat, ends[0][1].lon), [x1, y1] = LL(ends[1][1].lat, ends[1][1].lon);
-    ctx.strokeStyle = css("var(--runway)"); ctx.lineCap = "butt";
-    ctx.lineWidth = Math.max(4 * k, rw.width_ft * 0.3048 * v.scale);
+  // runways (data/runways.py: ends{id: lat, lon, far_lat, far_lon, width_ft})
+  const ends = Object.entries(s.stat.airport.ends || {});
+  ctx.strokeStyle = css("var(--runway)"); ctx.lineCap = "butt";
+  for (const [, e] of ends) {
+    const [x0, y0] = LL(e.lat, e.lon), [x1, y1] = LL(e.far_lat, e.far_lon);
+    ctx.lineWidth = Math.max(4 * k, (e.width_ft || 75) * 0.3048 * v.scale);
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-    // label each end with the runway you land on from there
-    for (const [id, e] of ends) {
-      const [x, y] = LL(e.lat, e.lon);
-      text(ctx, x + (x - (x0 + x1) / 2) * 0.08, y + (y - (y0 + y1) / 2) * 0.08 + 4 * k, id, 12 * k, "center", css("var(--text)"));
-    }
+  }
+  for (const [id, e] of ends) {               // label each end, pushed off the runway end
+    const [x0, y0] = LL(e.lat, e.lon), [x1, y1] = LL(e.far_lat, e.far_lon);
+    const d = Math.hypot(x1 - x0, y1 - y0) || 1, off = 14 * k;
+    text(ctx, x0 - (x1 - x0) / d * off, y0 - (y1 - y0) / d * off + 4 * k, id, 12 * k, "center", css("var(--text)"));
   }
 
   // predictions
@@ -236,13 +236,17 @@ function draw(cv, s) {
     }
   }
 
-  // crystals (Phase 3 hook): {"type":"CRYSTAL","ac_id","points":[{lat,lon}|[lat,lon]...]}
+  // Escape Crystal (Phase 3, schemas.Crystal): reachable end-points, green = safe, red = blocked
   for (const [id, { m, at }] of s.crystal) {
-    if (now - at > 3000 || !m.points || m.points.length < 3) continue;
-    ctx.fillStyle = css("var(--lvl-seq)"); ctx.globalAlpha = 0.15;
-    ctx.beginPath();
-    m.points.forEach((p, i) => { const [x, y] = Array.isArray(p) ? LL(p[0], p[1]) : LL(p.lat, p.lon); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    if (now - at > 3000 || !m.points) continue;
+    for (const p of m.points) {
+      const [x, y] = LL(p.lat, p.lon);
+      ctx.fillStyle = css(p.safe ? "var(--trust-ok)" : "var(--trust-fake)"); ctx.globalAlpha = 0.7;
+      ctx.beginPath(); ctx.arc(x, y, 3 * k, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    const a = s.ac.get(id);
+    if (a && m.mfi != null) { const [x, y] = LL(a.lat, a.lon); text(ctx, x + 13 * k, y + 24 * k, `MFI ${m.mfi.toFixed(2)}`, 11 * k, "left", css("var(--trust-ok)")); }
   }
 
   // aircraft

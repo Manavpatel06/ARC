@@ -12,7 +12,7 @@ const D2R = Math.PI / 180;
 export function startCockpit(role) {
   document.body.classList.add("is-cockpit");
   $("cockpit").hidden = false;
-  const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: 0, link: "connecting" };
+  const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: -Infinity, link: "connecting" };
 
   const link = connect(role, (m) => {
     switch (m.type) {
@@ -207,8 +207,8 @@ function label(ctx, x, y, text, size, align = "left", color) {
 }
 
 // ---------- traffic display (heading-up, node-reported targets only) ----------
-// A TRUST target is placed only if the node gives a position: t.rel = {brg_deg, rng_m, dalt_ft}
-// (proposed contract addition) or t.lat/t.lon(/t.alt_ft). Otherwise it stays in the list.
+// A TRUST target is placed at t.rel = {brg_deg (TRUE), rng_m, dalt_ft, trk_deg?, vs_fpm?} (INTERFACE v1.1),
+// computed by the node from the peer's STATE. Targets without rel stay in the badge list only.
 function drawTraffic(cv, o, trust, adv) {
   const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = Math.min(W, H) / 480;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -246,10 +246,13 @@ function drawTraffic(cv, o, trust, adv) {
     ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath();
     if (t.state === "TRUSTED" || hot) ctx.fill(); else ctx.stroke();
     if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s); ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s); ctx.stroke(); }
-    if (rel.dalt_ft != null) {
-      const d = Math.round(rel.dalt_ft / 100);
-      label(ctx, x + s + 3 * k, y + 4 * k, `${t.id} ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}`, 11 * k, "left", col);
-    } else label(ctx, x + s + 3 * k, y + 4 * k, t.id, 11 * k, "left", col);
+    if (rel.trk_deg != null) {                      // trend line: where the target is heading
+      const ta = (rel.trk_deg - (o ? o.hdg_deg : 0)) * D2R;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 22 * k * Math.sin(ta), y - 22 * k * Math.cos(ta)); ctx.stroke();
+    }
+    const d = Math.round((rel.dalt_ft || 0) / 100);
+    const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
+    label(ctx, x + s + 3 * k, y + 4 * k, `${t.id} ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
   }
   if (unplaced) label(ctx, 10 * k, H - 12 * k, `${unplaced} target(s) without position from node`, 11 * k, "left", css("var(--text-2)"));
 }

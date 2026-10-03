@@ -84,11 +84,11 @@ class Hub:
             await ws.close(code=4000, reason=ac_id[:120])
             print(f"[world] rejected role={raw}: {ac_id}")
             return
-        hello = {"type": "HELLO", "role": role, "ac_id": ac_id, "t": round(self.now(), 3),
-                 "fleet": list(self.w.fleet) if role in ("god", "log", "channel") else None}
+        hello = {"type": "HELLO", "role": role, "ac_id": ac_id, "scenario": self.w.scenario.name,
+                 "aircraft": self.w.roster(), "t": round(self.now(), 3)}
         if role in ("god", "log") or role.startswith("cockpit:"):
             hello["static"] = self.w.static()
-        if role == "log":   # log consumers expect only LOG frames
+        if role == "log":   # log consumers expect only LOG frames (stubs/tail_log formats `kind`)
             hello = {"type": "LOG", "src": "world", "kind": "world", "t": hello["t"], "payload": hello}
         await ws.send(dumps(hello))
         if role.startswith("cockpit:"):
