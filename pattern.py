@@ -44,11 +44,11 @@ from data.runways import load as _load_runways
 KT = 0.514444
 FT = 0.3048
 
-# ---- tunables (meters) --------------------------------------------------------------
-DOWNWIND_OFFSET_M = 1400.0     # ~0.75 NM abeam the runway
-UPWIND_M = 900.0               # climb-out past the departure end before crosswind
-BASE_TURN_U = -2200.0          # downwind extends this far past the threshold before base
-STRAIGHT_IN_U = -5800.0        # straight-in joins at TPA ~3.1 NM out on a 3° path
+# ---- tunables (meters) — KEEP IN SYNC with world/traffic.py (the world is authoritative) ---
+DOWNWIND_OFFSET_M = 1500.0     # world/traffic.py DOWNWIND_OFFSET_M (~0.8 NM abeam)
+UPWIND_M = 900.0               # world/traffic.py UPWIND_EXT_M
+BASE_TURN_U = -2400.0          # world/traffic.py FINAL_EXT_M (final ~1.3 NM)
+STRAIGHT_IN_U = -7000.0        # world/traffic.py STRAIGHT_IN_M (~3.8 NM out)
 BASE_START_AGL_FT = 1000.0
 FINAL_START_AGL_FT = 600.0
 
