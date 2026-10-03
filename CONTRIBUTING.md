@@ -15,6 +15,9 @@ Rules:
 4. Only touch files outside your folder when the owner knows. Shared files: `requirements.txt` (add, never remove), `harness/scenarios/*.json` (add new scenarios freely).
 5. `main` must always run: `python world/world_server.py --scenario harness/scenarios/judges.json` should start without a traceback. If you break main, fix it before anything else.
 
+## Status lives in `BOARD.md`
+Mark your row `[~]` when you start, `[x]` when the acceptance test passes, `[!]` + one line if blocked — in the same commit as the code. Then pick the next row; if your list is empty, take from the Pull Queue at the bottom of BOARD.md. Don't wait on another lane: every dependency has a stand-in in `stubs/` (see the table at the top of BOARD.md and the dependency map in PLAN.md).
+
 ## Daily loop
 ```
 git checkout lane-x-name

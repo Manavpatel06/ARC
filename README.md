@@ -5,6 +5,7 @@ Peer-to-peer collision avoidance for general aviation. Devils Invent "Future-Rea
 GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
 
 ## Read in this order
+0. `BOARD.md` — your task rows with times and status; the stub table so nobody waits on anybody.
 1. `CONTEXT.md` — what we are building, hard rules, phases, lanes, fixed facts. Paste into every AI session.
 2. `INTERFACE.md` + `schemas.py` — the contract between world, nodes, radio, data and views. Frozen; change by agreement only.
 3. `PLAN.md` — hour-by-hour plan, status-report acceptance, go/no-go rules.
@@ -27,6 +28,14 @@ All laptops on the same phone hotspot. Note the world server laptop's IP; every 
 3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per FLOCK aircraft; `run_demo.sh` spawns all)
 4. `python data/camera.py --world ws://<ip>:8765 --observer N311`
 5. Open `web/index.html?role=cockpitA` / `cockpitB` / `god` / `log` on the four laptops.
+
+## Start working in the next 5 minutes (no other lane needed)
+```
+python stubs/fake_world.py                 # terminal 1: stand-in world (OWNSHIP, COMMAND, LOG)
+python stubs/fake_node.py --id N101 --speed 4   # terminal 2: stand-in node (ADVISORY ladder, TRUST, COMMAND)
+python stubs/tail_log.py                   # terminal 3: see every frame; writes harness/out/*.jsonl
+```
+Lane B imports `from stubs.loopback_radio import RadioClient` until `radio/client.py` lands (same API).
 
 ## Phase 1 status checks
 - 1:00 PM: skeleton alive (see PLAN.md row).

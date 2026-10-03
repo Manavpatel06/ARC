@@ -2,6 +2,9 @@
 
 Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane C.
 
+## Start against stubs (no waiting)
+Start now, without Lane A or B: `python stubs/fake_world.py` gives your channel TRUTH frames on role `channel`; `stubs/loopback_radio.py` is the exact `RadioClient` API you must keep (`send`, `on_message`, `start`, `stop`, constructor args) so Lane B swaps by changing one import. Your task rows with times: `BOARD.md` → Lane C.
+
 ## Goal
 Build the emulated peer-to-peer radio and everything that makes it trustworthy: schema-validated signed messages, a channel that drops and delays like a real 3-mile link, self-organizing time slots so 30 aircraft do not collide on the air, a spoofer, and the evidence that lets nodes tell real aircraft from fake ones (from the Onboard RF Consistency Monitor idea).
 

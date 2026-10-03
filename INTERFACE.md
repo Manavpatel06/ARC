@@ -52,6 +52,18 @@ Bodies:
 - `SIGHTING` (camera-only target shared to peers): `{"observer":"N311","az_deg":42,"el_deg":1.5,"size_px":18,"growth_px_s":2.1,"ttc_s":31,"conf":0.7}`
 - `HEARTBEAT` (2 s): `{"alive":true}`
 
+
+### Python API for the radio client (Lane C ships it; Lane B codes against it from minute one)
+`stubs/loopback_radio.py` is the reference implementation of this API; `radio/client.py` must keep the same names and types.
+```python
+radio = RadioClient(ac_id="N101", via_channel=None)   # via_channel="ws://<ip>:8765" when multicast is blocked
+await radio.start()
+radio.on_message(lambda env: ...)                      # env = validated envelope dict (schemas.RadioMsg); own messages never echoed
+env = await radio.send("STATE", body_dict)             # wraps envelope, assigns seq/t, signs (stub: sig="")
+radio.stats                                            # {"tx","rx","rejected"}
+await radio.stop()
+```
+
 ### Channel emulator rules (Lane C)
 The channel knows true positions (from the world, role `channel`) and decides what arrives: drop if range > 4,828 m; drop with probability `loss` (default 0.10); delay by `latency` (default 0.3 s ± 0.1); when more than N senders share a slot, drop colliding packets (AIS-style slot map reduces this). Nodes never read the channel's truth.
 

@@ -2,6 +2,9 @@
 
 Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane D.
 
+## Start against stubs (no waiting)
+Start now, without Lane A or B: `python stubs/fake_world.py` + `python stubs/fake_node.py --id N101 --speed 4` feed the log page a full advisory ladder every 17 s. Your task rows with times: `BOARD.md` → Lane D.
+
 ## Goal
 Make the pieces one system and give it a world to live in: live weather, terrain and obstacles, the comms log and explain panel the judges read, the webcam intruder, and in Phase 3 the Escape Crystal / MFI and Collective Parallax. Own the demo run and the pitch.
 

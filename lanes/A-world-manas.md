@@ -2,6 +2,9 @@
 
 Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane A.
 
+## Start against stubs (no waiting)
+Start now, without Lane B or D: run `python stubs/fake_node.py --id N101 --speed 4` against your world to get real ADVISORY/TRUST/COMMAND/PREDICTION frames for the views, and `python stubs/tail_log.py` to see what you mirror. `stubs/fake_world.py` is a minimal reference of the hub protocol — copy it as your starting point. Your task rows with times: `BOARD.md` → Lane A.
+
 ## Goal
 Build the authoritative simulation world and the three browser views so two judges can fly two aircraft with PlayStation controllers inside a traffic pattern at Deer Valley (KDVT) with 6 AI aircraft, while FLOCK nodes (Lane B) connect over WebSocket and receive only their own aircraft's state.
 

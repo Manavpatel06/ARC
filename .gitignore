@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 data/cache/*
 !data/cache/.gitkeep
+!data/cache/*.sample.json
 harness/out/*
 !harness/out/.gitkeep
 !harness/out/flock_vs_baseline.png

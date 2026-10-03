@@ -11,7 +11,8 @@ FLOCK is a peer-to-peer collision-avoidance node for general aviation (GA), buil
 3. **The takeover is bounded and printed.** Max bank 30°, speed floor 1.3 × Vs, no automatic action below 300 ft AGL on final, no automatic descent below pattern altitude − 300 ft, max 10 s authority, release on any stick input, and if no maneuver fits → warn-only and say so. These bounds are enforced by a small separate monitor, not by the smart logic.
 4. **Honest words.** Say "RAs inhibited below 1,000 ft AGL (TAs continue)", not "TCAS goes silent". Don't claim nanosecond latency. Don't say "would have prevented" a real crash; say "produces a timely intervention under the published geometry".
 5. **Scope discipline.** Must-haves first (Phase 1), then Phase 2, then one Phase 3 add-on at a time. Anything not green at the 7 PM status report is cut, not improvised. Record a backup video Saturday night.
-6. **Everything speaks the same schema.** `schemas.py` is the contract. Change it only by agreement in the team chat.
+6. **Nobody waits.** Every cross-lane dependency has a stand-in in `stubs/` that speaks the contract. Build against the stub; swap when the real module is marked `[x]` in `BOARD.md`.
+7. **Everything speaks the same schema.** `schemas.py` is the contract. Change it only by agreement in the team chat.
 
 ## Phases
 - **Phase 1 — core avoidance ("ACAS core")**, target green by Sat 7 PM: world + controllers + AI pattern traffic, nodes with turn-aware prediction, four layers, Escape Field (performance + terrain), authority protocol with bounds, comms log + explain panel, Monte Carlo chart.
@@ -35,6 +36,8 @@ flock/
   data/       # Lane D: metar.py, terrain.py, obstacles.py, opensky.py, camera.py
   harness/    # Lane B: montecarlo.py (extends tcas_ga_sim.py), scenarios/
   lanes/      # one brief per lane for AI agents
+  stubs/      # stand-ins for every lane (fake_world, fake_node, loopback_radio, tail_log) so no lane waits
+  BOARD.md    # live task board: rows per lane with times + status; Pull Queue for idle hands
 ```
 
 ## Fixed facts to use (verify against the airport diagram before the pitch)

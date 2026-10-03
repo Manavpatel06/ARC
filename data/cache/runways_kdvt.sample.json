@@ -1,0 +1,7 @@
+{"airport":"KDVT","name":"Phoenix Deer Valley","elev_ft":1478,"lat":33.6883,"lon":-112.0826,"tpa_agl_ft":1000,
+ "runways":[
+  {"id":"07R/25L","length_ft":8208,"width_ft":100,"heading_true_deg":{"07R":72,"25L":252},"pattern":{"25L":"left","07R":"right"},
+   "ends":{"07R":{"lat":33.6873,"lon":-112.0957},"25L":{"lat":33.6948,"lon":-112.0702}}},
+  {"id":"07L/25R","length_ft":4500,"width_ft":75,"heading_true_deg":{"07L":72,"25R":252},"pattern":{"25R":"right","07L":"left"},
+   "ends":{"07L":{"lat":33.6894,"lon":-112.0881},"25R":{"lat":33.6935,"lon":-112.0742}}}],
+ "note":"SAMPLE for development — approximate coordinates. data/runways.py overwrites runways_kdvt.json from OurAirports runways.csv. Verify before the pitch (Pull Queue item)."}

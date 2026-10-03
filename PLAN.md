@@ -12,6 +12,29 @@ Definition of green: two judges' aircraft (controllers) + 6 AI aircraft fly the 
 | 4:00 PM | Loop closes | AI pattern traffic flies legs correctly; bank-to-turn + climb limits from density altitude; COMMAND applied only if ap_equipped and no stick | Turn-aware prediction (predict the next leg's turn); four layers with timings; negotiation (lower ID commits first, complementary sense); Escape Field scoring candidates against traffic + performance | Signed envelopes + seq/time window; HEARTBEAT and lost-link detection → fallback flag | Terrain + obstacle grids loaded into node constraints; explain panel renders ADVISORY.reason and COMMAND.reason; voice via speechSynthesis in cockpit page |
 | 7:00 PM status | Phase 1 green | Cesium terrain or three.js fallback; three views stable on 3 laptops over the hotspot | Authority protocol + bounds monitor; NO_SOLUTION path; harness: FLOCK vs straight-line chart | Spoof injector exists (unsigned GHOST7); congestion knob | End-to-end run recorded on video; status-report demo driven by Manav |
 
+
+## Dependency map — what each lane needs from whom, and what stands in until then
+Nobody blocks on anybody. Each arrow has a stub in `stubs/` that speaks the frozen contract; build against the stub, swap when the real module is announced "REAL on main" in team chat and marked `[x]` in `BOARD.md`.
+
+| Consumer | Needs | From | Stand-in until then | Real thing expected |
+|---|---|---|---|---|
+| B node | OWNSHIP in, COMMAND applied, STICK | A world | `stubs/fake_world.py` | A1/A7 by 4 PM |
+| B node | `RadioClient.send/on_message` | C radio | `stubs/loopback_radio.py` (same API) | C1 by 12:30 |
+| B node | `elev_at`, METAR DA, runway geometry | D data | `data/terrain.py` flat sample + `data/cache/*.sample.json` | D1 12:30, D4 3 PM |
+| B node | trust evidence score | C evidence | hard-code TRUSTED for all peers until Phase 2 | C8 by 9 PM |
+| A views | ADVISORY / TRUST / COMMAND / PREDICTION frames | B node | `stubs/fake_node.py --speed 4` | B3 1 PM, B6 4 PM |
+| A world | nothing — A is the root; A tests with `fake_node` and `tail_log` | — | — | — |
+| C channel | TRUTH positions (role `channel`) | A world | `stubs/fake_world.py` sends TRUTH | A1 by 12:30 |
+| C evidence | SIGHTING bodies for camera corroboration | D camera | fabricate one SIGHTING in a unit test | D6 by 4:30 |
+| D log page | LOG frames | A world + any sender | `stubs/fake_world.py` + `stubs/fake_node.py` | A1 by 12:30 |
+| D run_demo | all processes with CLI flags `--world`, `--id`, `--scenario` | A, B, C | start stubs in the same order | 6 PM |
+| Everyone | `schemas.py` | repo | already there | frozen |
+
+CLI convention (so `run_demo.sh` can start anything): every process accepts `--world ws://<ip>:8765`; nodes accept `--id`; world accepts `--scenario`; channel accepts `--loss --latency`.
+
+## If a lane runs dry
+Finish your lane list → take the next *Phase 2* row in your lane → take a **Pull Queue** item in `BOARD.md` → pair with the lane that is furthest behind its next ✔ status row. Say what you took in team chat; write your name in the table.
+
 ## Phase 2 — Radio trust ("radio spoofing & channel"). Sat 7:00 PM → ~11:00 PM
 - Trust engine: kinematic plausibility (speed ≤ 200 kt, accel ≤ 0.5 g, turn rate ≤ 10°/s), Doppler/RSSI consistency (emulated from channel truth with noise), peer corroboration count (≥2 peers hearing it from different bearings), camera corroboration → TRUSTED / SUSPICIOUS / FAKE. Suspicious = warnings only; Fake = shown, never acted on.
 - Spoof demo: GHOST7 appears on final; trust collapses; the judge's aircraft never maneuvers; log shows why. Sybil variant (3 fake IDs) shown as a known limit.

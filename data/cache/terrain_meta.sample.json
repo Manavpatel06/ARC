@@ -1,0 +1,2 @@
+{"grid":"FLAT_SAMPLE","elev_m_default":450.0,"lat0":33.50,"lon0":-112.30,"dlat":0.005,"dlon":0.005,"rows":80,"cols":80,
+ "note":"SAMPLE: flat terrain at field elevation. node code should call data.terrain.elev_at(lat,lon); the sample loader returns elev_m_default. data/terrain.py replaces this with terrain_kdvt.npy + terrain_meta.json."}

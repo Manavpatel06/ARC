@@ -2,6 +2,9 @@
 
 Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane B.
 
+## Start against stubs (no waiting)
+Start now, without Lane A, C or D: run `python stubs/fake_world.py` for OWNSHIP/COMMAND/STICK, import `from stubs.loopback_radio import RadioClient` (identical API to the coming `radio/client.py`), use `data/terrain.elev_at` (flat sample) and `data/cache/*.sample.json`. Hard-code every peer TRUSTED until Phase 2. Your task rows with times: `BOARD.md` → Lane B.
+
 ## Goal
 Build the node: one Python process per aircraft that reads only OWNSHIP, hears peers over the radio, predicts turns, detects conflicts, responds in four layers, picks maneuvers with the Escape Field, takes and releases control within printed bounds, and explains everything. Then prove it with a Monte Carlo chart against a straight-line baseline.
 
