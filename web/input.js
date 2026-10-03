@@ -6,7 +6,8 @@
 // Gamepad: left stick X = roll, left stick Y = pitch (pull back = climb; ?invert=1 flips),
 //          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle,
 //          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event),
-//          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap").
+//          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap"),
+//          D-pad up / down = map range out / in, D-pad left / right = map north-up toggle.
 // Buttons act on the press, not while held; a button already held when the page starts is ignored.
 // Reset own aircraft: hold L2 + R2 together (or keyboard R, or the on-screen RESET button) for 5 s;
 // fires "flock:reset" once, st.resetProgress (0..1) drives the countdown. Both triggers held = no throttle change.
@@ -27,7 +28,7 @@ export function startInput(send, onState = () => {}) {
                resetButton: false, resetProgress: 0 };
   let resetHeld = 0, resetFired = false;
   let kRoll = 0, kPitch = 0;
-  const wasDown = { 0: true, 3: true };            // ignore the press that dismissed the start screen
+  const wasDown = { 0: true, 3: true, 12: true, 13: true, 14: true, 15: true };   // ignore presses held at start
 
   addEventListener("keydown", (e) => {
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS", "KeyR"].includes(e.code)) {
@@ -59,7 +60,8 @@ export function startInput(send, onState = () => {}) {
       if (dThr) st.throttle = clamp(st.throttle + dThr * dt, 0, 1);
       active = roll !== 0 || pitch !== 0 || dThr !== 0;
       if (active) st.source = "gamepad";
-      for (const [btn, evt] of [[3, "flock:chase"], [0, "flock:ap"]]) {   // Triangle / Y, Cross / A
+      for (const [btn, evt] of [[3, "flock:chase"], [0, "flock:ap"], [12, "flock:map-out"], [13, "flock:map-in"],
+                                [14, "flock:map-orient"], [15, "flock:map-orient"]]) {   // Triangle/Y, Cross/A, D-pad
         const down = !!(pad.buttons[btn] && pad.buttons[btn].pressed);
         if (down && !wasDown[btn]) dispatchEvent(new Event(evt));
         wasDown[btn] = down;

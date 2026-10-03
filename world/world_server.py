@@ -259,6 +259,8 @@ class Hub:
         d["baro_set_inhg"] = round(ac.baro_set_inhg, 2)
         d["turb"] = round(ac.turb_now, 2)
         d["taws"] = getattr(ac, "taws_alert", None)
+        if ac.mode == "AUTOPILOT" and ac.autopilot is not None:      # own AP's leg, for the moving map
+            d["ap_leg"], d["ap_rwy"] = ac.autopilot.leg, ac.autopilot.p.ident
         d["ap"] = ac.ap_engaged
         d["ap_phase"] = ac.ap_phase
         d["on_ground"] = ac.on_ground

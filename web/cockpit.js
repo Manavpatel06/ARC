@@ -15,7 +15,7 @@ export function startCockpit(role) {
   document.body.classList.add("is-cockpit");
   $("cockpit").hidden = false;
   const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: -Infinity, link: "connecting",
-              fieldElevFt: 1478, interp: new Interp(), v3: null };
+              fieldElevFt: 1478, interp: new Interp(), v3: null, static: null, map: mapState() };
 
   const link = connect(role, (m) => {
     switch (m.type) {
@@ -25,6 +25,7 @@ export function startCockpit(role) {
         document.title = `FLOCK cockpit ${m.ac_id}`;
         if (m.static && m.static.airport) s.fieldElevFt = m.static.airport.elev_ft;
         if (m.static && m.static.wx) s.wx = m.static.wx;
+        if (m.static) s.static = m.static;
         break;
       case "OWNSHIP": s.own = m; s.interp.push(m); break;
       case "WX": s.wx = m; break;
@@ -84,6 +85,19 @@ export function startCockpit(role) {
   rb.addEventListener("pointerdown", hold(true));
   for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) rb.addEventListener(ev, hold(false));
 
+  // moving map: click / Z / D-pad up-down = range, N / D-pad left-right = north-up / heading-up
+  const cycleRange = (d) => { s.map.range = (s.map.range + d + MAP_RANGES_NM.length) % MAP_RANGES_NM.length; saveMap(s.map); };
+  const flipOrient = () => { s.map.northUp = !s.map.northUp; saveMap(s.map); };
+  $("ck-traffic").addEventListener("click", () => cycleRange(1));
+  addEventListener("keydown", (e) => {
+    if (e.repeat) return;
+    if (e.code === "KeyZ") cycleRange(1);
+    if (e.code === "KeyN") flipOrient();
+  });
+  addEventListener("flock:map-out", () => { if (s.map.range < MAP_RANGES_NM.length - 1) { s.map.range++; saveMap(s.map); } });
+  addEventListener("flock:map-in", () => { if (s.map.range > 0) { s.map.range--; saveMap(s.map); } });
+  addEventListener("flock:map-orient", flipOrient);
+
   // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
   const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
   $("ck-ap").addEventListener("click", toggleAP);
@@ -107,7 +121,7 @@ export function startCockpit(role) {
     renderReset(inp);
     const chase = !!(s.v3 && s.v3.chase);
     drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase, s.wx);
-    drawTraffic(tfc, s.own, s.trust, s.adv);
+    drawNavMap(tfc, s);
     renderBanner(s);
     renderBounds(s);
     renderTrust(s);
@@ -428,55 +442,143 @@ function label(ctx, x, y, text, size, align = "left", color) {
   ctx.fillText(text, x, y);
 }
 
-// ---------- traffic display (heading-up, node-reported targets only) ----------
-// A TRUST target is placed at t.rel = {brg_deg (TRUE), rng_m, dalt_ft, trk_deg?, vs_fpm?} (INTERFACE v1.1),
-// computed by the node from the peer's STATE. Targets without rel stay in the badge list only.
-function drawTraffic(cv, o, trust, adv) {
-  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = Math.min(W, H) / 480;
+// ---------- moving map + traffic (right panel) ----------
+// Own aircraft in the middle, charts (runways, pattern legs from HELLO static), where the aircraft is
+// headed (60 s path that curves with the current bank), the leg the autopilot is flying, and traffic.
+// Traffic comes ONLY from this aircraft's node (TRUST rel), never from world truth.
+const MAP_RANGES_NM = [1.5, 3, 6, 12];
+
+function mapState() {
+  let st = { range: 1, northUp: false };
+  try { st = { ...st, ...JSON.parse(localStorage.getItem("flock.cockpit.map") || "{}") }; } catch { /* private mode */ }
+  st.range = Math.max(0, Math.min(MAP_RANGES_NM.length - 1, st.range | 0));
+  return st;
+}
+function saveMap(m) { try { localStorage.setItem("flock.cockpit.map", JSON.stringify(m)); } catch { /* ignore */ } }
+
+function drawNavMap(cv, s) {
+  const o = s.own, m = s.map, ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = Math.min(W, H) / 480;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#05080c"; ctx.fillRect(0, 0, W, H);
-  const cx = W / 2, cy = H * 0.62, R = Math.min(W * 0.46, H * 0.56), rangeNm = 3;
+  if (!o) { label(ctx, W / 2, H / 2, "waiting for OWNSHIP…", 14 * k, "center", css("var(--text-2)")); return; }
+  const rangeNm = MAP_RANGES_NM[m.range];
+  const cx = W / 2, cy = m.northUp ? H / 2 : H * 0.64;
+  const R = Math.min(W * 0.46, m.northUp ? H * 0.46 : H * 0.58);
   const pxPerM = R / (rangeNm * NM);
+  const up = m.northUp ? 0 : o.hdg_deg;
+  const kx = 111320 * Math.cos(o.lat * D2R);
+  const fromEN = (e, n) => {                                  // metres east/north of own -> screen
+    const r = Math.hypot(e, n) * pxPerM, a = Math.atan2(e, n) - up * D2R;
+    return [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  };
+  const fromLL = (lat, lon) => fromEN((lon - o.lon) * kx, (lat - o.lat) * 111320);
 
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+
+  // range rings
   ctx.strokeStyle = css("var(--grid)"); ctx.lineWidth = 1.2 * k; ctx.setLineDash([4 * k, 6 * k]);
-  for (let r = 1; r <= rangeNm; r++) { ctx.beginPath(); ctx.arc(cx, cy, r * NM * pxPerM, 0, Math.PI * 2); ctx.stroke(); }
+  for (const f of [0.5, 1]) { ctx.beginPath(); ctx.arc(cx, cy, R * f, 0, Math.PI * 2); ctx.stroke(); }
   ctx.setLineDash([]);
-  label(ctx, cx + 4 * k, cy - R + 14 * k, `${rangeNm} NM · radio range`, 11 * k, "left", css("var(--text-2)"));
-  label(ctx, 10 * k, 20 * k, o ? `HDG ${String(Math.round(o.hdg_deg) % 360).padStart(3, "0")} UP` : "", 12 * k, "left", css("var(--text-2)"));
+  label(ctx, cx + R * 0.71 + 4 * k, cy - R * 0.71, `${rangeNm} NM`, 11 * k, "left", css("var(--text-2)"));
+  label(ctx, cx + R * 0.35 + 4 * k, cy - R * 0.35, `${rangeNm / 2}`, 10 * k, "left", css("var(--text-2)"));
+  if (rangeNm > 3) {                                          // radio range of the FLOCK link
+    ctx.strokeStyle = css("var(--grid-strong)"); ctx.setLineDash([2 * k, 6 * k]);
+    ctx.beginPath(); ctx.arc(cx, cy, 3 * NM * pxPerM, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  }
 
-  // own ship
-  ctx.fillStyle = css("var(--own)");
-  ctx.beginPath(); ctx.moveTo(cx, cy - 12 * k); ctx.lineTo(cx - 8 * k, cy + 9 * k); ctx.lineTo(cx, cy + 4 * k); ctx.lineTo(cx + 8 * k, cy + 9 * k); ctx.fill();
+  // charts: pattern legs (the leg the autopilot is flying highlighted), runways
+  const st = s.static || {};
+  for (const p of Object.values(st.patterns || {})) {
+    for (const [name, seg] of Object.entries(p.legs)) {
+      if (name === "STRAIGHT_IN") continue;
+      const active = o.ap_leg === name && o.ap_rwy === p.runway;
+      const [x0, y0] = fromLL(...seg[0]), [x1, y1] = fromLL(...seg[1]);
+      ctx.strokeStyle = active ? css("var(--lvl-release)") : css("var(--pattern)");
+      ctx.lineWidth = (active ? 3 : 1.4) * k; ctx.setLineDash(active ? [] : [7 * k, 6 * k]);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
+      if (active) label(ctx, (x0 + x1) / 2, (y0 + y1) / 2 - 6 * k, `AP ${p.runway} ${name.toLowerCase()}`, 11 * k, "center", css("var(--lvl-release)"));
+    }
+  }
+  const ends = Object.entries((st.airport && st.airport.ends) || {});
+  ctx.strokeStyle = css("var(--runway)"); ctx.lineCap = "butt";
+  for (const [, e] of ends) {
+    const [x0, y0] = fromLL(e.lat, e.lon), [x1, y1] = fromLL(e.far_lat, e.far_lon);
+    ctx.lineWidth = Math.max(4 * k, (e.width_ft || 75) * 0.3048 * pxPerM);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  if (rangeNm <= 3) for (const [id, e] of ends) {             // runway idents only when zoomed in (no clutter)
+    const [x0, y0] = fromLL(e.lat, e.lon), [x1, y1] = fromLL(e.far_lat, e.far_lon);
+    const d = Math.hypot(x1 - x0, y1 - y0) || 1;
+    label(ctx, x0 - (x1 - x0) / d * 13 * k, y0 - (y1 - y0) / d * 13 * k + 4 * k, id, 11 * k, "center", css("var(--text)"));
+  }
 
-  const targets = (trust && trust.targets) || [];
+  // where the aircraft is headed: 60 s ahead at the current ground speed, curving with the current bank
+  if (!o.on_ground && o.gs_kt > 20) {
+    const v = o.gs_kt * 0.514444, tas = Math.max(o.ias_kt, 40) * 0.514444;
+    const rate = (9.80665 * Math.tan(o.bank_deg * D2R) / tas) / D2R;     // turn rate now, deg/s
+    let e = 0, n = 0, trk = o.track_deg;
+    const pts = [[cx, cy]], marks = [];
+    for (let t = 1; t <= 60; t++) {
+      trk += rate; e += v * Math.sin(trk * D2R); n += v * Math.cos(trk * D2R);
+      pts.push(fromEN(e, n));
+      if (t === 30 || t === 60) marks.push([t, ...fromEN(e, n)]);
+    }
+    ctx.strokeStyle = css("var(--own)"); ctx.lineWidth = 2.2 * k; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = css("var(--own)");
+    for (const [t, x, y] of marks) { ctx.beginPath(); ctx.arc(x, y, 3.5 * k, 0, Math.PI * 2); ctx.fill(); label(ctx, x + 6 * k, y + 4 * k, `${t}s`, 10 * k, "left", css("var(--own)")); }
+  }
+
+  // traffic (node-reported only)
+  const targets = (s.trust && s.trust.targets) || [];
   let unplaced = 0;
   for (const t of targets) {
     const rel = relOf(t, o);
     if (!rel) { unplaced++; continue; }
-    const a = (rel.brg_deg - (o ? o.hdg_deg : 0)) * D2R;
-    const r = Math.min(rel.rng_m * pxPerM, R + 10 * k);
-    const x = cx + r * Math.sin(a), y = cy - r * Math.cos(a);
+    const te = rel.rng_m * Math.sin(rel.brg_deg * D2R), tn = rel.rng_m * Math.cos(rel.brg_deg * D2R);
+    let [x, y] = fromEN(te, tn);
+    const dx = x - cx, dy = y - cy, dr = Math.hypot(dx, dy);
+    if (dr > R + 10 * k) { x = cx + dx / dr * (R + 10 * k); y = cy + dy / dr * (R + 10 * k); }   // pin to the edge
     const col = css(TRUST_COLOR[t.state] || "#fff");
-    const hot = adv && adv.target_id === t.id && ["TRAFFIC", "RESOLVE", "TAKEOVER"].includes(adv.level);
+    const hot = s.adv && s.adv.target_id === t.id && ["TRAFFIC", "RESOLVE", "TAKEOVER"].includes(s.adv.level);
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2 * k;
-    if (t.state === "CAMERA_ONLY") {                 // bearing wedge, not a dot
+    if (t.state === "CAMERA_ONLY") {                         // bearing wedge, not a dot
+      const a = (rel.brg_deg - up) * D2R;
       ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, R, a - Math.PI / 2 - 0.08, a - Math.PI / 2 + 0.08); ctx.fill(); ctx.globalAlpha = 1;
       continue;
     }
-    const s = (hot ? 11 : 8) * k;
-    ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath();
+    const sz = (hot ? 11 : 8) * k;
+    ctx.beginPath(); ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y); ctx.lineTo(x, y + sz); ctx.lineTo(x - sz, y); ctx.closePath();
     if (t.state === "TRUSTED" || hot) ctx.fill(); else ctx.stroke();
-    if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s); ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s); ctx.stroke(); }
-    if (rel.trk_deg != null) {                      // trend line: where the target is heading
-      const ta = (rel.trk_deg - (o ? o.hdg_deg : 0)) * D2R;
+    if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz); ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz); ctx.stroke(); }
+    if (rel.trk_deg != null) {
+      const ta = (rel.trk_deg - up) * D2R;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 22 * k * Math.sin(ta), y - 22 * k * Math.cos(ta)); ctx.stroke();
     }
     const d = Math.round((rel.dalt_ft || 0) / 100);
     const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
-    label(ctx, x + s + 3 * k, y + 4 * k, `${t.id} ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
+    label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
   }
-  if (unplaced) label(ctx, 10 * k, H - 12 * k, `${unplaced} target(s) without position from node`, 11 * k, "left", css("var(--text-2)"));
+
+  // own aircraft
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate((o.hdg_deg - up) * D2R);
+  ctx.fillStyle = css("var(--own)");
+  ctx.beginPath(); ctx.moveTo(0, -12 * k); ctx.lineTo(-8 * k, 9 * k); ctx.lineTo(0, 4 * k); ctx.lineTo(8 * k, 9 * k); ctx.fill();
+  ctx.restore();
+  ctx.restore();
+
+  // header: orientation, north pointer, range, track / GS
+  const hdr = `${m.northUp ? "NORTH UP" : `HDG ${String(Math.round(o.hdg_deg) % 360).padStart(3, "0")} UP`} · ${rangeNm} NM`;
+  label(ctx, 10 * k, 20 * k, hdr, 12 * k, "left", css("var(--text-2)"));
+  label(ctx, 10 * k, 36 * k, `TRK ${String(Math.round(o.track_deg) % 360).padStart(3, "0")} · GS ${Math.round(o.gs_kt)} kt`, 12 * k, "left", css("var(--own)"));
+  const nx = W - 26 * k, ny = 28 * k, na = -up * D2R;
+  ctx.strokeStyle = css("var(--text-2)"); ctx.lineWidth = 2 * k;
+  ctx.beginPath(); ctx.moveTo(nx - 9 * k * Math.sin(na), ny + 9 * k * Math.cos(na)); ctx.lineTo(nx + 9 * k * Math.sin(na), ny - 9 * k * Math.cos(na)); ctx.stroke();
+  label(ctx, nx + 13 * k * Math.sin(na), ny - 13 * k * Math.cos(na) + 4 * k, "N", 11 * k, "center", css("var(--text)"));
+  label(ctx, W - 10 * k, H - 12 * k, "click / Z: range · N: north-up", 10 * k, "right", css("var(--text-2)"));
+  if (unplaced) label(ctx, 10 * k, H - 12 * k, `${unplaced} target(s) without position`, 11 * k, "left", css("var(--text-2)"));
 }
 
 function relOf(t, o) {
