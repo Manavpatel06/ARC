@@ -85,7 +85,7 @@ class Node:
         self.metar = metar or load_metar()
         self.da_ft = float(self.metar.get("density_altitude_ft", 4980))
         self.terrain_fn = terrain_fn or self._default_terrain()
-        self.obstacle_fn = obstacle_fn
+        self.obstacle_fn = obstacle_fn if obstacle_fn is not None else self._default_obstacles()
         self.verbose, self.record, self.latency_est = verbose, record, latency_est_s
 
         self.negotiator = Negotiator(ac_id)
@@ -116,9 +116,23 @@ class Node:
         self._no_solution_sent: dict[str, float] = {}
         self._takeover_target: Optional[str] = None
         self.first_conflict_seen: Optional[float] = None            # first time the predictor showed any conflict
+        self._near_ids: list[str] = []
         self._seq_extend: Optional[tuple[float, float, str]] = None  # (time advised, seconds, leg it applies to)
 
     # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _default_obstacles() -> Optional[Callable[[float, float], Optional[float]]]:
+        """data/obstacles.py (Lane D) when it exists: top_at(lat, lon) -> obstacle top in ft MSL, or None."""
+        try:
+            from data.obstacles import top_at
+        except Exception:
+            return None
+
+        def fn(x: float, y: float) -> Optional[float]:
+            v = top_at(*to_latlon(x, y))
+            return None if v is None else float(v) * FT
+        return fn
+
     @staticmethod
     def _default_terrain() -> Callable[[float, float], float]:
         try:
@@ -194,6 +208,11 @@ class Node:
         tr.intent_turn = (pi[0], now - self.latency_est + pi[1])
 
     # ------------------------------------------------------------------ world in
+    def on_env(self, msg: dict) -> None:
+        """ENV frame from the world (god's SET_DA, live weather): density altitude drives climb capability."""
+        if "da_field_ft" in msg:
+            self.da_ft = float(msg["da_field_ft"])
+
     def on_stick(self, msg: dict) -> list[dict]:
         self._world_out = []
         self.now = msg.get("t", self.now)
@@ -268,7 +287,11 @@ class Node:
             self._emit_world(self.trust.frame(self.id, now, ids, self._rels(now)))
         if now - self._last["pred"] >= PRED_PERIOD_S:
             self._last["pred"] = now
-            self._emit_world(self.own_pred.to_frame(self.id, to_latlon))
+            self._emit_world(self.own_pred.to_frame(self.id, to_latlon, now=now))
+            for pid in self._near_ids:                  # what this node believes about each peer: the god view draws the turn
+                tr = self.peers.get(pid)
+                if tr is not None and tr.pred is not None:
+                    self._emit_world(tr.pred.to_frame(self.id, to_latlon, target_id=pid, now=now))
 
     def _rels(self, now: float) -> dict:
         """v1.1 `rel` per peer, from its last STATE dead-reckoned to now: TRUE bearing own->target, range, dalt."""
@@ -328,6 +351,7 @@ class Node:
         usable = {pid: (t.x, t.y) for pid, t in self.peers.items()
                   if self.trust.cap(pid) is not None and not self._on_ground(t.gs, t.alt_press_ft * FT + self.baro_offset_m)}
         near = conflict_mod.k_nearest(own_xy, usable)
+        self._near_ids = list(near)
         for pid in near:
             c = conflict_mod.assess(pid, self.own_pred, self._peer_pred(self.peers[pid]), now)
             if c is not None:
@@ -648,6 +672,8 @@ async def run(ac_id: str, world: str, via_channel: Optional[str] = None, verbose
                 m = json.loads(raw)
                 if m.get("type") == "OWNSHIP":
                     latest["own"] = m
+                elif m.get("type") == "ENV":
+                    node.on_env(m)
                 elif m.get("type") == "STICK":
                     await send_frames(node.on_stick(m), [])        # release inside the same event, not next tick
 
