@@ -11,6 +11,13 @@ it drift), banks 20-24 deg in turns, leads each turn by r*tan(dpsi/2) + roll-in 
 follows the leg's altitude profile with a feed-forward descent rate on descending legs. It only
 produces targets; the limits (bank rate, climb vs density altitude, speed envelope) live in
 world/flight_model.py.
+
+Phases (PatternPilot.phase). AI traffic stays in PATTERN and does touch-and-goes. The cockpit AP
+button (engage()) flies ONE circuit to a full stop:
+  in the air:   LEVEL (wings level, hold altitude) -> JOIN (take the leg it is already lined up
+                with, else fly direct to a downwind entry point at TPA) -> PATTERN -> after the
+                threshold ROLLOUT (brake on the centreline) -> STOPPED
+  on the ground: TAKEOFF (full power on the centreline, rotate at 55 kt) -> PATTERN -> ... -> STOPPED
 """
 from __future__ import annotations
 import math, zlib
@@ -22,6 +29,11 @@ from world.flight_model import BANK_RATE_DPS, FT, G, KT, Aircraft, Env, clamp, t
 PATTERN_BANK = 22.0
 XTRK_GAIN = 0.15               # deg of track correction per metre off course
 GROUND_ROLL_M = 300.0          # touch-and-go: roll this far before rotating
+JOIN_ENTRY_FRAC = 0.35         # JOIN aims at this fraction along the downwind (midfield-ish)
+JOIN_LEG_XTRK_M = 450.0        # already this close to a leg and roughly aligned -> join it directly
+JOIN_LEG_HDG_DEG = 50.0
+LEVEL_IAS = (80.0, 100.0)
+TAKEOFF_IAS, ROTATE_IAS = 75.0, 55.0
 LEG_IAS = {"UPWIND": 75, "CROSSWIND": 85, "DOWNWIND": 95, "BASE": 85, "FINAL": 72, "STRAIGHT_IN": 80}
 CIRCUIT = ["UPWIND", "CROSSWIND", "DOWNWIND", "BASE", "FINAL"]
 
@@ -70,13 +82,14 @@ class Pattern:
         self.legs["STRAIGHT_IN"] = _leg(P.straight_in(ident))
         thr, far = self.legs["FINAL"].b, self.legs["UPWIND"].a
         self.runway_len_m = math.hypot(far[0] - thr[0], far[1] - thr[1])
+        self.legs["RUNWAY"] = Leg("RUNWAY", thr, far, 0.0, 0.0)       # centreline: rollout / takeoff
 
     @staticmethod
     def to_enu(lat: float, lon: float) -> tuple[float, float]:
         return P.to_enu(lat, lon)
 
     def next_leg(self, name: str) -> str:
-        if name in ("FINAL", "STRAIGHT_IN"):
+        if name in ("FINAL", "STRAIGHT_IN", "RUNWAY"):
             return "UPWIND"
         return CIRCUIT[CIRCUIT.index(name) + 1]
 
@@ -84,7 +97,7 @@ class Pattern:
         """Lat/lon leg segments for the god view."""
         ll = lambda p: [round(v, 6) for v in P.from_enu(*p)]
         return {"runway": self.ident, "side": self.side, "tpa_ft": self.tpa_ft,
-                "legs": {n: [ll(L.a), ll(L.b)] for n, L in self.legs.items()}}
+                "legs": {n: [ll(L.a), ll(L.b)] for n, L in self.legs.items() if n != "RUNWAY"}}
 
 class PatternPilot:
     """Autopilot that flies the circuit forever (touch-and-goes)."""
@@ -94,10 +107,73 @@ class PatternPilot:
         h = zlib.crc32(ac_id.encode())
         self.ias_bias = (h % 9) - 4.0                 # +-4 kt per aircraft
         self.bank = PATTERN_BANK + ((h >> 8) % 5) - 2  # 20-24 deg
+        self.phase = "STOPPED" if leg == "RUNWAY" else "PATTERN"
+        self.full_stop = False                         # True once the AP button engaged it
+        self.touched = True                            # wheels have touched since the last final
+
+    # ---------- AP button ----------
+    def engage(self, ac: Aircraft) -> str:
+        """Cockpit AP button: fly one circuit to a full stop (or take off first if on the ground)."""
+        self.full_stop = True
+        if ac.on_ground:
+            self.leg, self.phase = "RUNWAY", ("TAKEOFF" if ac.ias_kt < ROTATE_IAS else "ROLLOUT")
+        else:
+            self.phase = "LEVEL"
+        return self.phase
+
+    def _choose_join(self, ac: Aircraft, pos) -> None:
+        """Join the leg we are already lined up with, else head for the downwind entry point."""
+        for name in ("FINAL", "STRAIGHT_IN", "BASE", "DOWNWIND"):
+            L = self.p.legs[name]
+            along, xtrk = L.project(pos)
+            if 0 < along < L.length * 0.8 and abs(xtrk) < JOIN_LEG_XTRK_M and abs(wrap180(ac.track_deg - L.brg)) < JOIN_LEG_HDG_DEG:
+                self.leg, self.phase = name, "PATTERN"
+                return
+        self.phase = "JOIN"
+
+    def _steer_to(self, ac: Aircraft, brg: float) -> float:
+        return clamp(1.6 * wrap180(brg - ac.track_deg), -self.bank, self.bank)
+
+    def _ground(self, ac: Aircraft, pos) -> tuple[float, float, float]:
+        """ROLLOUT / STOPPED / TAKEOFF on the runway centreline (bank target = nosewheel steering)."""
+        L = self.p.legs["RUNWAY"]
+        along, xtrk = L.project(pos)
+        steer = clamp(1.6 * wrap180(L.brg - clamp(xtrk * 0.5, -20, 20) - ac.hdg_deg), -30, 30)
+        if self.phase == "TAKEOFF":
+            if ac.agl_ft > 100:
+                self.leg, self.phase, self.touched = "UPWIND", "PATTERN", True
+                return 0.0, 9_999, LEG_IAS["UPWIND"] + self.ias_bias
+            return steer if ac.on_ground else 0.0, (9_999 if ac.ias_kt >= ROTATE_IAS else 0.0), TAKEOFF_IAS
+        if self.phase == "ROLLOUT" and not ac.on_ground:
+            # crossed the threshold still airborne: flare and settle onto the centreline
+            return clamp(1.6 * wrap180(L.brg - clamp(xtrk * 0.15, -20, 20) - ac.track_deg), -10, 10), -250.0, 60.0
+        if self.phase == "ROLLOUT" and ac.ias_kt < 1.0:
+            self.phase = "STOPPED"
+        return steer, 0.0, 0.0                                   # brake to a stop, hold
 
     def targets(self, ac: Aircraft, env: Env, now: float) -> tuple[float, float, float]:
         p = self.p
         pos = p.to_enu(ac.lat, ac.lon)
+        if self.phase in ("ROLLOUT", "STOPPED", "TAKEOFF"):
+            return self._ground(ac, pos)
+        if self.phase == "LEVEL":
+            if abs(ac.bank_deg) < 3 and abs(ac.vs_fpm) < 150:
+                self._choose_join(ac, pos)
+            else:
+                return 0.0, 0.0, clamp(ac.ias_kt, *LEVEL_IAS)
+        if self.phase == "JOIN":
+            D = p.legs["DOWNWIND"]
+            ue, un = math.sin(math.radians(D.brg)), math.cos(math.radians(D.brg))
+            entry = (D.a[0] + ue * D.length * JOIN_ENTRY_FRAC, D.a[1] + un * D.length * JOIN_ENTRY_FRAC)
+            de, dn = entry[0] - pos[0], entry[1] - pos[1]
+            v = max(ac.gs_kt, 40) * KT
+            r = v * v / (G * math.tan(math.radians(self.bank)))
+            if math.hypot(de, dn) < 1.5 * r:                     # close enough: roll onto downwind
+                self.leg, self.phase = "DOWNWIND", "PATTERN"
+            else:
+                vs = clamp(6.0 * (p.tpa_ft - ac.alt_msl_ft), -800, 9_999)
+                return self._steer_to(ac, math.degrees(math.atan2(de, dn)) % 360), vs, LEG_IAS["DOWNWIND"] + self.ias_bias
+
         L = p.legs[self.leg]
         along, xtrk = L.project(pos)
 
@@ -111,7 +187,12 @@ class PatternPilot:
         if dpsi > 5:
             lead += v * (self.bank / BANK_RATE_DPS) / 2
         if L.length - along <= lead:
+            if self.full_stop and self.leg in ("FINAL", "STRAIGHT_IN"):
+                self.leg, self.phase = "RUNWAY", "ROLLOUT"        # full stop instead of touch-and-go
+                return self._ground(ac, pos)
             self.leg = nxt
+            if nxt in ("FINAL", "STRAIGHT_IN"):
+                self.touched = False
             L = p.legs[self.leg]
             along, xtrk = L.project(pos)
 
@@ -124,11 +205,17 @@ class PatternPilot:
         tgt_alt = ground + L.agl_at(along)
         vs = 6.0 * (tgt_alt - ac.alt_msl_ft) - ac.gs_kt * 101.27 * L.slope
         if self.leg == "UPWIND" and along < 0:
-            # still over the runway after a touch-and-go: roll, then climb at best rate
+            # over the runway after final: flare onto the wheels, roll, then climb (touch-and-go)
             on_runway_m = along + p.runway_len_m
-            vs = 0.0 if ac.agl_ft < 5 and on_runway_m < GROUND_ROLL_M else 9_999
+            self.touched = self.touched or ac.on_ground
+            if not self.touched:
+                vs = -150.0 - 5.0 * ac.agl_ft
+            else:
+                vs = 0.0 if ac.agl_ft < 5 and on_runway_m < GROUND_ROLL_M else 9_999
         elif self.leg in ("UPWIND", "CROSSWIND") and ac.alt_msl_ft < tgt_alt - 50:
             vs = 9_999                                             # best climb (capped by DA)
+        if self.leg in ("FINAL", "STRAIGHT_IN") and ac.agl_ft < 40:
+            vs = max(vs, -150.0 - 5.0 * ac.agl_ft)                # flare: ~-350 fpm at 40 ft to -150 at the wheels
 
         ias = LEG_IAS[self.leg] + self.ias_bias
         return bank, vs, ias

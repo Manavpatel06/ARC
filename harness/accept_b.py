@@ -199,9 +199,9 @@ def phase2_b12() -> None:
     ok = len(cm) == 2 and all(s == "R" for _, s in cm.values()) and abs(cm["N101"][0] - cm["N399"][0]) <= 0.5
     check("radio blackout: both nodes time out and commit sense R, no negotiation", ok,
           f"commits {cm}; {len(fb)} advisories tagged fallback-link-lost; min sep {rl.min_h_m / FT:.0f} ft / {rl.min_v_at_min_h_m / FT:.0f} ft vertical")
-    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final.json"), PATS, comply=0.7)
+    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
     r3 = Sim(PATS, ac, flock, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
-    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final.json"), PATS, comply=0.7)
+    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
     rn = Sim(PATS, ac, None, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
     check("three_on_final: FLOCK resolves what is an NMAC without it", rn.nmac and not r3.nmac,
           f"no logic {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; FLOCK {r3.min_h_m / FT:.0f} ft / "

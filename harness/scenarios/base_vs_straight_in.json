@@ -1,0 +1,33 @@
+{
+ "name": "base_vs_straight_in",
+ "aircraft": [
+  {
+   "id": "N101",
+   "start": {
+    "leg": "DOWNWIND",
+    "runway": "25L",
+    "offset_s": 31.0
+   },
+   "ap": true,
+   "human": false
+  },
+  {
+   "id": "N399",
+   "start": {
+    "leg": "STRAIGHT_IN",
+    "runway": "25L",
+    "offset_s": 0
+   },
+   "ap": false,
+   "flock": true
+  }
+ ],
+ "channel": {
+  "loss": 0.0,
+  "latency_s": 0.3
+ },
+ "weather": "cached",
+ "spoofer": false,
+ "camera_target": false,
+ "note": "tuned by world/find_conflict.py from base_cutoff.json: N101-N399: 271 ft / 60 ft at t=124 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-150 s)"
+}

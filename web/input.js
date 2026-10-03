@@ -4,7 +4,10 @@
 // autopilot flies the aircraft); after that INPUT goes out at 30 Hz.
 //
 // Gamepad: left stick X = roll, left stick Y = pitch (pull back = climb; ?invert=1 flips),
-//          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle.
+//          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle,
+//          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event),
+//          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap").
+// Buttons act on the press, not while held; a button already held when the page starts is ignored.
 // Keyboard: ←/→ roll, ↓ pull (climb) / ↑ push (descend), W/S throttle up/down.
 
 const DEADZONE = 0.12;
@@ -19,6 +22,7 @@ export function startInput(send, onState = () => {}) {
   const tapped = new Set();      // keys pressed since the last tick (a quick tap still counts once)
   const st = { roll: 0, pitch: 0, throttle: 0.5, source: "none", engaged: false, pad: null };
   let kRoll = 0, kPitch = 0;
+  const wasDown = { 0: true, 3: true };            // ignore the press that dismissed the start screen
 
   addEventListener("keydown", (e) => {
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(e.code)) {
@@ -49,15 +53,20 @@ export function startInput(send, onState = () => {}) {
       if (dThr) st.throttle = clamp(st.throttle + dThr * dt, 0, 1);
       active = roll !== 0 || pitch !== 0 || dThr !== 0;
       if (active) st.source = "gamepad";
+      for (const [btn, evt] of [[3, "flock:chase"], [0, "flock:ap"]]) {   // Triangle / Y, Cross / A
+        const down = !!(pad.buttons[btn] && pad.buttons[btn].pressed);
+        if (down && !wasDown[btn]) dispatchEvent(new Event(evt));
+        wasDown[btn] = down;
+      }
     }
 
-    // keyboard: ramp toward full deflection so a tap is not a slam
     const down = (c) => keys.has(c) || tapped.has(c);
     const kr = (down("ArrowRight") ? 1 : 0) - (down("ArrowLeft") ? 1 : 0);
     const kp = (down("ArrowDown") ? 1 : 0) - (down("ArrowUp") ? 1 : 0);
-    // keyboard deflection ramps in while held and eases out after release
-    kRoll = kr ? clamp(kRoll + kr * 2.5 * dt, -1, 1) : kRoll * Math.max(0, 1 - 4 * dt);
-    kPitch = kp ? clamp(kPitch + kp * 2.5 * dt, -1, 1) : kPitch * Math.max(0, 1 - 4 * dt);
+    // keyboard: full deflection while held (the world already limits bank rate to 15 deg/s),
+    // quick ease-out after release so wings come level smoothly
+    kRoll = kr ? kr : kRoll * Math.max(0, 1 - 8 * dt);
+    kPitch = kp ? kp : kPitch * Math.max(0, 1 - 8 * dt);
     if (Math.abs(kRoll) < 0.02) kRoll = 0;
     if (Math.abs(kPitch) < 0.02) kPitch = 0;
     const kt = (down("KeyW") ? 1 : 0) - (down("KeyS") ? 1 : 0);
