@@ -31,3 +31,5 @@ Cockpit controls:
 - Weather (god view panel): preset, turbulence, wind / gusts / shear / thermals / visibility / cloud base / QNH sliders,
   "Update all altimeters to QNH". Cockpit: dust / haze / cloud over the 3D view, METAR line on the PFD, altimeter shows
   indicated altitude with BARO setting (amber + ATIS value when it is stale), light rumble in turbulence.
+- Terrain awareness: red PULL UP / TERRAIN, amber SINK RATE / TOO LOW TERRAIN banner over the PFD with repeating
+  voice callouts and strong rumble; touchdown notices for OFF-RUNWAY LANDING and TERRAIN IMPACT.

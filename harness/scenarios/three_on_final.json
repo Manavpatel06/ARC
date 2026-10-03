@@ -37,5 +37,5 @@
  "weather": "cached",
  "spoofer": false,
  "camera_target": false,
- "note": "tuned by world/find_conflict.py from three_on_final.json: N101-N204: 626 ft / 52 ft at t=129 s (FINAL/FINAL); N101-N399: 149 ft / 95 ft at t=125 s (FINAL/STRAIGHT_IN) NMAC; N204-N399: 507 ft / 40 ft at t=125 s (FINAL/STRAIGHT_IN) (no avoidance; window 60-170 s)"
+ "note": "tuned by world/find_conflict.py from three_on_final.json: N101-N204: 584 ft / 48 ft at t=135 s (FINAL/FINAL); N101-N399: 179 ft / 96 ft at t=130 s (FINAL/STRAIGHT_IN) NMAC; N204-N399: 440 ft / 45 ft at t=130 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-170 s)"
 }

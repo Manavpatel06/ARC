@@ -23,8 +23,8 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 KT = 0.514444
-TURB_SIGMA = {   # level: (bank deg, vertical fpm, airspeed kt)
-    0: (0.0, 0.0, 0.0), 1: (1.5, 120.0, 1.5), 2: (4.0, 350.0, 4.0), 3: (8.0, 800.0, 8.0)}
+TURB_SIGMA = {   # level: continuous part, 1 sigma (bank deg, vertical fpm, airspeed kt); bumps on top
+    0: (0.0, 0.0, 0.0), 1: (1.0, 100.0, 1.0), 2: (2.0, 220.0, 2.0), 3: (4.0, 450.0, 4.0)}
 TURB_NAMES = ["none", "light", "moderate", "severe"]
 
 @dataclass
@@ -124,32 +124,72 @@ class Weather:
         return w * min(1.0, agl_ft / 600.0)
 
 class Turbulence:
-    """Per-aircraft gust + turbulence state (Ornstein-Uhlenbeck noise, seeded from the aircraft id)."""
+    """Per-aircraft gusts + turbulence, seeded from the aircraft id (offline runs stay reproducible).
+
+    Real turbulence is felt as a smooth swell with occasional jolts, not 20 Hz jitter:
+      * continuous part: white noise through TWO first-order lags (time constants 2-3 s), so the
+        aircraft wanders slowly in bank / vertical / airspeed instead of shaking;
+      * discrete bumps: Poisson-timed (1 - cos) jolts lasting ~0.7-1.5 s, rarer and stronger with level;
+      * speed gusts ramp in and out over ~2.5 s.
+    Sizes (1 sigma continuous / typical bump): light 1 deg, 100 fpm / 2 deg, 250 fpm;
+    moderate 2 deg, 220 fpm / 5 deg, 600 fpm; severe 4 deg, 450 fpm / 10 deg, 1,200 fpm.
+    """
+    TAU = {"bank": 2.5, "w": 2.0, "u": 3.0}
+    BUMP = {1: (0.12, 2.0, 250.0), 2: (0.25, 5.0, 600.0), 3: (0.45, 10.0, 1200.0)}   # rate /s, bank deg, w fpm
+
     def __init__(self, ac_id: str):
         self.rng = random.Random(zlib.crc32(ac_id.encode()))
-        self.bank = self.w = self.u = 0.0         # deg, fpm, kt
+        self.s = {k: [0.0, 0.0] for k in self.TAU}   # two filter stages per channel
+        self.bumps: list[tuple[float, float, float, float]] = []   # (t0, duration, bank, w)
+        self.next_bump_t = None
         self.gust = 0.0                           # kt above the mean wind
         self.gust_target = 0.0
         self.next_gust_t = 0.0
 
-    def _ou(self, x: float, sigma: float, tau: float, dt: float) -> float:
-        return x - x / tau * dt + sigma * math.sqrt(2.0 * dt / tau) * self.rng.gauss(0.0, 1.0)
+    def _lag2(self, key: str, sigma: float, dt: float) -> float:
+        """White noise -> two first-order lags; output std ~ sigma."""
+        tau = self.TAU[key]
+        a, b = self.s[key]
+        a += (-a * dt + sigma * 2.0 * math.sqrt(tau * dt) * self.rng.gauss(0.0, 1.0)) / tau
+        b += (a - b) * dt / tau
+        self.s[key] = [a, b]
+        return b
 
-    def step(self, wx: Weather, dt: float, t: float, agl_ft: float) -> tuple[float, float, float, float]:
-        """Returns (bank_upset deg, vertical air fpm, airspeed upset kt, gust kt)."""
-        sb, sw, su = TURB_SIGMA[wx.turbulence]
-        near_ground = min(1.0, max(agl_ft, 0.0) / 50.0)            # damp vertical jolts in the flare
-        self.bank = self._ou(self.bank, sb, 1.5, dt)
-        self.w = self._ou(self.w, sw, 1.0, dt)
-        self.u = self._ou(self.u, su, 2.0, dt)
+    def step(self, wx: Weather, dt: float, t: float, agl_ft: float) -> tuple[float, float, float, float, float]:
+        """Returns (bank upset deg, vertical air fpm, airspeed upset kt, gust kt, roughness 0..1)."""
+        lvl = wx.turbulence
+        sb, sw, su = TURB_SIGMA[lvl]
+        bank, w, u = self._lag2("bank", sb, dt), self._lag2("w", sw, dt), self._lag2("u", su, dt)
+        rough = 0.0
+        if lvl:
+            rate, bb, bw = self.BUMP[lvl]
+            if self.next_bump_t is None:
+                self.next_bump_t = t + self.rng.expovariate(rate)
+            if t >= self.next_bump_t:
+                k = self.rng.uniform(0.5, 1.0)
+                self.bumps.append((t, self.rng.uniform(0.7, 1.5), bb * k * self.rng.choice((-1, 1)), bw * k * self.rng.choice((-1, 1))))
+                self.next_bump_t = t + self.rng.expovariate(rate)
+            live = []
+            for t0, dur, b0, w0 in self.bumps:
+                x = (t - t0) / dur
+                if x < 1.0:
+                    shape = 0.5 * (1.0 - math.cos(2.0 * math.pi * x))
+                    bank += b0 * shape; w += w0 * shape; u += 0.004 * w0 * shape
+                    rough = max(rough, shape * abs(w0) / 1200.0)
+                    live.append((t0, dur, b0, w0))
+            self.bumps = live
+            rough = min(1.0, max(rough, 0.25 * lvl / 3.0 + abs(w) / (4.0 * max(sw, 1.0)) * 0.3))
+        else:
+            self.bumps = []
         spread = max(0.0, wx.gust_kt - wx.wind_kt)
         if spread and t >= self.next_gust_t:
-            self.gust_target = self.rng.uniform(0.0, spread) if self.rng.random() < 0.6 else 0.0
-            self.next_gust_t = t + self.rng.uniform(2.0, 6.0)
+            self.gust_target = self.rng.uniform(0.3, 1.0) * spread if self.rng.random() < 0.6 else 0.0
+            self.next_gust_t = t + self.rng.uniform(3.0, 8.0)
         elif not spread:
             self.gust_target = 0.0
-        self.gust += (self.gust_target - self.gust) * min(1.0, dt / 1.0)
-        return self.bank, self.w * near_ground, self.u, self.gust
+        self.gust += (self.gust_target - self.gust) * min(1.0, dt / 2.5)
+        near_ground = min(1.0, max(agl_ft, 0.0) / 50.0)            # damp vertical jolts in the flare
+        return bank, w * near_ground, u, self.gust, rough
 
 PRESETS: dict[str, dict] = {
     "metar": {},   # filled from the METAR at load time

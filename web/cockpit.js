@@ -4,7 +4,7 @@
 
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
-import { sayAdvisory } from "./voice.js";
+import { sayAdvisory, sayNow } from "./voice.js";
 import { startHaptics } from "./haptics.js";
 import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
@@ -42,7 +42,11 @@ export function startCockpit(role) {
         break;
       case "WORLD_EVENT":
         if (m.a !== s.acId) break;
-        if (m.event === "TOUCHDOWN") toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        if (m.event === "TOUCHDOWN") {
+          if (m.surface === "TERRAIN_IMPACT") { toast(`TERRAIN IMPACT · ${m.ias_kt} kt ${m.vs_fpm} fpm`, "warn", 8000); sayNow("terrain impact"); hap.bump(); }
+          else if (m.surface === "OFF_RUNWAY") { toast(`OFF-RUNWAY LANDING · ${m.vs_fpm} fpm`, "warn", 6000); say("off runway"); }
+          else toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        }
         else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
         else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); hap.bump(); }
         break;
@@ -63,7 +67,7 @@ export function startCockpit(role) {
       if (t.state === "TRUSTED" && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
     }
     return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest,
-             turb: s.own ? s.own.turb || 0 : 0 };
+             turb: s.own ? s.own.turb || 0 : 0, taws: s.own ? s.own.taws : null };
   });
   s.hap = hap;
 
@@ -86,6 +90,7 @@ export function startCockpit(role) {
     fit(pfd); fit(tfc);
     if (s.v3) update3D(s);
     renderVisibility(s);
+    renderTaws(s);
     const chase = !!(s.v3 && s.v3.chase);
     drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase, s.wx);
     drawTraffic(tfc, s.own, s.trust, s.adv);
@@ -96,6 +101,21 @@ export function startCockpit(role) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- terrain awareness (world/taws.py, own aircraft only) ----------
+const TAWS_TEXT = { "PULL UP": ["PULL UP", "warning", "pull up, pull up"], "TERRAIN": ["TERRAIN", "warning", "terrain, terrain"],
+                    "SINK RATE": ["SINK RATE", "caution", "sink rate"], "TOO LOW TERRAIN": ["TOO LOW · TERRAIN", "caution", "too low, terrain"] };
+function renderTaws(s) {
+  const el = $("ck-taws"), al = s.own && s.own.taws;
+  if (!al || !TAWS_TEXT[al]) { el.hidden = true; s.tawsSaid = null; return; }
+  const [text, level, speak] = TAWS_TEXT[al];
+  if (el.textContent !== text) el.textContent = text;
+  el.dataset.level = level; el.hidden = false;
+  const now = performance.now();
+  if (s.tawsSaid !== al || now - (s.tawsAt || 0) > (level === "warning" ? 2200 : 3500)) {   // repeat while it lasts
+    sayNow(speak); s.tawsSaid = al; s.tawsAt = now;
+  }
 }
 
 // ---------- weather out of the window: haze, dust, cloud (3D only) ----------

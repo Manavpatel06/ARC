@@ -16,6 +16,12 @@ Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_mod
   `pressure_drop`. Start with `--weather <preset>` or scenario key `"weather_preset"`; change live from the god view
   (`SET_WX` {preset | field: value | update_altimeters}). World sends `WX` (god full, cockpits pilot-level) and
   `WX_FIELD` (thermal positions, god only, every 2 s).
+- `taws.py` — GPWS-style terrain alerts for judge aircraft from own data only (AGL, smoothed sink, position vs
+  runways): PULL UP, SINK RATE, TERRAIN, TOO LOW TERRAIN; quiet in runway approach / climb-out corridors and
+  (terrain modes) within 1.5 NM of the field. Touchdowns classified RUNWAY / OFF_RUNWAY / TERRAIN_IMPACT.
+  World sends `WORLD_EVENT` TAWS {alert} on change; cockpit frame carries `taws`.
+- Turbulence is smooth swell + occasional (1 - cos) jolts, not per-frame noise; the roll it causes sits on top of
+  the bank the pilot / autopilot holds; the VSI lags ~1 s. AI finals aim ~200 m past the threshold.
 - `find_conflict.py` — offline scenario tuner: sweeps `offset_s` / `agl_ft` of chosen aircraft, flies the same physics without nodes, keeps the tightest encounter, writes the scenario.
 
 ```

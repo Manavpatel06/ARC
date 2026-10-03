@@ -42,6 +42,7 @@ import schemas
 from world.scenario import World
 from world.flight_model import HARD_LANDING_FPM
 from world.separation import SeparationMonitor
+from world.taws import Taws
 
 PHYS_HZ = 20
 VALIDATE = {"ADVISORY": schemas.Advisory, "COMMAND": schemas.Command, "TRUST": schemas.Trust,
@@ -59,6 +60,8 @@ class Hub:
         self.sim_s = 0.0
         self.stats = {"ticks": 0, "busy_s": 0.0}
         self.sep = SeparationMonitor()                     # truth NMAC / collision events
+        self.taws = Taws(world.airport)                    # GPWS-style terrain alerts for judge aircraft
+        self.taws_state: dict[str, str | None] = {}
 
     # ---------- clock / io ----------
     def now(self) -> float:
@@ -240,6 +243,7 @@ class Hub:
         d["alt_ind_ft"] = round(ac.indicated_ft, 1)
         d["baro_set_inhg"] = round(ac.baro_set_inhg, 2)
         d["turb"] = round(ac.turb_now, 2)
+        d["taws"] = getattr(ac, "taws_alert", None)
         d["ap"] = ac.ap_engaged
         d["ap_phase"] = ac.ap_phase
         d["on_ground"] = ac.on_ground
@@ -257,7 +261,9 @@ class Hub:
                 ev = {"type": "WORLD_EVENT", "event": kind, "a": ac.id, "t": round(now, 3),
                       "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft)}
                 if kind == "TOUCHDOWN":
-                    ev.update(vs_fpm=val, hard=val < -HARD_LANDING_FPM)
+                    surface = self.taws.touchdown(ac, val)
+                    ev.update(vs_fpm=val, hard=val < -HARD_LANDING_FPM or surface == "TERRAIN_IMPACT",
+                              surface=surface, ias_kt=round(ac.ias_kt))
                 elif kind == "LIFTOFF":
                     ev.update(ias_kt=val)
                 else:
@@ -268,6 +274,23 @@ class Hub:
                     self.send("god", ev)
                 if ac.human or ev.get("hard") or kind == "AP_DISCONNECT":
                     print(f"[world] {kind} {ac.id} {val}" + (" HARD" if ev.get("hard") else ""))
+
+    def check_taws(self) -> None:
+        """Own-aircraft terrain alerts for judge aircraft; publish on change."""
+        for ac in self.w.fleet.values():
+            if not ac.human:
+                continue
+            al = self.taws.alert(ac, 0.1)
+            ac.taws_alert = al
+            if al != self.taws_state.get(ac.id):
+                self.taws_state[ac.id] = al
+                ev = {"type": "WORLD_EVENT", "event": "TAWS", "a": ac.id, "t": round(self.now(), 3), "alert": al,
+                      "agl_ft": round(ac.agl_ft), "vs_fpm": round(ac.vsi_fpm)}
+                self.send(f"cockpit:{ac.id}", ev)
+                self.send("god", ev)
+                self.log(ac.id, "world", ev)
+                if al:
+                    print(f"[world] TAWS {ac.id} {al} ({ac.agl_ft:.0f} ft AGL, {ac.vsi_fpm:.0f} fpm)")
 
     async def loop(self):
         period = 1.0 / PHYS_HZ
@@ -298,6 +321,7 @@ class Hub:
                     self.send("god", truth)
                     self.send("channel", truth)
                 # ground-truth separation: god + log only (never nodes; they must not see truth)
+                self.check_taws()
                 self.publish_aircraft_events(now)
                 if tick % 40 == 0 and self.roles.get("god"):          # every 2 s: thermal field for the map
                     self.send("god", {"type": "WX_FIELD", "t": round(now, 3), "thermals":

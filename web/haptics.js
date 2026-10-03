@@ -10,6 +10,7 @@
 //   proximity       TRUSTED target inside 1 NM: pulses speed up and strengthen as range closes
 //   bump()          one short knock: control handed back (STICK / AP disconnect)
 //   turbulence      light rumble while the own aircraft is being bounced (own state, not traffic)
+//   terrain (TAWS)  PULL UP / TERRAIN strong pulses, SINK RATE / TOO LOW lighter (own aircraft, highest priority)
 //
 // Chrome Gamepad API "dual-rumble" (Xbox, DualShock 4 on Windows; DualSense varies). ?haptics=0 disables.
 
@@ -29,6 +30,11 @@ export function plan(st, now, mem) {
     mem.level = level;
     mem.next = now;                                            // fire the new pattern immediately
     if (level === "SEQUENCE") out.push(haptic(0.0, 0.35, 90));
+  }
+  if (st.taws) {                                               // own terrain warning beats everything
+    const [period, mag] = st.taws === "PULL UP" ? [400, 1.0] : st.taws === "TERRAIN" ? [700, 0.8] : [1200, 0.45];
+    if (now >= (mem.taws || 0)) { out.push(haptic(mag, mag * 0.7, 220)); mem.taws = now + period; }
+    return out;
   }
   if (st.takeover) {                                           // stick shaker, back-to-back bursts
     if (now >= (mem.shake || 0)) { out.push(haptic(0.9, 0.5, 300)); mem.shake = now + 250; }
