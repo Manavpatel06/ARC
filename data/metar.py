@@ -63,9 +63,14 @@ def fetch() -> dict:
     wdir = m.get("wdir") if isinstance(m.get("wdir"), (int, float)) else 0   # "VRB" -> 0
     return enrich(m["temp"], m.get("dewp"), alt_inhg, wdir, m.get("wspd", 0), m.get("reportTime", ""), m.get("rawOb", ""))
 
-def load() -> dict:
-    """Latest fetched METAR; falls back to the committed sample. Never raises."""
-    for p in (REAL, SAMPLE):
+def load(mode: str = "live") -> dict:
+    """Weather for the sim. Never raises.
+    mode="live"   (default) latest fetched METAR, falling back to the committed sample.
+    mode="cached" ALWAYS the committed sample (34 °C, 29.92, wind 250/8). Conflict scenarios are tuned
+                  under this weather; with live wind the tuned encounter can miss by thousands of feet.
+                  World: load(scenario.weather) — scenario files say "weather": "cached" or "live"."""
+    paths = (SAMPLE,) if str(mode).startswith("cached") else (REAL, SAMPLE)
+    for p in paths:
         try:
             return json.load(open(p))
         except Exception:
