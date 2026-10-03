@@ -32,6 +32,15 @@ NMAC_H_M, NMAC_V_M = 500 * FT, 100 * FT
 ROLL_RATE = 15.0
 
 
+def _ground_m(x: float, y: float, fallback: float) -> float:
+    """Terrain under the aircraft from the real grid (the world reports AGL against terrain, contract v1.1)."""
+    try:
+        from data.terrain import elev_at
+        return elev_at(*to_latlon(x, y))
+    except Exception:
+        return fallback
+
+
 @dataclass
 class Maneuver:
     bank: float
@@ -72,7 +81,7 @@ class SimAircraft:
         lat, lon = to_latlon(self.x + rng.gauss(0, self.gps_sigma), self.y + rng.gauss(0, self.gps_sigma))
         msl = (self.z + rng.gauss(0, 2.0)) / FT
         return {"type": "OWNSHIP", "ac_id": self.id, "t": t, "lat": lat, "lon": lon, "alt_msl_ft": msl,
-                "alt_press_ft": msl - 10.0, "agl_ft": (self.z - self.pat.elev_m) / FT, "gs_kt": self.v / KT,
+                "alt_press_ft": msl - 10.0, "agl_ft": (self.z - _ground_m(self.x, self.y, self.pat.elev_m)) / FT, "gs_kt": self.v / KT,
                 "track_deg": self.hdg, "hdg_deg": self.hdg, "bank_deg": self.bank, "vs_fpm": self.vs / FT * 60.0,
                 "ias_kt": self.v / KT, "ap_equipped": self.ap, "stick_active": self.stick_active, "flaps": 0}
 

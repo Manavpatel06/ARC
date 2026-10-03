@@ -196,9 +196,15 @@ def phase2_b12() -> None:
     cm = {}
     for t, i, b in rl.commits:
         cm.setdefault(i, (t - T0, b["sense"]))
-    ok = len(cm) == 2 and all(s == "R" for _, s in cm.values()) and abs(cm["N101"][0] - cm["N399"][0]) <= 0.5
-    check("radio blackout: both nodes time out and commit sense R, no negotiation", ok,
-          f"commits {cm}; {len(fb)} advisories tagged fallback-link-lost; min sep {rl.min_h_m / FT:.0f} ft / {rl.min_v_at_min_h_m / FT:.0f} ft vertical")
+    # Both nodes must time out together and take the 91.113 default (R30).  With the real terrain and obstacle
+    # data R30 can be blocked for one of them; then it holds and says exactly why (NO_SOLUTION with the rejected list).
+    blocked = {i for t, i, f in rl.advisories if f["level"] == "NO_SOLUTION"
+               and f["reason"].get("rejected", {}).get("R30") in ("terrain floor", "obstacle")}
+    senses_ok = len(cm) == 2 and all(s == "R" or (s == "HOLD" and i in blocked) for i, (_, s) in cm.items())
+    ok = senses_ok and abs(cm["N101"][0] - cm["N399"][0]) <= 0.5 and any(s == "R" for _, s in cm.values()) and not rl.nmac
+    check("radio blackout: both nodes time out together, default to R (or hold and say R is blocked), no NMAC", ok,
+          f"commits {cm}; R30 blocked for {sorted(blocked) or 'nobody'}; {len(fb)} advisories tagged fallback-link-lost; "
+          f"min sep {rl.min_h_m / FT:.0f} ft / {rl.min_v_at_min_h_m / FT:.0f} ft vertical")
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
     r3 = Sim(PATS, ac, flock, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)

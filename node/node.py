@@ -122,16 +122,13 @@ class Node:
     # ------------------------------------------------------------------ helpers
     @staticmethod
     def _default_obstacles() -> Optional[Callable[[float, float], Optional[float]]]:
-        """data/obstacles.py (Lane D) when it exists: top_at(lat, lon) -> obstacle top in ft MSL, or None."""
+        """data/obstacles.py (Lane D): obstacle_fn_enu(to_latlon) -> fn(x_m, y_m) = highest obstacle top in
+        metres MSL within the 600 m protection radius, or None."""
         try:
-            from data.obstacles import top_at
+            from data.obstacles import obstacle_fn_enu
+            return obstacle_fn_enu(to_latlon)
         except Exception:
             return None
-
-        def fn(x: float, y: float) -> Optional[float]:
-            v = top_at(*to_latlon(x, y))
-            return None if v is None else float(v) * FT
-        return fn
 
     @staticmethod
     def _default_terrain() -> Callable[[float, float], float]:

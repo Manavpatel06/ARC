@@ -68,6 +68,21 @@ def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
         return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
 
 
+def _hits_obstacle(path, xs, ys, own: "OwnState", obstacle_fn) -> bool:
+    """Below top + 300 ft inside an obstacle's protection cylinder, but only if the maneuver makes things worse:
+    it descends more than 12 m, or runs into an obstacle taller than the one we are already passing."""
+    here = obstacle_fn(own.x, own.y)
+    here = -1e9 if here is None else here
+    for i in range(len(xs)):
+        top = obstacle_fn(float(xs[i]), float(ys[i]))
+        if top is None:
+            continue
+        z = path[i * 4, 2]
+        if z < top + TERRAIN_CLEARANCE_M and (top > here + 1.0 or z < own.z - 12.0):
+            return True
+    return False
+
+
 def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
     """Climb/descend keep the bank the aircraft already has (a turn in progress continues), so the command is
     never 'wings level' by accident."""
@@ -233,8 +248,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
             clear = min(TERRAIN_CLEARANCE_M, max(0.0, own.agl - 12.0))
             if any(path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < clear for i in range(len(xs))):
                 reason = "terrain floor"
-            elif obstacle_fn and any(path[i * 4, 2] < (obstacle_fn(float(xs[i]), float(ys[i])) or -1e9) + TERRAIN_CLEARANCE_M
-                                     for i in range(len(xs))):
+            elif obstacle_fn and _hits_obstacle(path, xs, ys, own, obstacle_fn):
                 reason = "obstacle"
             elif c.kind == "descend" and pattern_floor is not None and zs.min() < pattern_floor:
                 reason = "pattern altitude floor"

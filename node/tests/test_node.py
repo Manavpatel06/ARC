@@ -316,10 +316,10 @@ def test_obstacle_fn_is_used_when_data_obstacles_exists(monkeypatch):
     import sys
     import types
     mod = types.ModuleType("data.obstacles")
-    mod.top_at = lambda lat, lon: 9000.0                       # every point has a 9,000 ft MSL obstacle
+    mod.obstacle_fn_enu = lambda to_latlon: (lambda x, y: 2743.0 if y > -1200.0 else None)   # tall obstacles ahead (north)
     monkeypatch.setitem(sys.modules, "data.obstacles", mod)
     n = Node("N101", patterns=PATS)
-    assert n.obstacle_fn is not None and abs(n.obstacle_fn(0.0, 0.0) - 9000.0 * FT) < 1e-6
+    assert n.obstacle_fn is not None and n.obstacle_fn(0.0, 0.0) == 2743.0
     own, hold, peers, terr = _head_on(terrain=100.0)
     r = escape.evaluate(own, hold, peers, terr, obstacle_fn=n.obstacle_fn)
     assert r.rejected.get("L30") == "obstacle" and r.chosen is None
