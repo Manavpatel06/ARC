@@ -1,0 +1,5 @@
+{"name":"spoof_on_final","note":"Pull Queue: GHOST7 appears at 1 mi final. N101 is on short final; run `python radio/spoofer.py` (GHOST7, unsigned) on top of this scenario. The node must show GHOST7 as FAKE/SUSPICIOUS in TRUST and never raise RESOLVE/TAKEOVER for it.",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"FINAL","runway":"25L","offset_s":0},"ap":true,"human":true},
+ {"id":"N204","start":{"leg":"BASE","runway":"25L","offset_s":0},"ap":false}
+],"channel":{"loss":0.1,"latency_s":0.3},"weather":"cached","spoofer":true,"camera_target":false}
