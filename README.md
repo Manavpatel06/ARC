@@ -38,9 +38,12 @@ All laptops on the same phone hotspot. Note the world server laptop's IP; every 
 3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per FLOCK aircraft; `run_demo.sh` spawns all)
 4. Open `web/index.html?role=cockpitA` / `cockpitB` / `god` / `log` on the four laptops.
 
+## Shared building blocks (import, don't rewrite)
+`schemas.py` (all messages, contract v1.1) · `pattern.py` (KDVT pattern: `place`, `legs`, ENU) · `data.runways.load()` · `data.metar.load()/climb_fpm()/wind_vector_ms()` · `data.terrain.elev_at_ft()`
+
 ## Start working in the next 5 minutes (no other lane needed)
 ```
-python stubs/fake_world.py                 # terminal 1: stand-in world (OWNSHIP, COMMAND, LOG)
+python stubs/fake_world.py                 # terminal 1: stand-in world (add --scenario harness/scenarios/judges.json for all 8)
 python stubs/fake_node.py --id N101 --speed 4   # terminal 2: stand-in node (ADVISORY ladder, TRUST, COMMAND)
 python stubs/tail_log.py                   # terminal 3: see every frame; writes harness/out/*.jsonl
 ```

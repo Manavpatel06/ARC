@@ -10,8 +10,8 @@ Make the pieces one system and give it a world to live in: live weather, terrain
 
 ## Deliverables
 ### Data (`/data`)
-1. `data/metar.py` — fetch KDVT METAR from aviationweather.gov data API; compute pressure altitude, density altitude, wind; write `data/cache/metar_kdvt.json`; keep the last good file as fallback; CLI prints "KDVT 34°C 29.92 → DA 4,980 ft → C172 climb ≈ 500 fpm".
-2. `data/runways.py` — from OurAirports `runways.csv` build `data/cache/runways_kdvt.json` (ends, headings, elevation, pattern side).
+1. `data/metar.py` — fetch KDVT METAR from aviationweather.gov data API; compute pressure altitude, density altitude, wind; write `data/cache/metar_kdvt.json`; keep the last good file as fallback; CLI prints "KDVT 34°C 29.92 → DA 4,083 ft → C172 climb ≈ 542 fpm" — **written (Sat 12:20): `load()`, `climb_fpm()`, `wind_vector_ms()`, sample committed; live fetch untested (aviationweather.gov blocked from the build sandbox — run it on the hotspot)**.
+2. `data/runways.py` — **done (Sat 12:20)** from surveyed AirNav/FAA 5010 ends; `load()`; sample committed. Shared pattern geometry in `/pattern.py`.
 3. `data/terrain.py` — elevation grid ~15 mi around KDVT (USGS 3DEP/SRTM via a one-time download or Open-Meteo elevation sampling on a grid); save `terrain_kdvt.npy` + meta; `elev_at(lat, lon)`.
 4. `data/obstacles.py` — FAA Digital Obstacle File filtered to ~15 mi; `obstacles_kdvt.csv`.
 5. `data/opensky.py` (nice-to-have) — live `/states/all` in a Phoenix bbox every 10 s → `LIVE_TRAFFIC` frames to the world for an optional god-view overlay; recorded snapshot fallback.

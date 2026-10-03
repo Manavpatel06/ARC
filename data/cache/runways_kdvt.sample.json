@@ -1,7 +1,68 @@
-{"airport":"KDVT","name":"Phoenix Deer Valley","elev_ft":1478,"lat":33.6883,"lon":-112.0826,"tpa_agl_ft":1000,
- "runways":[
-  {"id":"07R/25L","length_ft":8208,"width_ft":100,"heading_true_deg":{"07R":72,"25L":252},"pattern":{"25L":"left","07R":"right"},
-   "ends":{"07R":{"lat":33.6873,"lon":-112.0957},"25L":{"lat":33.6948,"lon":-112.0702}}},
-  {"id":"07L/25R","length_ft":4500,"width_ft":75,"heading_true_deg":{"07L":72,"25R":252},"pattern":{"25R":"right","07L":"left"},
-   "ends":{"07L":{"lat":33.6894,"lon":-112.0881},"25R":{"lat":33.6935,"lon":-112.0742}}}],
- "note":"SAMPLE for development — approximate coordinates. data/runways.py overwrites runways_kdvt.json from OurAirports runways.csv. Verify before the pitch (Pull Queue item)."}
+{
+ "airport": "KDVT",
+ "name": "Phoenix Deer Valley",
+ "elev_ft": 1478.0,
+ "lat": 33.688301,
+ "lon": -112.083,
+ "mag_var_deg": 12.0,
+ "tpa_msl_ft": 2500,
+ "tpa_agl_ft": 1022,
+ "tpa_turbine_msl_ft": 3000,
+ "north_runway": "07L/25R",
+ "south_runway": "07R/25L",
+ "ends": {
+  "07L": {
+   "lat": 33.68916,
+   "lon": -112.0894517,
+   "far_lat": 33.6900202,
+   "far_lon": -112.0746956,
+   "elev_ft": 1455.1,
+   "hdg_true_deg": 86.0,
+   "hdg_mag_deg": 74,
+   "length_ft": 4500,
+   "width_ft": 75,
+   "pattern": "left",
+   "displaced_ft": 0
+  },
+  "25R": {
+   "lat": 33.6900202,
+   "lon": -112.0746956,
+   "far_lat": 33.68916,
+   "far_lon": -112.0894517,
+   "elev_ft": 1476.8,
+   "hdg_true_deg": 266.0,
+   "hdg_mag_deg": 254,
+   "length_ft": 4500,
+   "width_ft": 75,
+   "pattern": "right",
+   "displaced_ft": 0
+  },
+  "07R": {
+   "lat": 33.6868342,
+   "lon": -112.0962689,
+   "far_lat": 33.6884008,
+   "far_lon": -112.0693934,
+   "elev_ft": 1439.9,
+   "hdg_true_deg": 86.0,
+   "hdg_mag_deg": 74,
+   "length_ft": 8196,
+   "width_ft": 100,
+   "pattern": "right",
+   "displaced_ft": 898
+  },
+  "25L": {
+   "lat": 33.6884008,
+   "lon": -112.0693934,
+   "far_lat": 33.6868342,
+   "far_lon": -112.0962689,
+   "elev_ft": 1478.1,
+   "hdg_true_deg": 266.0,
+   "hdg_mag_deg": 254,
+   "length_ft": 8196,
+   "width_ft": 100,
+   "pattern": "left",
+   "displaced_ft": 916
+  }
+ },
+ "source": "AirNav (FAA 5010) runway ends, read 2026-10-03"
+}

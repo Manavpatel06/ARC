@@ -13,7 +13,8 @@ Every lane develops against `stubs/` until the real module exists, then swaps in
 | A node emitting ADVISORY / COMMAND / TRUST / PREDICTION | `python stubs/fake_node.py --id N101 --speed 4` | `node/node.py` (Reya) |
 | A radio client with `send()` / `on_message()` | `from stubs.loopback_radio import RadioClient` | `radio/client.py` same API (Mansi) |
 | A log view | `python stubs/tail_log.py` | `web/log.html` (Manav) |
-| Terrain / METAR / runways files | `data/cache/*.sample.json` committed in repo (flat terrain, DA 4,980 ft) | `data/*.py` fetchers (Manav) |
+| Terrain / METAR / runways files | `data.runways.load()` (real), `data.metar.load()` (sample DA 4,083 ft, wind 250/8), `data.terrain.elev_at_ft()` (flat) | live METAR + terrain grid (Manav) |
+| Pattern geometry (spawn, legs, classifier) | `pattern.py` — real, shared, use directly | — |
 
 Swap rule: when a real module passes its acceptance test, its owner posts "REAL: <module> on main" in the team chat and marks the row `[x]` here. Everyone else pulls and switches off the stub. If the real one breaks, switch back to the stub and keep moving; don't wait for the fix.
 
@@ -81,7 +82,8 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| D1 | `data/metar.py` → `metar_kdvt.json` + density altitude; `data/runways.py` → `runways_kdvt.json`. Replace the `.sample` files. | 12:30 | [ ] |
+| D1 | `data/runways.py` (surveyed ends, `load()`) + `/pattern.py` shared geometry + `data/metar.py` (`load`, `climb_fpm`, `wind_vector_ms`). | 12:30 | [x] |
+| D1b | Run `python data/metar.py` on the hotspot to confirm the live fetch works (blocked from the build sandbox). | 1:00 PM | [ ] |
 | D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [ ] |
 | D3 | Hotspot test: four laptops reach the world server; write the IP in team chat. | 12:00 | [ ] |
 | D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
@@ -100,7 +102,7 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 | `harness/scenarios/three_on_final.json` (three aircraft converging on 25L final) | | [ ] |
 | `harness/scenarios/straight_in_misclassified.json` (straight-in that looks like base) | | [ ] |
 | `harness/scenarios/spoof_on_final.json` (GHOST7 appears at 1 mi final) | | [ ] |
-| Airport diagram check: KDVT runway ends/headings/TPA vs OurAirports (write result in CONTEXT.md) | | [ ] |
+| Airport diagram check: KDVT runway ends/headings/TPA (write result in CONTEXT.md) | Manav | [x] true hdg 086/266, 25R north, TPA 2,500 MSL |
 | Q&A sheet: 15 likely judge questions with 2-line answers (`docs/qa.md`) | | [ ] |
 | Status-report one-pager template for 1 PM and 7 PM (`docs/status.md`) | | [ ] |
 | Glossary for the slide footer (GA, TCAS, RA/TA, ADS-B, NMAC, CPA, DA) | | [ ] |

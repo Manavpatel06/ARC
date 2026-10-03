@@ -5,12 +5,18 @@ Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for L
 ## Start against stubs (no waiting)
 Start now, without Lane A, C or D: run `python stubs/fake_world.py` for OWNSHIP/COMMAND/STICK, import `from stubs.loopback_radio import RadioClient` (identical API to the coming `radio/client.py`), use `data/terrain.elev_at` (flat sample) and `data/cache/*.sample.json`. Hard-code every peer TRUSTED until Phase 2. Your task rows with times: `BOARD.md` → Lane B.
 
+## Contract v1.1 (Sat 12:20 PM) — what changes for you
+- **TRUST targets must carry `rel`** `{brg_deg (TRUE own→target), rng_m, dalt_ft (target−own), trk_deg, vs_fpm}` computed from the peer's last STATE — the cockpit radar draws only this. Send TRUST at ≥ 1 Hz.
+- **Geometry is shared:** `pattern.py` gives `to_enu/from_enu`, `legs(runway)` (ENU segments + headings + altitudes) and `place()`. B2 `node/geometry.py` should wrap it, not redefine the pattern. KDVT headings are **086°/266° TRUE**; 25L left traffic is south of the field (downwind 086, base 356, final 266).
+- **Weather/terrain:** `data.metar.load()` (DA 4,083 ft sample), `data.metar.climb_fpm(da)`, `data.terrain.elev_at_ft()`. OWNSHIP `gs_kt/track_deg` now include wind; predict with ground velocity, decide maneuvers with air data.
+- Optional `PREDICTION` frames now have a model (`schemas.Prediction`) — the god view draws them.
+
 ## Goal
 Build the node: one Python process per aircraft that reads only OWNSHIP, hears peers over the radio, predicts turns, detects conflicts, responds in four layers, picks maneuvers with the Escape Field, takes and releases control within printed bounds, and explains everything. Then prove it with a Monte Carlo chart against a straight-line baseline.
 
 ## Deliverables (in `/node` and `/harness`)
 1. `node/node.py` — asyncio main loop at 10 Hz. Connects to world as `node:<id>` and to the radio (`radio/client.py` from Lane C). Maintains tracks for peers (last STATE/INTENT, age, trust from `trust.py`). Emits ADVISORY, COMMAND, TRUST, and optional PREDICTION frames.
-2. `node/geometry.py` — lat/lon ↔ local ENU meters around KDVT; runway geometry from `data/cache/runways_kdvt.json`; pattern leg polygons for 25L (left traffic) and 25R.
+2. `node/geometry.py` — thin wrapper over `pattern.py` (ENU, `legs()`); leg polygons for 25L (left traffic) and 25R (right traffic) built from those segments ± a corridor width.
 3. `node/predict.py` — **turn-aware prediction**. Classify leg from position, track and altitude relative to the runway (UPWIND/CROSSWIND/DOWNWIND/BASE/FINAL/STRAIGHT_IN/GO_AROUND/UNKNOWN) with a confidence. Predict the next 90 s *including the turn to the next leg* (turn point from pattern geometry; turn radius from speed and 20° bank). Use the peer's declared INTENT when present. **If confidence < 0.6, fall back to straight-line prediction with wider uncertainty.** Output: list of (t, x, y, z, sigma).
 4. `node/conflict.py` — pairwise predicted closest approach for own vs each peer (k nearest, k=6). Conflict = predicted miss < 500 ft horizontal and < 100 ft vertical within 90 s, accounting for sigma. Returns ttc and miss.
 5. `node/layers.py` — escalation by ttc: ≤90 s SEQUENCE, ≤35 s TRAFFIC, ≤20 s RESOLVE, ≤8 s TAKEOVER. Sequencing: for same-runway pattern conflicts, propose order by distance-to-threshold; lower ID proposes (SEQ_PROPOSE), peer accepts; advisory text "NUMBER 2 - EXTEND DOWNWIND 15 S". Hysteresis so levels do not flap.

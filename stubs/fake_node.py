@@ -10,7 +10,7 @@ ladder on a timer (no real conflict logic):
   t+42  TAKEOVER  COMMAND bank -28 for 8 s + ADVISORY "FLOCK HAS THE AIRCRAFT"
   t+50  RELEASE   "YOUR AIRCRAFT - CONTINUE LEFT TURN"
   t+58  CLEAR     "CLEAR OF CONFLICT"
-  then loops. TRUST frame every 2 s with N204 TRUSTED and GHOST7 FAKE.
+  then loops. TRUST frame every 1 s with N204 TRUSTED and GHOST7 FAKE, each with a v1.1 `rel` radar position.
 Also broadcasts a PREDICTION frame (60 s straight-line path) at 1 Hz for the god view.
 
 Run:  python stubs/fake_node.py --id N101 --world ws://localhost:8765 [--speed 4]
@@ -80,12 +80,16 @@ async def run(ac_id: str, world: str, speed: float = 1.0):
                         await ws.send(json.dumps(cmd))
                     if level == "RELEASE":
                         await ws.send(json.dumps({"type": "COMMAND", "ac_id": ac_id, "t": now, "mode": "RELEASE", "reason": {"cause": "conflict clear"}}))
-            if now - last_trust > 2:
+            if now - last_trust > 1:
                 last_trust = now
+                # v1.1 rel: scripted relative positions (a real node computes these from peer STATE)
+                trk = own["track_deg"]
+                closing = max(200.0, 2600.0 - 40.0 * el)            # N204 closes from ~1.4 NM as the ladder runs
                 await ws.send(json.dumps({"type": "TRUST", "ac_id": ac_id, "t": now, "targets": [
-                    {"id": "N204", "score": 0.93, "state": "TRUSTED", "evidence": ["plausible", "corroborated:2", "signed"]},
-                    {"id": "GHOST7", "score": 0.12, "state": "FAKE", "evidence": ["no_corroboration", "kinematics_violation", "unsigned"]},
-                    {"id": "CAM-1", "score": 0.55, "state": "CAMERA_ONLY", "evidence": ["sighting:N311", "az 42"]}]}))
+                    {"id": "N204", "score": 0.93, "state": "TRUSTED", "evidence": ["plausible", "corroborated:2", "signed"],
+                     "rel": {"brg_deg": round((trk + 45) % 360, 1), "rng_m": round(closing), "dalt_ft": -30, "trk_deg": 41, "vs_fpm": 0}},
+                    {"id": "GHOST7", "score": 0.12, "state": "FAKE", "evidence": ["no_corroboration", "kinematics_violation", "unsigned"],
+                     "rel": {"brg_deg": round((trk - 100) % 360, 1), "rng_m": 2100, "dalt_ft": 0, "trk_deg": 266, "vs_fpm": -500}}]}))
             if now - last_pred > 1:
                 last_pred = now
                 await ws.send(json.dumps(predict(own)))
