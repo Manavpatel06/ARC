@@ -20,7 +20,7 @@ rejection can be logged.
     ok = verify(kp.pub_b64, env)       # True/False
 """
 from __future__ import annotations
-import base64, json, time
+import base64, json, os, time
 from typing import Optional
 
 from nacl.signing import SigningKey, VerifyKey
@@ -51,6 +51,34 @@ def verify(pub_b64: str, env: dict) -> bool:
         return True
     except (BadSignatureError, ValueError, TypeError, KeyError):
         return False
+
+
+def node_key(ac_id: str, key_dir: Optional[str] = None) -> "KeyPair":
+    """Per-aircraft key kept on THIS device (~/.flock/keys/<id>.seed), so a restarted node keeps its identity
+    (stand-in for a key provisioned at install). A different laptop gets a different key -> registrar refuses it
+    until the channel restarts."""
+    key_dir = key_dir or os.environ.get("FLOCK_KEY_DIR") or os.path.join(os.path.expanduser("~"), ".flock", "keys")
+    path = os.path.join(key_dir, f"{ac_id}.seed")
+    try:
+        with open(path, "rb") as f:
+            seed = f.read()
+        if len(seed) == 32:
+            return KeyPair(seed)
+    except OSError:
+        pass
+    seed = os.urandom(32)
+    try:
+        os.makedirs(key_dir, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(seed)
+    except OSError:
+        pass
+    return KeyPair(seed)
+
+
+def initial_seq() -> int:
+    """Start seq from the clock (0.1 s units) so a restarted sender is never mistaken for a replay."""
+    return int(time.time() * 10)
 
 
 class KeyRing:
