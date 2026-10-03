@@ -47,3 +47,6 @@ Cockpit controls:
   a NEAREST readout (distance, clock position, height) and badges sorted by distance. Aircraft without a FLOCK
   radio (flock: false) are not heard. Run the real stack (world + radio/channel.py + node/node.py per aircraft,
   e.g. run_demo.ps1 on the integration branch) - with only the world running there is no traffic to show.
+- God view "Live sky": real ADS-B aircraft around KDVT (LIVE_TRAFFIC from `python data/live_traffic.py --world ws://<ip>:8765`)
+  as small cyan chevrons with callsign, altitude and pattern leg; display only (never sent to nodes), fades when the
+  feed goes stale; toggle with the "Live sky" layer.
