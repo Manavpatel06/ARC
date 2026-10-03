@@ -33,6 +33,8 @@ TERRAIN_CLEARANCE_M = 300 * FT
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
 MIN_IAS_KT = 62.0
+SIMILAR_MARGIN = 0.3             # margins this close count as "similar" for the tie-breakers
+SIMILAR_SEVERITY = 0.25          # ... and so do maneuvers within one bank step of the least severe one
 PATTERN_FLOOR_BELOW_TPA_M = 300 * FT
 
 
@@ -55,6 +57,15 @@ class Candidate:
         if self.kind == "turn":
             return "R" if self.bank > 0 else "L"
         return {"climb": "CLIMB", "descend": "DESCEND", "hold": "HOLD"}[self.kind]
+
+
+def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
+    """Shared fuel/time cost (cost.py, Lane D) of flying this candidate; zero-cost fallback if cost.py is absent."""
+    try:
+        from cost import candidate_cost
+        return candidate_cost(c.name, bank_deg=abs(c.bank), vs_fpm=c.vs_fpm, hold_s=hold_s, kt=max(own.gs / KT, 40.0))
+    except Exception:
+        return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
 
 
 def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
@@ -144,6 +155,8 @@ class EscapeResult:
     evals: list                     # every Evaluation
     rejected: dict                  # name -> reason
     base_margin: float              # margin of HOLD (nothing changes)
+    costs: dict = field(default_factory=dict)       # candidate name -> shared cost.py numbers
+    env: dict = field(default_factory=dict)         # density altitude / climb capability the decision used
 
     @property
     def chosen(self) -> Optional[Evaluation]:
@@ -155,6 +168,15 @@ class EscapeResult:
              "margin": round(ch.margin, 2) if ch else None, "hold_margin": round(self.base_margin, 2)}
         if ttc_s is not None:
             r["ttc_s"] = round(ttc_s, 1)
+        if self.env:
+            r["env"] = dict(self.env)
+        if self.costs:
+            def brief(c):
+                return {"extra_s": c["extra_s"], "fuel_gal": c["fuel_gal"], "usd": c["usd"]}
+            cc = self.costs.get(ch.cand.name) if ch else None
+            r["cost"] = {"chosen": brief(cc) if cc else None,
+                         "rejected": {n: brief(c) for n, c in self.costs.items() if ch is None or n != ch.cand.name},
+                         "note": (f"extra {cc['extra_s']:.0f} s, {cc['fuel_gal']:.2f} gal" if cc else "")}
         return r
 
 
@@ -203,7 +225,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         elif c.kind == "turn" and own.ias_kt < MIN_IAS_KT + 3.0:
             reason = f"speed margin {own.ias_kt:.0f} kt"
         elif c.kind == "climb" and (own.ias_kt < MIN_IAS_KT + 3.0 or climb < 250.0):
-            reason = f"performance {climb:.0f}fpm"
+            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft"
         elif c.kind != "hold":
             zs = path[:, 2]
             xs, ys = path[::4, 0], path[::4, 1]
@@ -219,7 +241,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
             elif ceiling_msl_m is not None and zs.max() > ceiling_msl_m:
                 reason = "airspace ceiling"
         if reason is None and c.kind != "hold" and margin < MARGIN_MIN:
-            reason = f"performance {climb:.0f}fpm" if c.kind == "climb" else "traffic"
+            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind == "climb" else "traffic"
         ev = Evaluation(c, reason is None, reason, margin, mh, mv, path)
         evals.append(ev)
         if reason is not None:
@@ -229,6 +251,17 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
     marginal = [e for e in evals if e.feasible and MARGIN_MIN <= e.margin < MARGIN_OK and e.cand.kind != "hold"]
     good.sort(key=lambda e: (e.cand.severity, -e.margin))
     marginal.sort(key=lambda e: -e.margin)
+    costs = {e.cand.name: _cost(e.cand, own, hold_s) for e in evals}
+    # Safety decides who is allowed (every check passed, margin >= MARGIN_OK).  Among those that are about as safe
+    # as the least severe one, break ties: (1) turn right rather than left (14 CFR 91.113: head-on, both right),
+    # (2) lower fuel from the shared cost model, (3) lower severity.  Cost never promotes a less safe maneuver.
+    if good:
+        c0 = good[0]
+        group = [e for e in good if e.cand.severity <= c0.cand.severity + SIMILAR_SEVERITY
+                 and e.margin >= c0.margin - SIMILAR_MARGIN]
+        group.sort(key=lambda e: (1 if (e.cand.kind == "turn" and e.cand.bank < 0) else 0,
+                                  round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
+        good = group + [e for e in good if e not in group]
     ranked = good + marginal
     if require_maneuver:
         # complementary = our maneuver must add separation on top of what the peer's maneuver already gives
@@ -237,4 +270,4 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
     for e in evals:
         if e.feasible and e not in ranked:
             rejected[e.cand.name] = "traffic" if e.cand.kind != "hold" else "conflict persists"
-    return EscapeResult(ranked, evals, rejected, base)
+    return EscapeResult(ranked, evals, rejected, base, costs, {"da_ft": round(own.da_ft), "climb_fpm": round(climb)})

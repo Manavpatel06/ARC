@@ -262,3 +262,78 @@ def test_fake_target_is_never_acted_on():
     assert not cmds and not (levels & {"RESOLVE", "TAKEOVER", "SEQUENCE", "TRAFFIC"}), levels
     tr = [f for f in frames if f["type"] == "TRUST"] or [node.trust.frame("N101", t, ["GHOST7"], node._rels(t))]
     assert tr[-1]["targets"][0]["state"] == "FAKE" and "rel" in tr[-1]["targets"][0]
+
+
+# ---- Phase 1 hardening: R/R head-on, peer PREDICTION, live DA, obstacles, cost tie-breaker
+def test_head_on_prefers_right_turns_and_reports_cost():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr)
+    assert r.chosen.cand.name.startswith("R"), [e.cand.name for e in r.ranked[:4]]
+    why = r.reason()
+    assert why["cost"]["chosen"]["fuel_gal"] >= 0 and "extra" in why["cost"]["note"]
+    assert set(why["cost"]["rejected"]) >= {"L20", "R30", "CLIMB"}
+
+
+def test_both_aircraft_of_a_head_on_choose_right():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    mine = escape.evaluate(own, hold, peers, terr).chosen.cand
+    peer_view = escape.OwnState(0, 1250, 300.0, 180.0, 46.0, 0.0, 0.0, 90.0, 300.0, 4980.0, 300.0)
+    their_hold = peers["B"]
+    their_peers = {"A": hold}
+    theirs = escape.evaluate(peer_view, their_hold, their_peers, terr).chosen.cand
+    assert mine.sense == "R" and theirs.sense == "R"
+
+
+def test_cost_never_beats_safety():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr)
+    cheap_unsafe = [e for e in r.evals if e.cand.kind == "descend"]
+    assert r.chosen.margin >= escape.MARGIN_OK
+    assert all(e.cand.name != "DESCEND" or e.margin >= escape.MARGIN_OK for e in [r.chosen])
+    assert cheap_unsafe and cheap_unsafe[0].cand.name in r.rejected or cheap_unsafe[0].margin >= escape.MARGIN_OK
+
+
+def test_live_density_altitude_changes_climb_and_reason_text():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    own.da_ft = 8000.0
+    r = escape.evaluate(own, hold, peers, terr)
+    assert r.env["da_ft"] == 8000 and abs(r.env["climb_fpm"] - 300) <= 1
+    if "CLIMB" in r.rejected and "performance" in r.rejected["CLIMB"]:
+        assert "at DA 8,000 ft" in r.rejected["CLIMB"]
+    n = Node("N101", patterns=PATS)
+    n.on_env({"type": "ENV", "da_field_ft": 8000.0})
+    assert n.da_ft == 8000.0
+
+
+def test_performance_rejection_text_names_the_density_altitude():
+    own, hold, peers, terr = _head_on(own_z=300.0, peer_z=300.0, terrain=100.0)
+    own.da_ft = 12500.0                                        # 80 fpm: below the 250 fpm floor
+    r = escape.evaluate(own, hold, peers, terr)
+    assert r.rejected["CLIMB"].startswith("performance") and "at DA 12,500 ft" in r.rejected["CLIMB"]
+
+
+def test_obstacle_fn_is_used_when_data_obstacles_exists(monkeypatch):
+    import sys
+    import types
+    mod = types.ModuleType("data.obstacles")
+    mod.top_at = lambda lat, lon: 9000.0                       # every point has a 9,000 ft MSL obstacle
+    monkeypatch.setitem(sys.modules, "data.obstacles", mod)
+    n = Node("N101", patterns=PATS)
+    assert n.obstacle_fn is not None and abs(n.obstacle_fn(0.0, 0.0) - 9000.0 * FT) < 1e-6
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, obstacle_fn=n.obstacle_fn)
+    assert r.rejected.get("L30") == "obstacle" and r.chosen is None
+
+
+def test_peer_prediction_frames_are_published_for_the_god_view():
+    ac = load_scenario("harness/scenarios/base_cutoff_conflict.json", PATS, comply=0.0)
+    sim = Sim(PATS, ac, lambda i: Node(i, patterns=PATS), loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
+    sim.run(70)
+    node = sim.aircraft["N101"].node
+    preds = [f for k, _, f in node.sent if k == "world" and f["type"] == "PREDICTION"]
+    peer = [f for f in preds if f["target_id"] == "N399"]
+    own = [f for f in preds if f["target_id"] is None]
+    assert own and peer
+    for f in peer[-3:]:
+        schemas.Prediction.model_validate(f)
+    assert peer[-1]["ac_id"] == "N101" and peer[-1]["path"][0]["t"] == 0.0 and len(peer[-1]["path"]) == 19
