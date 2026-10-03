@@ -89,7 +89,7 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 | D3 | Hotspot test: four laptops reach the world server (`python stubs/ping_world.py --world ws://<ip>:8765`); write the IP in team chat. | 12:00 | [~] |
 | D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
 | D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [x] done early |
-| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. | 6:00 | [ ] |
+| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. Uses real modules when present, stubs otherwise; `-Spoof`, `-Stubs`, `-Stop`. | 6:00 | [x] .sh tested; .ps1 needs a Windows run |
 | D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [ ] |
 | D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [ ] |
 | D10 | *Phase 3:* `node/crystal.py` Escape Crystal + MFI → CRYSTAL frames. | after go/no-go | [ ] |
