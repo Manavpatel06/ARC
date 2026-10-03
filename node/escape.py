@@ -30,6 +30,7 @@ NMAC_V_M = 100 * FT
 MARGIN_OK = 1.5                  # NMAC-box multiples considered "clear with margin"
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
+TERRAIN_FLOOR_MIN_M = 50 * FT      # even on short final no maneuver may go below this over the ground
 OBSTACLE_CLEARANCE_M = 100 * FT   # data.obstacles.top_at() is already conservative (surveyed accuracy + footprint)
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
@@ -69,17 +70,33 @@ def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
         return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
 
 
-def _hits_obstacle(path, xs, ys, own: "OwnState", obstacle_fn) -> bool:
-    """Below top + 300 ft inside an obstacle's protection cylinder, but only if the maneuver makes things worse:
-    it descends more than 12 m, or runs into an obstacle taller than the one we are already passing."""
-    here = obstacle_fn(own.x, own.y)
-    here = -1e9 if here is None else here
+def _hits_obstacle(path, xs, ys, hold, obstacle_fn) -> bool:
+    """Below top + 100 ft inside an obstacle's protection cylinder, but only if the maneuver is worse than the
+    flight we are already on (HOLD): it is >12 m lower at that instant, or meets an obstacle taller than HOLD does."""
     for i in range(len(xs)):
         top = obstacle_fn(float(xs[i]), float(ys[i]))
         if top is None:
             continue
         z = path[i * 4, 2]
-        if z < top + OBSTACLE_CLEARANCE_M and (top > here + 1.0 or z < own.z - 12.0):
+        if z >= top + OBSTACLE_CLEARANCE_M:
+            continue
+        hx, hy, hz = hold[min(i * 4, len(hold) - 1)]
+        hold_top = obstacle_fn(float(hx), float(hy))
+        hold_top = -1e9 if hold_top is None else hold_top
+        if top > hold_top + 1.0 or z < hz - 12.0:
+            return True
+    return False
+
+
+def _hits_terrain(path, xs, ys, hold, terrain_fn) -> bool:
+    """Below 300 ft over terrain, but never judged against a stricter floor than the flight we are already on:
+    the floor is min(300 ft, HOLD's own clearance at that instant - 12 m).  A short final that lands 15 m below
+    rising ground ahead must still be able to climb; a descent or a turn that gets closer to the ground cannot."""
+    for i in range(len(xs)):
+        k = min(i * 4, len(hold) - 1)
+        hold_clear = hold[k, 2] - terrain_fn(float(hold[k, 0]), float(hold[k, 1]))
+        floor = min(TERRAIN_CLEARANCE_M, max(TERRAIN_FLOOR_MIN_M, hold_clear - 12.0))
+        if path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < floor:
             return True
     return False
 
@@ -246,11 +263,9 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         elif c.kind != "hold":
             zs = path[:, 2]
             xs, ys = path[::4, 0], path[::4, 1]
-            # keep >= 300 ft over terrain; an aircraft already lower than that (short final) only has to not lose height
-            clear = min(TERRAIN_CLEARANCE_M, max(0.0, own.agl - 12.0))
-            if any(path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < clear for i in range(len(xs))):
+            if _hits_terrain(path, xs, ys, hold_path, terrain_fn):
                 reason = "terrain floor"
-            elif obstacle_fn and _hits_obstacle(path, xs, ys, own, obstacle_fn):
+            elif obstacle_fn and _hits_obstacle(path, xs, ys, hold_path, obstacle_fn):
                 reason = "obstacle"
             elif c.kind == "descend" and pattern_floor is not None and zs.min() < pattern_floor:
                 reason = "pattern altitude floor"

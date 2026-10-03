@@ -161,9 +161,16 @@ def test_escape_head_on_picks_a_turn_and_explains():
 
 
 def test_escape_terrain_floor_blocks_everything_low():
+    # a ridge 120 m high ahead (y > -800): holding course meets it too, so nothing straight or lateral is acceptable
+    own, hold, peers, _ = _head_on(own_z=450 + 80, peer_z=450 + 80)
+    r = escape.evaluate(own, hold, peers, lambda x, y: 450.0 + (120.0 if y > -800.0 else 0.0))
+    assert r.chosen is None and r.rejected["L30"] == "terrain floor"
+
+
+def test_low_aircraft_may_climb_but_not_descend_toward_the_ground():
     own, hold, peers, terr = _head_on(own_z=450 + 80, peer_z=450 + 80)
-    r = escape.evaluate(own, hold, peers, terr)
-    assert r.chosen is None and r.rejected["DESCEND"] == "terrain floor"
+    r = escape.evaluate(own, hold, peers, lambda x, y: 450.0)
+    assert r.rejected["DESCEND"] == "terrain floor" and r.rejected.get("CLIMB") != "terrain floor"
 
 
 # ---- negotiate
@@ -316,13 +323,13 @@ def test_obstacle_fn_is_used_when_data_obstacles_exists(monkeypatch):
     import sys
     import types
     mod = types.ModuleType("data.obstacles")
-    mod.obstacle_fn_enu = lambda to_latlon: (lambda x, y: 2743.0 if y > -1200.0 else None)   # tall obstacles ahead (north)
+    mod.obstacle_fn_enu = lambda to_latlon: (lambda x, y: 2743.0 if abs(x) > 150.0 else None)   # tall obstacles either side
     monkeypatch.setitem(sys.modules, "data.obstacles", mod)
     n = Node("N101", patterns=PATS)
-    assert n.obstacle_fn is not None and n.obstacle_fn(0.0, 0.0) == 2743.0
+    assert n.obstacle_fn is not None and n.obstacle_fn(500.0, 0.0) == 2743.0 and n.obstacle_fn(0.0, 0.0) is None
     own, hold, peers, terr = _head_on(terrain=100.0)
     r = escape.evaluate(own, hold, peers, terr, obstacle_fn=n.obstacle_fn)
-    assert r.rejected.get("L30") == "obstacle" and r.chosen is None
+    assert r.rejected.get("L30") == "obstacle" and r.rejected.get("R30") == "obstacle"
 
 
 def test_peer_prediction_frames_are_published_for_the_god_view():

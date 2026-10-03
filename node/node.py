@@ -493,6 +493,8 @@ class Node:
 
         def evaluate(peer_commit):
             pp = dict(peers)
+            if peer_commit and not tr.ap_equipped:
+                peer_commit = None      # a pilot may or may not follow its advisory: solve it ourselves, assume it holds
             if peer_commit:
                 pp[pid] = escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
