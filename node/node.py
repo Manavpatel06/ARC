@@ -38,9 +38,9 @@ STATE_PERIOD_S = 1.0
 HEARTBEAT_PERIOD_S = 2.0
 TRUST_PERIOD_S = 1.0          # contract v1.1: the cockpit radar draws from TRUST, send at >= 1 Hz
 PRED_PERIOD_S = 1.0
-PEER_TIMEOUT_S = 10.0
+PEER_TIMEOUT_S = 30.0          # a silent peer stays on the table (sigma growing with age) so a link loss cannot erase a conflict
 LATENCY_EST_S = 0.3
-PEER_HORIZON_S = 120.0
+PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
 ESC_GRID = np.arange(0.0, escape.HORIZON_S + 1e-9, escape.DT)
 RELEVANT_RADIUS_M = 6000.0
@@ -300,7 +300,8 @@ class Node:
         return KState(tr.x, tr.y, tr.alt_press_ft * FT + self.baro_offset_m, tr.gs, tr.track, tr.vs, tr.turn_rate)
 
     def _peer_pred(self, tr: PeerTrack) -> Prediction:
-        key = (tr.seq, tr.intent_turn)
+        age = max(0.0, self.now - tr.rx_t)
+        key = (tr.seq, tr.intent_turn, int(age // 2))
         if tr.pred is None or tr.pred_key != key:
             st = self._peer_state(tr)
             t0 = tr.rx_t - self.latency_est
@@ -311,7 +312,8 @@ class Node:
                 rel = tr.intent_turn[1] - t0
                 if rel > -6.0:
                     intent = f"{tr.intent_turn[0]}_IN_{max(0.0, rel):.1f}S"
-            tr.pred = self.predictor.predict(st, t0, cls, horizon=PEER_HORIZON_S, intent=intent)
+            tr.pred = self.predictor.predict(st, t0, cls, horizon=PEER_HORIZON_S, intent=intent,
+                                             age_s=max(0.0, age - 1.0))        # >1 s silent: widen sigma
             tr.pred_key = key
         return tr.pred
 

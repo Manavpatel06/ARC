@@ -57,7 +57,7 @@ Stubs to run while building: `stubs/fake_world.py` (OWNSHIP in, COMMAND applied)
 | B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [x] |
 | B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
 | B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [~] |  trust gating + `rel` radar positions done; peers hard-coded TRUSTED until `radio/evidence.py` lands (`TrustTable.set_scorer`) |
-| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [~] |  lost-link R/R fallback is in `negotiate.py` (tested); `three_on_final.json` scenario not built |
+| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [x] |  lost-link R/R fallback + stale-track handling (`accept_b.py` B12), `three_on_final.json` added |
 | B13 | *Phase 3:* Marana replay scenario `harness/scenarios/marana_2025.json`. | after go/no-go | [ ] |
 | B14 | *Queue:* out-of-sample validation on recorded KDVT ADS-B (OpenSky) if account arrives. | queue | [ ] |
 
