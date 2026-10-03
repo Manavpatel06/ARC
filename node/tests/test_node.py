@@ -218,3 +218,47 @@ def test_scenario_base_cutoff_end_to_end():
         schemas.Command.model_validate(f)
     assert all(f["reason"] for _, _, f in res.commands)
     assert res.tick_ms_mean < 10.0
+
+
+# ---- pull-queue scenarios: straight-in that looks like base, spoofed GHOST7 on final
+def test_straight_in_crabbing_is_not_read_as_base():
+    for crab in (-25.0, 25.0):
+        st = st_on("STRAIGHT_IN", along_m=P25L.legs["STRAIGHT_IN"].length - 900)
+        st.track = (st.track + crab) % 360.0
+        c = PRED.classify(st)
+        assert c.leg != "BASE", (crab, c)
+        p = PRED.predict(st, 0.0, c)
+        if p.method == "turn-aware":                     # confident -> it must not invent a base turn
+            assert p.next_turn is None or p.next_turn[0] != "BASE"
+
+
+def test_fake_target_is_never_acted_on():
+    node = Node("N101", patterns=PATS)
+    node.trust.update("GHOST7", 0.12, ["no_corroboration", "kinematics_violation"])
+    pl = P25L.place("FINAL", 0.0, 90.0, 800)
+    ox, oy = pl["x_m"], pl["y_m"]
+    from node.geometry import to_latlon, hvec
+    hx, hy = hvec(pl["hdg_deg"])
+    levels, cmds = set(), []
+    for k in range(0, 400):                                  # 40 s at 10 Hz, GHOST7 head-on 1.2 km ahead
+        t = 1.0e9 + k * 0.1
+        x, y = ox + hx * 46.3 * k * 0.1, oy + hy * 46.3 * k * 0.1
+        lat, lon = to_latlon(x, y)
+        own = {"type": "OWNSHIP", "ac_id": "N101", "t": t, "lat": lat, "lon": lon, "alt_msl_ft": 1830.0, "alt_press_ft": 1820.0,
+               "agl_ft": 352.0, "gs_kt": 90.0, "track_deg": pl["hdg_deg"], "hdg_deg": pl["hdg_deg"], "bank_deg": 0.0, "vs_fpm": 0.0,
+               "ias_kt": 90.0, "ap_equipped": True, "stick_active": False, "flaps": 0}
+        if k % 10 == 0:
+            gl, gn = to_latlon(x + hx * 1200 - hx * 46.3 * 0.0, y + hy * 1200)
+            node.on_radio({"msg": "STATE", "from": "GHOST7", "seq": k + 1, "t": t, "sig": "",
+                           "body": {"lat": gl, "lon": gn, "alt_press_ft": 1820.0, "gs_kt": 90.0,
+                                    "track_deg": (pl["hdg_deg"] + 180.0) % 360.0, "vs_fpm": 0.0, "leg": "UNKNOWN",
+                                    "intent": "", "ap_equipped": False}})
+        frames, _ = node.tick(own)
+        for f in frames:
+            if f["type"] == "ADVISORY":
+                levels.add(f["level"])
+            if f["type"] == "COMMAND":
+                cmds.append(f)
+    assert not cmds and not (levels & {"RESOLVE", "TAKEOVER", "SEQUENCE", "TRAFFIC"}), levels
+    tr = [f for f in frames if f["type"] == "TRUST"] or [node.trust.frame("N101", t, ["GHOST7"], node._rels(t))]
+    assert tr[-1]["targets"][0]["state"] == "FAKE" and "rel" in tr[-1]["targets"][0]

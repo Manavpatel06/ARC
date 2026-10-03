@@ -1,0 +1,5 @@
+{"name":"straight_in_misclassified","note":"Pull Queue: a straight-in that looks like base. N399 is on the extended centerline 90 s from the base-to-final turn point, crabbing 25 deg off the final heading as it joins, while N101 flies the pattern. The node must not read N399 as a BASE leg (it is STRAIGHT_IN or low-confidence, which means straight-line prediction) and must not invent a turn for it.",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":48},"ap":true,"human":true},
+ {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"human":true}
+],"channel":{"loss":0.1,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}
