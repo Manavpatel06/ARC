@@ -33,7 +33,7 @@ G = 9.80665
 GLIDE_DEG = 3.0
 
 LEG_ORDER = ["UPWIND", "CROSSWIND", "DOWNWIND", "BASE", "FINAL"]
-DEFAULT_RUNWAYS = ("25L", "25R")
+DEFAULT_RUNWAYS = ("25L", "25R", "07L", "07R")      # both flows: head_on_judges.json lands aircraft on 07R
 
 
 def to_enu(lat: float, lon: float) -> tuple[float, float]:
