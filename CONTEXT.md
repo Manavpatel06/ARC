@@ -11,8 +11,9 @@ FLOCK is a peer-to-peer collision-avoidance node for general aviation (GA), buil
 3. **The takeover is bounded and printed.** Max bank 30°, speed floor 1.3 × Vs, no automatic action below 300 ft AGL on final, no automatic descent below pattern altitude − 300 ft, max 10 s authority, release on any stick input, and if no maneuver fits → warn-only and say so. These bounds are enforced by a small separate monitor, not by the smart logic.
 4. **Honest words.** Say "RAs inhibited below 1,000 ft AGL (TAs continue)", not "TCAS goes silent". Don't claim nanosecond latency. Don't say "would have prevented" a real crash; say "produces a timely intervention under the published geometry".
 5. **Scope discipline.** Must-haves first (Phase 1), then Phase 2, then one Phase 3 add-on at a time. Anything not green at the 7 PM status report is cut, not improvised. Record a backup video Saturday night.
-6. **Nobody waits.** Every cross-lane dependency has a stand-in in `stubs/` that speaks the contract. Build against the stub; swap when the real module is marked `[x]` in `BOARD.md`.
-7. **Everything speaks the same schema.** `schemas.py` is the contract. Change it only by agreement in the team chat.
+6. **Use the shared tools, don't re-derive.** Runways `data.runways.load()`, weather/DA/wind `data.metar.load()` + `climb_fpm()` + `wind_vector_ms()`, terrain `data.terrain.elev_at_ft()`, pattern `pattern.py`, messages `schemas.py`.
+7. **Nobody waits.** Every cross-lane dependency has a stand-in in `stubs/` that speaks the contract. Build against the stub; swap when the real module is marked `[x]` in `BOARD.md`.
+8. **Everything speaks the same schema.** `schemas.py` is the contract. Change it only by agreement in the team chat.
 
 ## Phases
 - **Phase 1 — core avoidance ("ACAS core")**, target green by Sat 7 PM: world + controllers + AI pattern traffic, nodes with turn-aware prediction, four layers, Escape Field (performance + terrain), authority protocol with bounds, comms log + explain panel, Monte Carlo chart.
@@ -41,7 +42,8 @@ flock/
 ```
 
 ## Fixed facts to use (verify against the airport diagram before the pitch)
-- Airport: Deer Valley (KDVT), Phoenix. Field elevation ≈ 1,478 ft MSL. Parallel runways 7L/25R and 7R/25L. Pattern altitude ≈ 1,000 ft AGL (≈ 2,500 ft MSL). Runway end coordinates from OurAirports `runways.csv`.
+- Airport: Deer Valley (KDVT), Phoenix. Field elevation 1,478 ft MSL. **07L/25R = north runway** (4,500 ft, 7L left traffic, 25R right traffic); **07R/25L = south runway** (8,196 ft, 7R right traffic, 25L left traffic). **Headings TRUE 086°/266°** (magnetic 074°/254°, variation ~12°E) — the sim works in lat/lon so use true. TPA 2,500 ft MSL piston (~1,020 AGL). Displaced thresholds 7R 898 ft, 25L 916 ft. Surveyed runway ends in `data/runways.py` (AirNav/FAA 5010). 25L left pattern: downwind 086° south of the field, base 356°, final 266°.
+- **Pattern geometry lives in ONE place: `pattern.py`** (`place()`, `legs()`, `to_enu()`). World spawn, AI traffic, node leg classifier and god view all import it.
 - Aircraft model: Cessna 172S-class. Vs1 ≈ 48 kt clean, pattern speed ≈ 90 kt, cruise 110–120 kt, sea-level standard climb ≈ 730 fpm; use ≈ 500 fpm at 5,000 ft density altitude and ≈ 300 fpm at 8,000 ft. Bank-to-turn: turn rate = g·tan(bank)/V.
 - Layer timings (time to predicted conflict): sequence ≤ 90 s, warn ≤ 35 s, negotiate ≤ 20 s, act ≤ 8 s. Nuisance control: a conflict needs predicted miss < 500 ft horizontal AND < 100 ft vertical (NMAC box) within the horizon, with uncertainty.
 - Radio: STATE at 1 Hz + event-driven INTENT/COMMIT; emulated range 3 statute miles (4,828 m); default loss 10%, latency 300 ms; lost link → both turn right (14 CFR 91.113).
