@@ -36,7 +36,7 @@ export function startCockpit(role) {
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); hap.bump(); break;
       case "AP_STATUS":
-        if (!m.ok) toast(`AP: ${m.reason}`, "warn");
+        if (!m.ok) { toast(`AP: ${m.reason}`, "warn", 6000); say("autopilot unavailable"); }
         else if (m.engaged) { toast(`AUTOPILOT ON · ${m.phase || ""}`, "ap"); say("autopilot engaged"); }
         else toast("AUTOPILOT OFF", "info");
         break;
@@ -201,11 +201,11 @@ function update3D(s) {
 
 // ---------- short notices (AP, touchdown, liftoff) ----------
 let toastTimer = 0;
-function toast(text, kind = "info") {
+function toast(text, kind = "info", ms = 3500) {
   const el = $("ck-toast");
   el.textContent = text; el.dataset.kind = kind; el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 function say(text) { sayAdvisory({ level: "INFO", layer: 0, speak: text }); }
 
