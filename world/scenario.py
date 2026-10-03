@@ -29,11 +29,14 @@ def make_env(airport: dict, wx: dict, da_override: float | None) -> Env:
 
 class World:
     """Everything the server needs from a scenario."""
-    def __init__(self, path: str | None, da_override: float | None = None, time_scale: float | None = None):
+    def __init__(self, path: str | dict | None, da_override: float | None = None, time_scale: float | None = None):
+        """path: scenario file, or an already-loaded scenario dict (world/find_conflict.py)."""
         raw = {"name": "default", "aircraft": [
             {"id": "N101", "start": {"leg": "DOWNWIND", "runway": "25L", "offset_s": 0}, "ap": True, "human": True},
             {"id": "N204", "start": {"leg": "BASE", "runway": "25L", "offset_s": -10}, "ap": False}]}
-        if path:
+        if isinstance(path, dict):
+            raw = path
+        elif path:
             with open(path) as f:
                 raw = json.load(f)
         self.raw = raw
