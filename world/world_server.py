@@ -238,9 +238,13 @@ class Hub:
             await asyncio.sleep(max(0.0, delay))
 
 def serve_http(port: int) -> None:
-    web = os.path.join(ROOT, "web")
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=web)
-    handler.log_message = lambda *a, **k: None
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+        def end_headers(self):                     # always serve fresh JS/CSS during the hackathon
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
+    handler = functools.partial(Quiet, directory=os.path.join(ROOT, "web"))
     httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     print(f"[world] web views on http://0.0.0.0:{port}/index.html?role=cockpitA|cockpitB|god")

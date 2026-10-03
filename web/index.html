@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FLOCK</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Click/press to start: unlocks speechSynthesis (browsers require a gesture) -->
+  <div id="start" class="start">
+    <div class="start-card">
+      <h1>FLOCK</h1>
+      <p id="start-role"></p>
+      <button id="start-btn" type="button">Start</button>
+      <p class="muted">Click, press a key or a controller button. Enables voice advisories.</p>
+    </div>
+  </div>
+
+  <!-- ===== cockpit (?role=cockpitA | cockpitB) ===== -->
+  <main id="cockpit" class="cockpit" hidden>
+    <header class="ck-top">
+      <div class="ck-id"><span>OWNSHIP</span><b id="ck-id">--</b></div>
+      <div id="ck-adv" class="ck-adv" data-level="NONE">
+        <div id="ck-adv-text">NO ADVISORY</div>
+        <div id="ck-adv-sub"></div>
+      </div>
+      <div class="ck-pills">
+        <span id="ck-link" class="pill" data-state="connecting">…</span>
+        <span id="ck-mode" class="pill">--</span>
+      </div>
+    </header>
+    <section class="ck-main">
+      <canvas id="ck-pfd" class="ck-pfd"></canvas>
+      <div class="ck-side">
+        <canvas id="ck-traffic" class="ck-traffic"></canvas>
+        <aside id="ck-bounds" class="ck-bounds" hidden>
+          <h2>FLOCK HAS THE AIRCRAFT · bounds</h2>
+          <div id="ck-bounds-body"></div>
+        </aside>
+        <ul id="ck-trust" class="ck-trust"></ul>
+      </div>
+    </section>
+    <footer class="ck-foot">
+      <span id="ck-input">keys: arrows + W/S</span>
+      <span class="thr">THR <i id="ck-thr"></i></span>
+    </footer>
+  </main>
+
+  <!-- ===== god view (?role=god) ===== -->
+  <main id="god" class="god" hidden>
+    <canvas id="god-map" class="god-map"></canvas>
+    <aside class="god-panel">
+      <header><h1>FLOCK · KDVT</h1><span id="god-link" class="pill" data-state="connecting">…</span></header>
+      <p id="god-scn" class="muted"></p>
+      <h2>Weather</h2>
+      <p id="god-metar" class="mono"></p>
+      <label class="da">
+        <span>Density altitude <b id="god-da-val">--</b></span>
+        <input id="god-da" type="range" min="0" max="10000" step="100" value="4980">
+        <span class="muted">C172S climb at field: <b id="god-climb">--</b></span>
+      </label>
+      <h2>Aircraft</h2>
+      <table class="god-table">
+        <thead><tr><th>ID</th><th>Leg</th><th>Alt</th><th>IAS</th><th>Mode</th><th>Node</th></tr></thead>
+        <tbody id="god-table"></tbody>
+      </table>
+      <h2>Legend</h2>
+      <ul class="legend">
+        <li><i style="--c: var(--own)"></i>judge aircraft</li>
+        <li><i style="--c: var(--ai)"></i>AI with FLOCK node</li>
+        <li><i class="hollow" style="--c: var(--noflock)"></i>no FLOCK node</li>
+        <li><i style="--c: var(--lvl-takeover)"></i>under FLOCK takeover</li>
+        <li><i class="ring" style="--c: var(--lvl-seq)"></i>sequence</li>
+        <li><i class="ring" style="--c: var(--lvl-traffic)"></i>traffic</li>
+        <li><i class="ring" style="--c: var(--lvl-resolve)"></i>resolve</li>
+        <li><i class="line" style="--c: var(--pred)"></i>node prediction</li>
+      </ul>
+    </aside>
+  </main>
+
+  <!-- ===== minimal log (?role=log) — Lane D builds web/log.html on the same feed ===== -->
+  <main id="log" class="log" hidden>
+    <header><h1>FLOCK log (minimal)</h1><span id="log-link" class="pill">…</span></header>
+    <table><thead><tr><th>time</th><th>kind</th><th>src</th><th>frame</th></tr></thead><tbody id="log-rows"></tbody></table>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
