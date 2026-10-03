@@ -1,0 +1,1 @@
+Lane D (Manav). See `lanes/D-integration-manav.md`. Files: metar.py, runways.py, terrain.py, obstacles.py, opensky.py, camera.py. Fetched files go in `data/cache/` (git-ignored; each laptop fetches its own).

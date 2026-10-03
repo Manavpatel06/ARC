@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+data/cache/*
+!data/cache/.gitkeep
+harness/out/*
+!harness/out/.gitkeep
+!harness/out/flock_vs_baseline.png
+*.log
+*.jsonl
+.DS_Store
+node_modules/
+.env

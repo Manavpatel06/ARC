@@ -1,0 +1,5 @@
+{"name":"boxed_in","note":"own aircraft on short final at 350 ft AGL, intruder converging from the right, terrain floor active: expect NO_SOLUTION or a clipped left turn only",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"FINAL","runway":"25L","offset_s":0,"agl_ft":350},"ap":true},
+ {"id":"N204","start":{"leg":"BASE","runway":"25L","offset_s":-5},"ap":false}
+],"channel":{"loss":0.1,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}
