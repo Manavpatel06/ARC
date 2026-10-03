@@ -5,7 +5,7 @@
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
 import { sayAdvisory } from "./voice.js";
-import { AIRCRAFT_MODEL, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
+import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -32,6 +32,17 @@ export function startCockpit(role) {
       case "TRUST": s.trust = m; break;
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); break;
+      case "AP_STATUS":
+        if (!m.ok) toast(`AP: ${m.reason}`, "warn");
+        else if (m.engaged) { toast(`AUTOPILOT ON · ${m.phase || ""}`, "ap"); say("autopilot engaged"); }
+        else toast("AUTOPILOT OFF", "info");
+        break;
+      case "WORLD_EVENT":
+        if (m.a !== s.acId) break;
+        if (m.event === "TOUCHDOWN") toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
+        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); }
+        break;
     }
   }, (status, detail) => {
     s.link = status;
@@ -42,7 +53,19 @@ export function startCockpit(role) {
 
   const inp = startInput((v) => s.acId && link.send({ type: "INPUT", ac_id: s.acId, ...v }));
 
-  if (new URLSearchParams(location.search).get("view") !== "2d") start3D(s);
+  // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
+  const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
+  $("ck-ap").addEventListener("click", toggleAP);
+  addEventListener("flock:ap", toggleAP);
+  addEventListener("keydown", (e) => { if (e.code === "KeyA" && !e.repeat) toggleAP(); });
+
+  // 3D unless ?view=2d. Without GPU acceleration 3D stutters (hundreds of ms per frame), so the
+  // page stays 2D and says why; ?view=3d forces it anyway in lite mode.
+  const view = new URLSearchParams(location.search).get("view");
+  const gpu = gpuInfo();
+  if (gpu.software) console.warn("[3d] software WebGL renderer:", gpu.renderer);
+  if (view === "3d" || (view !== "2d" && !gpu.software)) start3D(s, gpu.software);
+  else if (view !== "2d") $("ck-3d-note").textContent = "2D: browser has no GPU acceleration (see chrome://gpu) · &view=3d to force";
 
   const pfd = $("ck-pfd"), tfc = $("ck-traffic");
   const frame = () => {
@@ -65,19 +88,21 @@ export function startCockpit(role) {
 // this aircraft's node says it is (TRUST rel), never from world truth.
 const MODEL_HDG_OFFSET = -90;   // Cesium_Air.glb nose points along +X; heading 0 = north
 
-async function start3D(s) {
+async function start3D(s, lite = false) {
   const note = $("ck-3d-note");
   note.textContent = "loading 3D...";
   try {
     const Cesium = await loadCesium();
-    const { viewer, terrain } = await makeViewer(Cesium, $("ck-3d"));
+    const { viewer, terrain } = await makeViewer(Cesium, $("ck-3d"), { lite });
     viewer.scene.screenSpaceCameraController.enableInputs = false;   // the sim flies the camera
     s.v3 = { Cesium, viewer, terrain, chase: new URLSearchParams(location.search).get("cam") === "chase",
              own: null, targets: new Map() };
     window.__flock3d = s.v3;                                         // console debugging
-    note.textContent = terrain ? "3D: Cesium World Terrain · © Cesium ion · C = chase cam"
-                               : "3D: flat · © OpenStreetMap contributors · C = chase cam · add ?ion=<token> for terrain";
+    note.textContent = (lite ? "3D lite (no GPU acceleration) · " : "")
+      + (terrain ? "3D: Cesium World Terrain · © Cesium ion · C / Triangle / Y = chase cam"
+                 : "3D: flat · © OpenStreetMap contributors · C / Triangle / Y = chase cam · add ?ion=<token> for terrain");
     addEventListener("keydown", (e) => { if (e.code === "KeyC" && s.v3) s.v3.chase = !s.v3.chase; });
+    addEventListener("flock:chase", () => { if (s.v3) s.v3.chase = !s.v3.chase; });   // gamepad Triangle / Y
   } catch (e) {
     console.warn("[3d]", e);
     note.textContent = `2D only: ${e.message}`;
@@ -135,6 +160,16 @@ function update3D(s) {
   }
   for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
 }
+
+// ---------- short notices (AP, touchdown, liftoff) ----------
+let toastTimer = 0;
+function toast(text, kind = "info") {
+  const el = $("ck-toast");
+  el.textContent = text; el.dataset.kind = kind; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+}
+function say(text) { sayAdvisory({ level: "INFO", layer: 0, speak: text }); }
 
 function fit(cv) {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -194,8 +229,9 @@ function renderTrust(s) {
 
 function renderStatus(s, inp) {
   const o = s.own;
-  $("ck-mode").textContent = o ? o.mode || "" : "--";
+  $("ck-mode").textContent = o ? (o.ap && o.mode === "AUTOPILOT" ? `AP · ${o.ap_phase || ""}` : o.mode || "") : "--";
   $("ck-mode").dataset.mode = o ? o.mode : "";
+  $("ck-ap").dataset.on = o && o.ap ? "1" : "";
   $("ck-input").textContent = inp.engaged ? `${inp.source} · thr ${Math.round(inp.throttle * 100)}%` : inp.pad ? "gamepad ready - move a stick" : "keys: arrows + W/S";
   $("ck-thr").style.setProperty("--v", inp.throttle);
 }

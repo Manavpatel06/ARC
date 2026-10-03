@@ -11,6 +11,8 @@
 //                 labelled with predicted miss and seconds to go.
 //   layer rings   ring per aircraft coloured by its node's level; TAKEOVER pulses, NO_SOLUTION dashed.
 //   takeover      box + countdown while the world applies a COMMAND; "STICK" flash on handback.
+//   separation    world truth WORLD_EVENT (world/separation.py): red line between a pair while it is
+//                 inside the NMAC box, burst marker where NMAC / COLLISION happened, counter.
 // All ages use the world clock (frame t), so --time-scale runs keep consistent fades.
 
 import { connect, css, LEVEL_COLOR, Local, NM, SANS } from "./net.js";
@@ -18,7 +20,7 @@ import { connect, css, LEVEL_COLOR, Local, NM, SANS } from "./net.js";
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
 const KT = 0.514444;
-const TRAIL_S = 60, ADV_TTL_S = 12, PRED_TTL_S = 4, STICK_FLASH_S = 4, EVENTS_MAX = 12;
+const TRAIL_S = 60, ADV_TTL_S = 12, PRED_TTL_S = 4, STICK_FLASH_S = 4, EVENTS_MAX = 12, SEP_MARK_S = 20;
 const LAYER_R_M = { 1: 900, 2: 650, 3: 450, 4: 300 };   // ring radius by layer (visual only)
 const CONFLICT_LEVELS = new Set(["SEQUENCE", "TRAFFIC", "RESOLVE", "TAKEOVER", "NO_SOLUTION"]);
 const LAYERS = { pred: "Predictions", sigma: "Uncertainty", conflict: "Conflicts", trails: "Trails", pattern: "Pattern", labels: "Labels" };
@@ -39,6 +41,7 @@ export function startGod() {
   const s = {
     stat: null, local: null, ac: new Map(), trails: new Map(), adv: new Map(), pred: new Map(),
     trust: new Map(), crystal: new Map(), cmd: new Map(), stick: new Map(), events: [],
+    nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 },
     t: 0, da: null, show: loadToggles(),
     view: { cx: 0, cy: 0, scale: 0.08, fitted: false },
   };
@@ -84,6 +87,10 @@ export function startGod() {
         s.cmd.delete(m.ac_id);
         pushEvent(s, m.t, m.ac_id, "RELEASE", "STICK - pilot took control");
         break;
+      case "WORLD_EVENT": onWorldEvent(s, m); break;
+      case "AP_STATUS":
+        pushEvent(s, m.t, m.ac_id, m.engaged ? "RELEASE" : "CLEAR", m.ok ? `autopilot ${m.engaged ? `ON · ${m.phase}` : "OFF"}` : `AP refused: ${m.reason}`);
+        break;
       case "TRUST": s.trust.set(m.ac_id, m); break;
       case "CRYSTAL": s.crystal.set(m.ac_id, m); break;
       case "ENV": s.da = m.da_field_ft; renderDA(s); break;
@@ -112,6 +119,29 @@ export function startGod() {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- ground-truth separation (world/separation.py) ----------
+function onWorldEvent(s, m) {
+  const key = `${m.a}|${m.b}`;
+  if (m.event === "NMAC" || m.event === "COLLISION") {
+    s.nmacOpen.set(key, m);
+    s.sepMarks.push(m);
+    if (m.counts) s.sepCounts = m.counts;
+    pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "TOUCHDOWN" || m.event === "LIFTOFF" || m.event === "AP_DISCONNECT") {
+    const txt = m.event === "TOUCHDOWN" ? `${m.hard ? "HARD LANDING" : "touchdown"} ${m.vs_fpm} fpm`
+      : m.event === "LIFTOFF" ? `liftoff ${m.ias_kt} kt` : "autopilot disconnect (stick)";
+    pushEvent(s, m.t, m.a, m.hard ? "NMAC" : "CLEAR", txt);
+    return;
+  } else if (m.event === "NMAC_END") {
+    s.nmacOpen.delete(key);
+    pushEvent(s, m.t, `${m.a}/${m.b}`, m.collided ? "COLLISION" : "NMAC",
+      `closest ${m.min_h_ft} ft / ${m.min_v_ft} ft${m.collided ? " · collided" : ""}`);
+  }
+  const c = s.sepCounts;
+  $("god-sep").textContent = `truth: ${c.NMAC} NMAC · ${c.COLLISION} collision${c.COLLISION === 1 ? "" : "s"}`;
+  $("god-sep").dataset.hot = c.NMAC + c.COLLISION > 0 ? "1" : "";
 }
 
 // ---------- side panel ----------
@@ -173,7 +203,8 @@ function renderTable(s) {
     const kind = a.human ? "human" : a.flock ? "ai" : "noflock";
     const vs = Math.round(a.vs_fpm / 50) * 50;
     return `<tr data-kind="${kind}" data-mode="${a.mode}"><td>${a.ac_id}</td><td>${a.leg ?? ""}</td>`
-      + `<td>${Math.round(a.alt_msl_ft)}</td><td>${vs > 0 ? "+" : ""}${vs}</td><td>${Math.round(a.ias_kt)}</td><td>${a.mode}</td>`
+      + `<td>${Math.round(a.alt_msl_ft)}</td><td>${vs > 0 ? "+" : ""}${vs}</td><td>${Math.round(a.ias_kt)}</td>`
+      + `<td>${a.ap_phase ? `AP ${a.ap_phase.toLowerCase()}` : a.mode}</td>`
       + `<td data-level="${lvl}">${lvl}</td></tr>`;
   }).join("");
   if (rows !== lastTable) { $("god-table").innerHTML = rows; lastTable = rows; }
@@ -353,6 +384,28 @@ function draw(cv, s) {
     const nx = -dy / dl, ny = dx / dl, side = ny > 0 ? 1 : -1;
     text(ctx, (px + qx) / 2 + nx * 22 * k * side, (py + qy) / 2 + ny * 22 * k * side + 4 * k,
          `${id}↔${m.target_id}  ${miss}${Math.max(0, Math.round(left))} s`, 12 * k, "center", col, true);
+  }
+
+  // ground-truth separation: open NMAC pairs joined in red, event markers where they happened
+  for (const [, e] of s.nmacOpen) {
+    const a = s.ac.get(e.a), b = s.ac.get(e.b);
+    if (!a || !b) continue;
+    const [x0, y0] = LL(a.lat, a.lon), [x1, y1] = LL(b.lat, b.lon);
+    ctx.strokeStyle = css("var(--trust-fake)"); ctx.lineWidth = (3 + 2 * pulse) * k;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  s.sepMarks = s.sepMarks.filter((e) => s.t - e.t < SEP_MARK_S);
+  for (const e of s.sepMarks) {
+    const [x, y] = LL(e.lat, e.lon), col = css("var(--trust-fake)");
+    const age = (s.t - e.t) / SEP_MARK_S, R = (e.event === "COLLISION" ? 26 : 18) * k * (1 + age);
+    ctx.globalAlpha = 1 - age; ctx.strokeStyle = col; ctx.lineWidth = 2.5 * k;
+    for (let i = 0; i < 8; i++) {                       // burst
+      const th = i * Math.PI / 4;
+      ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * R * 0.45, y + Math.sin(th) * R * 0.45);
+      ctx.lineTo(x + Math.cos(th) * R, y + Math.sin(th) * R); ctx.stroke();
+    }
+    text(ctx, x, y - R - 6 * k, `${e.event} ${e.a}/${e.b} · ${e.h_ft} ft / ${e.v_ft} ft`, 12 * k, "center", col, true);
+    ctx.globalAlpha = 1;
   }
 
   // Escape Crystal (Phase 3, schemas.Crystal): reachable end-points, green = safe, red = blocked
