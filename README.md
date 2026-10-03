@@ -4,6 +4,16 @@ Peer-to-peer collision avoidance for general aviation. Devils Invent "Future-Rea
 
 GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
 
+## Who does what
+| Lane | Owner | Branch | Folders | Brief for your AI agent | Task rows |
+|---|---|---|---|---|---|
+| A — Sim world & views | **Manas** | `lane-a-world` | `world/`, `web/index.html` | `lanes/A-world-manas.md` | `BOARD.md` → Lane A |
+| B — Node logic & evidence | **Reya** | `lane-b-node` | `node/`, `harness/` | `lanes/B-node-reya.md` | `BOARD.md` → Lane B |
+| C — Radio, protocol, security | **Mansi** | `lane-c-radio` | `radio/` | `lanes/C-radio-mansi.md` | `BOARD.md` → Lane C |
+| D — Integration, data, log, camera, pitch | **Manav** | `lane-d-integration` | `data/`, `web/log.html`, `run_demo.*`, `docs/` | `lanes/D-integration-manav.md` | `BOARD.md` → Lane D |
+
+Finished your rows? Take from the **Pull Queue** at the bottom of `BOARD.md`. Blocked? Use the stub in `stubs/` (table at the top of `BOARD.md`) and keep going.
+
 ## Read in this order
 0. `BOARD.md` — your task rows with times and status; the stub table so nobody waits on anybody.
 1. `CONTEXT.md` — what we are building, hard rules, phases, lanes, fixed facts. Paste into every AI session.
