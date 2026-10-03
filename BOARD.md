@@ -12,7 +12,8 @@ Every lane develops against `stubs/` until the real module exists, then swaps in
 | A world sending OWNSHIP / applying COMMAND / mirroring LOG | `python stubs/fake_world.py` | `world/world_server.py` (Manas) |
 | A node emitting ADVISORY / COMMAND / TRUST / PREDICTION | `python stubs/fake_node.py --id N101 --speed 4` | `node/node.py` (Reya) |
 | A radio client with `send()` / `on_message()` | `from stubs.loopback_radio import RadioClient` | `radio/client.py` same API (Mansi) |
-| A log view | `python stubs/tail_log.py` | `web/log.html` (Manav) |
+| A log view | `web/log.html` — real, use it (or `python stubs/tail_log.py` in a terminal) | `web/log.html` (Manav) [x] |
+| Radio traffic in the log / god view | `python stubs/fake_channel.py [--spoof]` | `radio/channel.py` (Mansi) |
 | Terrain / METAR / runways files | `data.runways.load()` (real), `data.metar.load()` (sample DA 4,083 ft, wind 250/8), `data.terrain.elev_at_ft()` (flat) | live METAR + terrain grid (Manav) |
 | Pattern geometry (spawn, legs, classifier) | `pattern.py` — real, shared, use directly | — |
 
@@ -45,18 +46,18 @@ Stubs to run while building: `stubs/fake_world.py` (OWNSHIP in, COMMAND applied)
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| B1 | `node/node.py`: 10 Hz loop, connect `node:<id>`, read OWNSHIP, broadcast STATE via RadioClient, track table of peers. | 12:30 | [ ] |
-| B2 | `node/geometry.py`: lat/lon ↔ ENU around KDVT; pattern leg polygons for 25L from `runways_kdvt.sample.json`. | 1:00 PM | [ ] |
-| B3 | Straight-line CPA vs one peer → TRAFFIC advisory (text + reason). | 1:00 PM ✔ status | [ ] |
-| B4 | `node/predict.py`: leg classifier with confidence; turn-aware 90 s prediction; `< 0.6` → straight-line fallback. | 3:00 | [ ] |
-| B5 | `node/conflict.py`: predicted miss < 500 ft H & < 100 ft V within 90 s, with sigma; ttc. | 3:00 | [ ] |
-| B6 | `node/layers.py`: SEQUENCE ≤90 / TRAFFIC ≤35 / RESOLVE ≤20 / TAKEOVER ≤8 with hysteresis; SEQ_PROPOSE/ACCEPT. | 4:00 PM ✔ status | [ ] |
-| B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [ ] |
-| B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [ ] |
-| B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [ ] |
-| B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [ ] |
-| B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [ ] |
-| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [ ] |
+| B1 | `node/node.py`: 10 Hz loop, connect `node:<id>`, read OWNSHIP, broadcast STATE via RadioClient, track table of peers. | 12:30 | [x] |
+| B2 | `node/geometry.py`: lat/lon ↔ ENU around KDVT; pattern leg polygons for 25L from `runways_kdvt.sample.json`. | 1:00 PM | [x] |
+| B3 | Straight-line CPA vs one peer → TRAFFIC advisory (text + reason). | 1:00 PM ✔ status | [x] |
+| B4 | `node/predict.py`: leg classifier with confidence; turn-aware 90 s prediction; `< 0.6` → straight-line fallback. | 3:00 | [x] |
+| B5 | `node/conflict.py`: predicted miss < 500 ft H & < 100 ft V within 90 s, with sigma; ttc. | 3:00 | [x] |
+| B6 | `node/layers.py`: SEQUENCE ≤90 / TRAFFIC ≤35 / RESOLVE ≤20 / TAKEOVER ≤8 with hysteresis; SEQ_PROPOSE/ACCEPT. | 4:00 PM ✔ status | [x] |
+| B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [x] |
+| B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [x] |
+| B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [x] |
+| B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
+| B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [x] |  `node.py` attaches `radio.evidence.TrustEvidence` when the real radio is present; TRUST carries `rel` + evidence (tested live with channel.py) |
+| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [x] |  lost-link R/R fallback + stale-track handling (`accept_b.py` B12), `three_on_final_conflict.json` added |
 | B13 | *Phase 3:* Marana replay scenario `harness/scenarios/marana_2025.json`. | after go/no-go | [ ] |
 | B14 | *Queue:* out-of-sample validation on recorded KDVT ADS-B (OpenSky) if account arrives. | queue | [ ] |
 
@@ -65,15 +66,15 @@ Stubs to run while building: `stubs/fake_world.py` (TRUTH feed for the channel),
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| C1 | `radio/client.py`: same API as `stubs/loopback_radio.RadioClient` + `--via-channel` transport. Validate every message with `schemas.RadioMsg`. | 12:30 | [ ] |
-| C2 | `radio/channel.py`: connect as `channel`, read TRUTH, range cutoff 4,828 m, loss, latency; mirror delivered/dropped + reason to log. | 1:00 PM ✔ status | [ ] |
-| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [ ] |
-| C4 | `radio/crypto.py`: Ed25519 keypair, sign/verify, KEYS exchange at boot, seq monotonic, ±2 s window; rejections logged. | 3:00 | [ ] |
-| C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [ ] |
-| C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [ ] |
-| C7 | `radio/slots.py`: AIS-style self-organizing slots; collision-rate number at 8 and 30 senders, with/without. | 7:00 PM ✔ status | [ ] |
-| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [ ] |
-| C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [ ] |
+| C1 | `radio/client.py`: same API as `stubs/loopback_radio.RadioClient` + `--via-channel` transport. Validate every message with `schemas.RadioMsg`. | 12:30 | [x] |
+| C2 | `radio/channel.py`: connect as `channel`, read TRUTH, range cutoff 4,828 m, loss, latency; mirror delivered/dropped + reason to log. | 1:00 PM ✔ status | [x] |
+| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [x] multicast works on the Windows hotspot (Mac N101 ↔ Windows N102); ws relay :8766 as fallback |
+| C4 | `radio/crypto.py`: Ed25519 keypair, sign/verify, KEYS exchange at boot, seq monotonic, ±2 s window; rejections logged. | 3:00 | [x] |
+| C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [x] |
+| C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [x] |
+| C7 | `radio/slots.py`: AIS-style self-organizing slots; collision-rate number at 8 and 30 senders, with/without. | 7:00 PM ✔ status | [x] |
+| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [x] |
+| C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [x] |
 | C10 | *After 7 PM go/no-go only:* ESP32-C6 node over Wi-Fi UDP speaking the envelope; "over the air" tag in log. | optional | [ ] |
 | C11 | *Queue:* one-page BOM + band/link budget for the pitch (judge ask #9). | queue | [ ] |
 
@@ -84,11 +85,11 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 |---|---|---|---|
 | D1 | `data/runways.py` (surveyed ends, `load()`) + `/pattern.py` shared geometry + `data/metar.py` (`load`, `climb_fpm`, `wind_vector_ms`). | 12:30 | [x] |
 | D1b | Run `python data/metar.py` on the hotspot to confirm the live fetch works (blocked from the build sandbox). | 1:00 PM | [ ] |
-| D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [ ] |
-| D3 | Hotspot test: four laptops reach the world server; write the IP in team chat. | 12:00 | [ ] |
+| D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [x] tested against Manas's world_server |
+| D3 | Hotspot test: four laptops reach the world server (`python stubs/ping_world.py --world ws://<ip>:8765`); write the IP in team chat. | 12:00 | [~] |
 | D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
-| D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [ ] |
-| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. | 6:00 | [ ] |
+| D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [x] done early |
+| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. Uses real modules when present, stubs otherwise; `-Spoof`, `-Stubs`, `-Stop`. | 6:00 | [x] .sh tested; .ps1 needs a Windows run |
 | D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [ ] |
 | D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [ ] |
 | D10 | *Phase 3:* `node/crystal.py` Escape Crystal + MFI → CRYSTAL frames. | after go/no-go | [ ] |
@@ -99,12 +100,12 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 ## Pull Queue — unowned tasks; take one if your lane list is empty (write your name)
 | Task | Taken by | Status |
 |---|---|---|
-| `harness/scenarios/three_on_final.json` (three aircraft converging on 25L final) | Manas | [x] tuned with world/find_conflict.py |
-| `harness/scenarios/straight_in_misclassified.json` (straight-in that looks like base) | | [ ] |
-| `harness/scenarios/spoof_on_final.json` (GHOST7 appears at 1 mi final) | | [ ] |
+| `harness/scenarios/three_on_final_conflict.json` (three aircraft converging on 25L final) | Manas | [x] tuned with world/find_conflict.py |
+| `harness/scenarios/straight_in_misclassified.json` (straight-in that looks like base) | Reya | [x] scenario + classifier test |
+| `harness/scenarios/spoof_on_final.json` (GHOST7 appears at 1 mi final) | Reya | [x] scenario + unit test: FAKE target never acted on |
 | Airport diagram check: KDVT runway ends/headings/TPA (write result in CONTEXT.md) | Manav | [x] true hdg 086/266, 25R north, TPA 2,500 MSL |
-| Q&A sheet: 15 likely judge questions with 2-line answers (`docs/qa.md`) | | [ ] |
-| Status-report one-pager template for 1 PM and 7 PM (`docs/status.md`) | | [ ] |
+| Q&A sheet: 15 likely judge questions with 2-line answers (`docs/qa.md`) | Reya | [x] |
+| Status-report one-pager template for 1 PM and 7 PM (`docs/status.md`) | Reya | [x] |
 | Glossary for the slide footer (GA, TCAS, RA/TA, ADS-B, NMAC, CPA, DA) | | [ ] |
 | OBS set up on the recording laptop; test 30 s capture of all four windows | | [ ] |
 

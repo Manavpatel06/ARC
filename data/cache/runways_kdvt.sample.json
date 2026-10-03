@@ -64,5 +64,57 @@
    "displaced_ft": 916
   }
  },
+ "runways": [
+  {
+   "id": "07L/25R",
+   "length_ft": 4500,
+   "width_ft": 75,
+   "heading_true_deg": {
+    "07L": 86.0,
+    "25R": 266.0
+   },
+   "pattern": {
+    "07L": "left",
+    "25R": "right"
+   },
+   "ends": {
+    "07L": {
+     "lat": 33.68916,
+     "lon": -112.0894517,
+     "elev_ft": 1455.1
+    },
+    "25R": {
+     "lat": 33.6900202,
+     "lon": -112.0746956,
+     "elev_ft": 1476.8
+    }
+   }
+  },
+  {
+   "id": "07R/25L",
+   "length_ft": 8196,
+   "width_ft": 100,
+   "heading_true_deg": {
+    "07R": 86.0,
+    "25L": 266.0
+   },
+   "pattern": {
+    "07R": "right",
+    "25L": "left"
+   },
+   "ends": {
+    "07R": {
+     "lat": 33.6868342,
+     "lon": -112.0962689,
+     "elev_ft": 1439.9
+    },
+    "25L": {
+     "lat": 33.6884008,
+     "lon": -112.0693934,
+     "elev_ft": 1478.1
+    }
+   }
+  }
+ ],
  "source": "AirNav (FAA 5010) runway ends, read 2026-10-03"
 }
