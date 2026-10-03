@@ -11,6 +11,8 @@
 //                 labelled with predicted miss and seconds to go.
 //   layer rings   ring per aircraft coloured by its node's level; TAKEOVER pulses, NO_SOLUTION dashed.
 //   takeover      box + countdown while the world applies a COMMAND; "STICK" flash on handback.
+//   live sky      LIVE_TRAFFIC (contract v1.2, data/live_traffic.py): real ADS-B aircraft around KDVT as small
+//                 cyan chevrons with callsign / altitude / pattern leg; display only, fades when stale.
 //   separation    world truth WORLD_EVENT (world/separation.py): red line between a pair while it is
 //                 inside the NMAC box, burst marker where NMAC / COLLISION happened, counter.
 // All ages use the world clock (frame t), so --time-scale runs keep consistent fades.
@@ -23,7 +25,8 @@ const KT = 0.514444;
 const TRAIL_S = 60, ADV_TTL_S = 12, PRED_TTL_S = 4, STICK_FLASH_S = 4, EVENTS_MAX = 12, SEP_MARK_S = 20;
 const LAYER_R_M = { 1: 900, 2: 650, 3: 450, 4: 300 };   // ring radius by layer (visual only)
 const CONFLICT_LEVELS = new Set(["SEQUENCE", "TRAFFIC", "RESOLVE", "TAKEOVER", "NO_SOLUTION"]);
-const LAYERS = { pred: "Predictions", sigma: "Uncertainty", conflict: "Conflicts", trails: "Trails", pattern: "Pattern", labels: "Labels", weather: "Thermals" };
+const LAYERS = { pred: "Predictions", sigma: "Uncertainty", conflict: "Conflicts", trails: "Trails", pattern: "Pattern", labels: "Labels", weather: "Thermals", live: "Live sky" };
+const LIVE_STALE_MS = 20000, LIVE_HIDE_MS = 90000;
 // world weather controls (SET_WX fields): [field, label, min, max, step, format]
 const WX_SLIDERS = [
   ["wind_from_deg", "Wind from", 0, 359, 5, (v) => `${String(Math.round(v)).padStart(3, "0")}°`],
@@ -52,7 +55,7 @@ export function startGod() {
   const s = {
     stat: null, local: null, ac: new Map(), trails: new Map(), adv: new Map(), pred: new Map(),
     trust: new Map(), crystal: new Map(), cmd: new Map(), stick: new Map(), events: [],
-    nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 }, wx: null, thermals: [],
+    nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 }, wx: null, thermals: [], live: null,
     t: 0, da: null, show: loadToggles(),
     view: { cx: 0, cy: 0, scale: 0.08, fitted: false },
   };
@@ -109,6 +112,7 @@ export function startGod() {
       case "ENV": s.da = m.da_field_ft; renderDA(s); break;
       case "WX": s.wx = m; s.da = m.da_field_ft; renderWeather(s); renderDA(s); break;
       case "WX_FIELD": s.thermals = m.thermals || []; break;
+      case "LIVE_TRAFFIC": s.live = { m, at: performance.now() }; break;
     }
   }, (status) => {
     $("god-link").textContent = status === "open" ? "LIVE" : status.toUpperCase();
@@ -131,9 +135,20 @@ export function startGod() {
     draw(cv, s);
     renderTable(s);
     renderEvents(s);
+    renderLive(s);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+// ---------- live sky (real ADS-B, display only) ----------
+function renderLive(s) {
+  const el = $("god-live");
+  if (!s.live) { el.textContent = "Live sky: no feed (python data/live_traffic.py)"; el.dataset.state = ""; return; }
+  const age = (performance.now() - s.live.at) / 1000, ac = s.live.m.aircraft || [];
+  const inPat = ac.filter((a) => a.in_pattern).length;
+  el.textContent = `Live sky (${s.live.m.source || "ADS-B"}): ${ac.length} aircraft · ${inPat} in the pattern · ${age.toFixed(0)} s ago`;
+  el.dataset.state = age * 1000 > LIVE_STALE_MS ? "stale" : "live";
 }
 
 // ---------- ground-truth separation (world/separation.py) ----------
@@ -403,6 +418,29 @@ function draw(cv, s) {
     ctx.beginPath(); ctx.arc(x, y, Math.max(4 * k, r * v.scale), 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
     if (show.labels && v.scale > 0.06) text(ctx, x, y + 4 * k, `+${pk} fpm`, 10 * k, "center", css("var(--lvl-traffic)"));
+  }
+
+  // live sky: real ADS-B traffic (cyan, small), display only
+  if (show.live && s.live) {
+    const age = performance.now() - s.live.at;
+    if (age < LIVE_HIDE_MS) {
+      const col = css("var(--live)");
+      ctx.globalAlpha = age > LIVE_STALE_MS ? 0.35 : 0.95;
+      for (const a of s.live.m.aircraft || []) {
+        const [x, y] = LL(a.lat, a.lon), sz = 5.5 * k;
+        ctx.save(); ctx.translate(x, y); ctx.rotate((a.track_deg || 0) * D2R);
+        ctx.fillStyle = col; ctx.strokeStyle = "#000"; ctx.lineWidth = 1 * k;
+        ctx.beginPath(); ctx.moveTo(0, -sz * 1.4); ctx.lineTo(sz, sz); ctx.lineTo(0, sz * 0.4); ctx.lineTo(-sz, sz); ctx.closePath();
+        a.on_ground ? ctx.stroke() : ctx.fill();
+        ctx.restore();
+        if (show.labels && v.scale > 0.03) {
+          const alt = a.on_ground ? "GND" : String(Math.round(a.alt_msl_ft / 100)).padStart(3, "0");
+          const leg = a.in_pattern && a.leg ? ` ${a.leg.slice(0, 2)}` : "";
+          text(ctx, x + 8 * k, y + 3 * k, `${(a.callsign || a.id || "").trim()} ${alt}${leg}`, 9.5 * k, "left", col);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // trails

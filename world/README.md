@@ -1,6 +1,8 @@
 Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_model.py, traffic.py, scenario.py. Views live in `web/index.html`.
 
-- `world_server.py` — physics + WebSocket hub (INTERFACE.md v1.1), serves `web/` on :8080.
+- `world_server.py` — physics + WebSocket hub (INTERFACE.md v1.2), serves `web/` on :8080. Scenario weather is
+  pinned: `load_metar(scenario.weather)` (`cached` = committed sample, `live` = fetched METAR). ENV (density altitude)
+  goes to god and every node; LIVE_TRAFFIC (real ADS-B, data/live_traffic.py) to god + log only.
 - `separation.py` — ground-truth NMAC (< 500 ft H and < 100 ft V) / COLLISION (< 60 ft, < 30 ft) monitor. The world publishes `{"type":"WORLD_EVENT","event":"NMAC"|"COLLISION"|"NMAC_END",...}` to **god + log only** (truth; never to nodes). `NMAC_END` carries the closest approach of the encounter — use it for scoring runs.
 - `flight_model.py` / `traffic.py` — ground physics (rollout, braking, rotate at 55 kt), flare, full-stop landings and
   takeoffs; the cockpit AP button (`{"type":"AP","ac_id","engage":true|false|null}` -> `AP_STATUS`, Lane A, proposed for
@@ -30,10 +32,11 @@ python world/find_conflict.py --scenario harness/scenarios/base_cutoff.json --pa
     --out harness/scenarios/base_vs_straight_in.json --name base_vs_straight_in
 ```
 
-Conflict scenarios (no avoidance; times at x1):
+Conflict scenarios (no avoidance; times at x1; weather pinned with `"weather": "cached"`, real KDVT terrain;
+re-check with find_conflict.py after any change to physics, terrain or pattern geometry):
 
-| Scenario | What happens without FLOCK |
+| Scenario | What happens without FLOCK (world separation monitor) |
 |---|---|
-| `harness/scenarios/base_vs_straight_in.json` | N101 turns base/final into straight-in N399: NMAC on final ~124 s |
-| `harness/scenarios/three_on_final.json` | N101 (judge) + straight-in N399 NMAC on final ~124 s, N204 ~700 ft in trail |
-| `harness/scenarios/head_on_judges.json` | both judges (N101 25L downwind 086°, N102 07R downwind 266°) head-on, collision ~74 s |
+| `harness/scenarios/base_vs_straight_in.json` | N101 turns base/final into straight-in N399: NMAC on final ~149 s |
+| `harness/scenarios/three_on_final.json` | N101 (judge), N204, straight-in N399 converge on final: all three pairs NMAC, 155-160 s |
+| `harness/scenarios/head_on_judges.json` | both judges (N101 25L downwind 086°, N102 07R downwind 266°) head-on, collision ~76 s |

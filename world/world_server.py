@@ -16,7 +16,12 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    WX (weather state) on change + WX_FIELD (thermal positions) every 2 s.
                    God -> world: SET_DA, and (Lane A) SET_WX {"preset"?, field: value...} /
                    {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH).
-  log              LOG frames: decisions, radio (from channel), camera, world events
+  log              LOG frames: decisions, radio (from channel), camera, world events, LIVE_TRAFFIC
+  ENV              {"type":"ENV","t","da_field_ft"} to god AND every node on connect and whenever density
+                   altitude changes (SET_DA / SET_WX) - nodes use it for climb capability. Density altitude
+                   only: nodes never get the world's internal wind / turbulence model.
+  LIVE_TRAFFIC     (v1.2) from role data (data/live_traffic.py): real ADS-B around KDVT -> god + log ONLY,
+                   never to nodes or cockpits, never acted on.
                    (incl. WORLD_EVENT NMAC / COLLISION / NMAC_END from world/separation.py)
   channel          TRUTH at 10 Hz (radio emulator decides delivery from it)
   camera, data     accepted; frames mirrored to log
@@ -104,6 +109,8 @@ class Hub:
         if role == "log":   # log consumers expect only LOG frames (stubs/tail_log formats `kind`)
             hello = {"type": "LOG", "src": "world", "kind": "world", "t": hello["t"], "payload": hello}
         await ws.send(dumps(hello))
+        if role.startswith("node:"):
+            await ws.send(dumps(self.env_frame()))         # current density altitude for climb capability
         if role.startswith("cockpit:"):
             for k in ("ADVISORY", "TRUST"):
                 if f"{k}:{ac_id}" in self.latest:
@@ -213,8 +220,7 @@ class Hub:
         if role == "god":
             if t == "SET_DA":
                 self.w.env.da_field_ft = float(m.get("ft", self.w.env.da_field_ft))
-                ev = {"type": "ENV", "da_field_ft": self.w.env.da_field_ft}
-                self.send("god", ev)
+                self.publish_env()
                 self.log("god", "world", m)
                 self.publish_wx()
                 print(f"[world] density altitude at field -> {self.w.env.da_field_ft:.0f} ft")
@@ -234,7 +240,18 @@ class Hub:
                     what.append(f"altimeters updated on {n} aircraft")
                 self.log("god", "world", m)
                 self.publish_wx()
+                self.publish_env()
                 print(f"[world] weather: {', '.join(what) or 'no change'} -> {self.w.env.wx.metar_style()}")
+            return
+
+        if role == "data" and t == "LIVE_TRAFFIC":
+            # real ADS-B overlay (contract v1.2): god + log only - never nodes / cockpits, never acted on
+            try:
+                schemas.LiveTraffic.model_validate(m)
+            except ValidationError as e:
+                print(f"[world] LIVE_TRAFFIC schema warning: {str(e).splitlines()[0]}")
+            self.send("god", m)
+            self.log("live", "world", m)
             return
 
         if role in ("channel", "camera", "data"):
@@ -242,6 +259,17 @@ class Hub:
             if t == "CRYSTAL":
                 self.send("god", m)
             self.log(m.get("from", m.get("src", role)), kind, m)
+
+    def env_frame(self) -> dict:
+        return {"type": "ENV", "t": round(self.now(), 3), "da_field_ft": round(self.w.env.da_field_ft, 1)}
+
+    def publish_env(self) -> None:
+        """Density altitude to the god view and every node (Reya's node.on_env reads da_field_ft)."""
+        ev = dumps(self.env_frame())
+        self.send("god", ev)
+        for role in list(self.roles):
+            if role.startswith("node:"):
+                self.send(role, ev)
 
     def publish_wx(self) -> None:
         """Weather to god (full) and cockpits (what a pilot knows: METAR/ATIS, visibility, cloud)."""

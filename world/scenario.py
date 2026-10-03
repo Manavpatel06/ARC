@@ -55,7 +55,7 @@ class World:
         if da_override is None:
             da_override = raw.get("density_altitude_override")
         self.airport = load_runways()
-        self.metar = load_metar()
+        self.metar = load_metar(self.scenario.weather)            # "cached" pins the committed sample (tuned scenarios), "live" = fetched METAR
         self.env = make_env(self.airport, self.metar, da_override)
         self.env.ref_lat, self.env.ref_lon = float(self.airport["lat"]), float(self.airport["lon"])
         from world.taws import Taws
