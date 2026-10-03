@@ -145,6 +145,33 @@ class Crystal(BaseModel):
     mfi: float = Field(ge=0, le=1)    # Maneuver Freedom Index = safe / total
     points: list[CrystalPoint] = []
 
+class LiveAircraft(BaseModel):
+    id: str
+    callsign: str = ""
+    type: str = ""
+    lat: float
+    lon: float
+    alt_msl_ft: float
+    gs_kt: float = 0
+    track_deg: float = 0
+    vs_fpm: float = 0
+    on_ground: bool = False
+    age_s: float = 0
+    leg: str = "UNKNOWN"        # pattern leg from pattern.py geometry, or GROUND / ENROUTE / UNKNOWN
+    runway: Optional[str] = None
+    leg_conf: float = 0
+    next_leg: Optional[str] = None
+    in_pattern: bool = False
+
+class LiveTraffic(BaseModel):
+    """data/live_traffic.py -> world (role data) -> god + log. REAL ADS-B aircraft. v1.2.
+    Display + prediction only: never sent to nodes, never acted on."""
+    type: Literal["LIVE_TRAFFIC"] = "LIVE_TRAFFIC"
+    t: float
+    source: str
+    radius_nm: float
+    aircraft: list[LiveAircraft] = []
+
 class Log(BaseModel):
     type: Literal["LOG"] = "LOG"
     src: str
