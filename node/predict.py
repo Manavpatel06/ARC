@@ -79,13 +79,19 @@ class Prediction:
         out[:, 4] = np.interp(t_abs, tt, self.sigma_v)
         return out
 
-    def to_frame(self, ac_id: str, to_latlon) -> dict:
+    def to_frame(self, ac_id: str, to_latlon, target_id: Optional[str] = None, now: Optional[float] = None,
+                 span_s: float = 90.0, step_s: float = 5.0) -> dict:
+        """PREDICTION frame (schemas.Prediction).  target_id=None is the node's own path; else the peer it predicts.
+        Path times are relative to the frame time `now` (default: this prediction's own anchor time)."""
+        t_frame = self.t0 if now is None else now
+        rel = np.arange(0.0, span_s + 1e-9, step_s)
+        a = self.at(t_frame + rel)
         path = []
-        for (t, x, y, z, s) in self.pts[::5]:
-            lat, lon = to_latlon(float(x), float(y))
-            path.append({"t": round(float(t), 1), "lat": lat, "lon": lon, "alt_msl_ft": round(float(z) / FT, 0),
-                         "sigma_m": round(float(s), 0)})
-        return {"type": "PREDICTION", "ac_id": ac_id, "t": self.t0, "method": self.method,
+        for k, tr in enumerate(rel):
+            lat, lon = to_latlon(float(a[k, 0]), float(a[k, 1]))
+            path.append({"t": round(float(tr), 1), "lat": lat, "lon": lon, "alt_msl_ft": round(float(a[k, 2]) / FT),
+                         "sigma_m": round(float(a[k, 3]))})
+        return {"type": "PREDICTION", "ac_id": ac_id, "target_id": target_id, "t": t_frame, "method": self.method,
                 "confidence": round(self.confidence, 2), "leg": self.leg, "path": path}
 
 

@@ -14,3 +14,9 @@ Lane B (Reya). See `lanes/B-node-reya.md`. Phase 3: crystal.py, parallax.py (Man
 | `tests/` | `python -m pytest node/tests -q` |
 
 Evidence: `python harness/accept_b.py` (1 PM / 4 PM / 7 PM checks), `python harness/montecarlo.py` (chart).
+
+Phase 1 hardening (from the integration review):
+- **Head-on / similar margins:** `escape.evaluate` prefers right turns (14 CFR 91.113), then lower fuel from `cost.py`, then lower severity; cost only orders candidates that already passed every safety check with a margin within 0.3 of the least severe one. `reason["cost"]` carries chosen and rejected costs plus a one-line note ("extra 4 s, 0.01 gal").
+- **PREDICTION for peers:** each node publishes its own path and, at 1 Hz, one frame per nearby peer (`target_id` = peer) so the god view draws what it believes about the other aircraft's turn.
+- **Live density altitude:** an `ENV {"da_field_ft"}` frame updates climb capability (`Node.on_env`); rejections read "performance 330 fpm at DA 8,000 ft" and `reason["env"]` records the DA and climb rate used.
+- **Obstacles:** if `data/obstacles.py` exists, `top_at(lat, lon)` (ft MSL, or None) is used as `obstacle_fn`.
