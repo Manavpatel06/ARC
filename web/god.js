@@ -144,6 +144,9 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "STOPPED") {
+    pushEvent(s, m.t, m.a, m.runway ? "CLEAR" : "TRAFFIC", m.runway ? `stopped on runway ${m.runway}` : "stopped OFF runway");
+    return;
   } else if (m.event === "RESET") {
     pushEvent(s, m.t, m.a, "CLEAR", `reset to scenario start (was ${m.was})`);
     s.trails.delete(m.a);

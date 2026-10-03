@@ -58,6 +58,9 @@ class World:
         self.metar = load_metar()
         self.env = make_env(self.airport, self.metar, da_override)
         self.env.ref_lat, self.env.ref_lon = float(self.airport["lat"]), float(self.airport["lon"])
+        from world.taws import Taws
+        self.runways = Taws(self.airport)                  # runway surfaces (brakes only work on a runway)
+        self.env.runway_at = self.runways.on_runway
         self.da_pinned = da_override is not None
         self.set_preset(weather or raw.get("weather_preset", "metar"))
         self.patterns: dict[str, Pattern] = {}

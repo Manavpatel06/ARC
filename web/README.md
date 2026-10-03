@@ -28,8 +28,10 @@ Cockpit controls:
 - Autopilot (every judge aircraft; AI aircraft only if ap_equipped — FLOCK takeover still needs ap_equipped): in the air it levels, joins the pattern (the leg it is lined up with, else a
   downwind entry at pattern altitude), flies the circuit and lands to a full stop. Pressed again while stopped on the
   runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.
-- On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off; throttle to
-  idle brakes. Only one cockpit page per aircraft — two pages fight over the controls.
+- On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off.
+  To land and stop: on a RUNWAY, throttle to idle or hold **Circle / B** (keyboard **B** / **Space**) for wheel
+  brakes -> "STOPPED · RUNWAY 25L", then take off again or press AP. OFF the runway brakes don't apply: rough
+  ground drags the aircraft to a stop and it can't take off - reset it (hold L2 + R2). Only one cockpit page per aircraft — two pages fight over the controls.
 - Rumble (Chrome, Xbox / DualShock 4; DualSense varies) follows this aircraft's node only: soft tick on SEQUENCE,
   light pulse every 2 s on TRAFFIC, double pulse every 1 s on RESOLVE, continuous shake while FLOCK has control,
   faster/stronger pulses as a TRUSTED target closes inside 1 NM, one knock when control is handed back.

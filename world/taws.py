@@ -59,11 +59,15 @@ class Taws:
         return dx * r.ue + dy * r.un, dx * r.un - dy * r.ue       # along, right-of-centreline
 
     def on_runway(self, ac) -> str | None:
+        """Runway end ident under the aircraft (the end it is rolling toward, e.g. 25L not 07R), or None."""
+        best, best_d = None, 999.0
         for r in self.ends:
             u, v = self._frame(ac, r)
             if -15 <= u <= r.length_m + 15 and abs(v) <= r.half_width_m + 15:
-                return r.ident
-        return None
+                d = abs((getattr(ac, "hdg_deg", r.hdg) - r.hdg + 180) % 360 - 180)
+                if d < best_d:
+                    best, best_d = r.ident, d
+        return best
 
     def in_corridor(self, ac) -> bool:
         for r in self.ends:

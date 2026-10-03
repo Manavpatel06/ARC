@@ -14,7 +14,10 @@ INPUT meaning is pinned in INTERFACE.md v1.1 (target bank = roll x 45 deg, targe
 
 Ground: below 0.5 ft AGL the aircraft is on its wheels: wings level, the bank target steers the
 nosewheel, IAS may fall to 0 (brakes), wind only adds along the heading, and it can only lift off
-at or above ROTATE_KT. Touchdown / liftoff are queued in `events` for the world to publish.
+at or above ROTATE_KT. Touchdown / liftoff / stop are queued in `events` for the world to publish.
+Pilot on the ground: on a RUNWAY, idle throttle (< 15 %) or the brake input stops the aircraft
+(wheel brakes), more throttle rolls for takeoff. OFF the runway (env.runway_at says no) rough
+ground drags it to a stop and it cannot take off again; reset it from the cockpit.
 
 Weather (world/weather.py, env.wx): wind varies with height + low-level shear, gusts, turbulence and
 thermals. A change in the along-heading wind changes IAS at once (inertia) and the pilot/autopilot
@@ -55,6 +58,8 @@ GROUND_ACCEL_KT_S = 3.0    # full-power takeoff roll
 BRAKE_KT_S = 5.0           # braking / rollout
 STEER_DPS = 12.0           # nosewheel steering at full deflection (taxi speed and above)
 HARD_LANDING_FPM = 800.0
+IDLE_THROTTLE = 0.15       # pilot throttle below this on a runway = idle + wheel brakes
+ROUGH_GROUND_KT_S = 6.0    # off-runway deceleration (no takeoff possible)
 AP_REQUIRES_EQUIPMENT = True   # AI aircraft need ap_equipped for the AP button; judge (human) aircraft always get it
                                # as a sim convenience. FLOCK takeover (apply_command) still requires ap_equipped.
 
@@ -88,6 +93,7 @@ class Env:
     wx: Optional[Weather] = None          # full weather model; None = steady wind_e/n_ms only
     ref_lat: float = 33.688301            # local frame origin for thermals
     ref_lon: float = -112.083
+    runway_at: Optional[Callable[["Aircraft"], Optional[str]]] = None   # runway ident under the aircraft, if any
 
     @property
     def qnh_inhg(self) -> float:
@@ -129,6 +135,8 @@ class Aircraft:
     inp_roll: float = 0.0
     inp_pitch: float = 0.0
     inp_throttle: float = 0.5
+    inp_brake: bool = False
+    surface: Optional[str] = None          # runway ident while on the ground on a runway, "OFF" off it
     # autopilot button + ground state
     ap_engaged: bool = False
     on_ground: bool = False
@@ -165,9 +173,10 @@ class Aircraft:
         return self.alt_msl_ft + (self.baro_set_inhg - self.qnh_inhg) * 1000.0
 
     # ---------- inputs ----------
-    def apply_input(self, roll: float, pitch: float, throttle: float, now: float) -> bool:
+    def apply_input(self, roll: float, pitch: float, throttle: float, now: float, brake: bool = False) -> bool:
         """Store cockpit input. Returns True if this input means 'pilot is on the stick'."""
         self.has_pilot = True
+        self.inp_brake = bool(brake)
         self.inp_roll, self.inp_pitch, self.inp_throttle = clamp(roll, -1, 1), clamp(pitch, -1, 1), clamp(throttle, 0, 1)
         moving = abs(self.inp_roll) > STICK_DEADZONE or abs(self.inp_pitch) > STICK_DEADZONE
         if moving:
@@ -279,9 +288,21 @@ class Aircraft:
             self.bank_deg = self.bank_ctl_deg
             steer = clamp(bank_t / 30.0, -1.0, 1.0) * STEER_DPS * clamp(self.ias_kt / 15.0, 0.0, 1.0)
             self.hdg_deg = (self.hdg_deg + steer * dt) % 360.0
+            rwy = env.runway_at(self) if env.runway_at else "RWY"
+            self.surface = rwy or "OFF"
+            decel, can_fly = BRAKE_KT_S, True
+            if self.mode == "HUMAN":
+                if not rwy:                                   # off the runway: rough ground, no takeoff
+                    ias_t, decel, can_fly = 0.0, ROUGH_GROUND_KT_S, False
+                elif self.inp_brake or self.inp_throttle < IDLE_THROTTLE:
+                    ias_t = 0.0                               # idle / brakes: stop on the runway
             ias_t = clamp(ias_t, 0.0, VMAX_KT)
-            self.ias_kt = max(0.0, self.ias_kt + clamp(ias_t - self.ias_kt, -BRAKE_KT_S * dt, GROUND_ACCEL_KT_S * dt))
-            vs_t = clamp(vs_t, 0.0, climb_capability_fpm(da)) if self.ias_kt >= ROTATE_KT else 0.0
+            was_rolling = self.ias_kt >= 0.5
+            self.ias_kt = max(0.0, self.ias_kt + clamp(ias_t - self.ias_kt, -decel * dt, GROUND_ACCEL_KT_S * dt))
+            if was_rolling and self.ias_kt < 0.5:
+                self.ias_kt = 0.0
+                self.events.append(("STOPPED", rwy))
+            vs_t = clamp(vs_t, 0.0, climb_capability_fpm(da)) if (self.ias_kt >= ROTATE_KT and can_fly) else 0.0
             self.vs_fpm = max(0.0, self.vs_fpm + clamp(vs_t - self.vs_fpm, -VS_RATE_FPM_S * dt, VS_RATE_FPM_S * dt))
             # rolling along the heading; wind only adds its along-heading component
             g = max(0.0, tas_kt(self.ias_kt, da) * KT + we * hu + wn * hn)
@@ -318,6 +339,8 @@ class Aircraft:
             self.vs_fpm = max(0.0, self.vs_fpm)
         self.agl_ft = self.alt_msl_ft - ground
         self.on_ground = self.agl_ft <= 0.5
+        if not self.on_ground:
+            self.surface = None
         if self.on_ground and not prev_on_ground:
             self.events.append(("TOUCHDOWN", round(min(sink_fpm, self._last_air_vs))))
         elif prev_on_ground and not self.on_ground:

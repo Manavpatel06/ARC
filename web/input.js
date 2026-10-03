@@ -7,7 +7,8 @@
 //          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle,
 //          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event),
 //          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap"),
-//          D-pad up / down = map range out / in, D-pad left / right = map north-up toggle.
+//          D-pad up / down = map range out / in, D-pad left / right = map north-up toggle,
+//          Circle / B (standard button 1) held = wheel brakes (keyboard: B or Space held).
 // Buttons act on the press, not while held; a button already held when the page starts is ignored.
 // Reset own aircraft: hold L2 + R2 together (or keyboard R, or the on-screen RESET button) for 5 s;
 // fires "flock:reset" once, st.resetProgress (0..1) drives the countdown. Both triggers held = no throttle change.
@@ -25,13 +26,13 @@ export function startInput(send, onState = () => {}) {
   const keys = new Set();
   const tapped = new Set();      // keys pressed since the last tick (a quick tap still counts once)
   const st = { roll: 0, pitch: 0, throttle: 0.5, source: "none", engaged: false, pad: null,
-               resetButton: false, resetProgress: 0 };
+               resetButton: false, resetProgress: 0, brake: false };
   let resetHeld = 0, resetFired = false;
   let kRoll = 0, kPitch = 0;
   const wasDown = { 0: true, 3: true, 12: true, 13: true, 14: true, 15: true };   // ignore presses held at start
 
   addEventListener("keydown", (e) => {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS", "KeyR"].includes(e.code)) {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS", "KeyR", "KeyB", "Space"].includes(e.code)) {
       keys.add(e.code); tapped.add(e.code); e.preventDefault();
     }
   });
@@ -89,10 +90,12 @@ export function startInput(send, onState = () => {}) {
     } else { resetHeld = 0; resetFired = false; }
     st.resetProgress = resetFired ? 1 : Math.min(1, resetHeld / RESET_HOLD_S);
 
+    st.brake = !!(pad && pad.buttons[1] && pad.buttons[1].pressed) || keys.has("KeyB") || keys.has("Space");
+
     st.roll = clamp(roll, -1, 1);
     st.pitch = clamp(pitch, -1, 1);
     if (active) st.engaged = true;
-    if (st.engaged) send({ roll: +st.roll.toFixed(3), pitch: +st.pitch.toFixed(3), throttle: +st.throttle.toFixed(3) });
+    if (st.engaged) send({ roll: +st.roll.toFixed(3), pitch: +st.pitch.toFixed(3), throttle: +st.throttle.toFixed(3), brake: st.brake });
     onState(st);
   }, 1000 / SEND_HZ);
 

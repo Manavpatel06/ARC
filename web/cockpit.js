@@ -56,6 +56,10 @@ export function startCockpit(role) {
           else toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
         }
         else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
+        else if (m.event === "STOPPED") {
+          if (m.runway) { toast(`STOPPED · RUNWAY ${m.runway} · throttle up + pull to take off, or AP`, "ap", 6000); say(`stopped, runway ${m.runway.split("").join(" ")}`); }
+          else { toast("STOPPED OFF RUNWAY · hold L2 + R2 (or R) to reset", "warn", 8000); say("stopped off runway"); }
+        }
         else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); hap.bump(); }
         break;
     }
@@ -408,6 +412,13 @@ function drawPFD(cv, o, svt = false, fovy = null, att = true, wx = null) {
     if (stale) label(ctx, cx + R + 30 * k, cy + boxH / 2 + 74 * k, `ATIS ${qnh.toFixed(2)}`, 12 * k, "left", col);
   }
   if (wx && wx.metar_style) label(ctx, 10 * k, 20 * k, wx.metar_style, 12 * k, "left", css("var(--text-2)"));
+  // on the ground: where we are and how to stop (brakes only work on a runway)
+  if (o.on_ground && o.surface) {
+    const off = o.surface === "OFF";
+    const msg = off ? "OFF RUNWAY · rough ground · reset: hold L2 + R2"
+      : o.ias_kt > 2 ? `RUNWAY ${o.surface} · idle or hold ◯ / B to brake` : `RUNWAY ${o.surface} · stopped`;
+    label(ctx, W / 2, H - 70 * k, msg, 14 * k, "center", off ? css("var(--lvl-resolve)") : css("var(--lvl-release)"));
+  }
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 18 * k, `AGL ${Math.round(o.agl_ft)}`, 13 * k, "left",
         o.agl_ft < 300 ? css("var(--lvl-traffic)") : css("var(--text-2)"));
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 38 * k, `VS ${o.vs_fpm > 0 ? "+" : ""}${Math.round(o.vs_fpm / 10) * 10}`, 13 * k, "left", css("var(--text-2)"));

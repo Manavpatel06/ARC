@@ -173,7 +173,8 @@ class Hub:
         if role.startswith("cockpit:"):
             if t == "INPUT":
                 ac = self.w.fleet[own_id]
-                moving = ac.apply_input(float(m.get("roll", 0)), float(m.get("pitch", 0)), float(m.get("throttle", 0.5)), self.now())
+                moving = ac.apply_input(float(m.get("roll", 0)), float(m.get("pitch", 0)), float(m.get("throttle", 0.5)), self.now(),
+                                        brake=bool(m.get("brake", False)))
                 if moving and ac.cmd is not None and ac.cmd.get("mode") == "TAKEOVER":
                     ac.cmd = None                     # pilot always wins; node must RELEASE within one tick
                     stick = {"type": "STICK", "ac_id": own_id, "t": round(self.now(), 3)}
@@ -259,6 +260,7 @@ class Hub:
         d["baro_set_inhg"] = round(ac.baro_set_inhg, 2)
         d["turb"] = round(ac.turb_now, 2)
         d["taws"] = getattr(ac, "taws_alert", None)
+        d["surface"] = ac.surface if ac.on_ground else None
         if ac.mode == "AUTOPILOT" and ac.autopilot is not None:      # own AP's leg, for the moving map
             d["ap_leg"], d["ap_rwy"] = ac.autopilot.leg, ac.autopilot.p.ident
         d["ap"] = ac.ap_engaged
@@ -283,12 +285,14 @@ class Hub:
                               surface=surface, ias_kt=round(ac.ias_kt))
                 elif kind == "LIFTOFF":
                     ev.update(ias_kt=val)
+                elif kind == "STOPPED":
+                    ev.update(runway=val)
                 else:
                     ev.update(reason=val)
                 self.log(ac.id, "world", ev)
                 self.send(f"cockpit:{ac.id}", ev)
                 if ac.human or ev.get("hard"):
-                    self.send("god", ev)
+                    self.send("god", ev)          # (judge STOPPED events land in the god ticker too)
                 if ac.human or ev.get("hard") or kind == "AP_DISCONNECT":
                     print(f"[world] {kind} {ac.id} {val}" + (" HARD" if ev.get("hard") else ""))
 
