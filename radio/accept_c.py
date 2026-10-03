@@ -124,6 +124,7 @@ async def main(a):
             sp = spawn(["radio/spoofer.py", "--mode", "replay"], "spoof_replay")
             await asyncio.sleep(9)
             sp.terminate()
+            await asyncio.sleep(3)                       # let links recover from the spoofer's collisions first
             allrej = collections.Counter(r.split("(")[0] for n in nodes.values() for r in n.rejects)
             logged = collections.Counter(str(f.get("reason")).split("(")[0] for f in tap.frames if f.get("rejected_by"))
             for why in ("bad_signature", "replay_seq", "time_window"):
