@@ -323,10 +323,12 @@ function renderBounds(s) {
 // ---------- trust badges ----------
 function renderTrust(s) {
   const el = $("ck-trust");
-  const targets = (s.trust && s.trust.targets) || [];
-  const html = targets.map((t) =>
-    `<li data-state="${t.state}"><b>${t.id}</b><span>${t.state.replace("_", " ")}</span><em>${(+t.score).toFixed(2)}</em></li>`).join("")
-    || `<li class="muted">no targets from node</li>`;
+  const targets = [...((s.trust && s.trust.targets) || [])]
+    .sort((a, b) => ((a.rel && a.rel.rng_m) ?? 1e9) - ((b.rel && b.rel.rng_m) ?? 1e9));
+  const html = targets.map((t) => {
+    const nm = t.rel && t.rel.rng_m != null ? `${(t.rel.rng_m / NM).toFixed(1)} NM` : "—";
+    return `<li data-state="${t.state}"><b>${t.id}</b><i>${nm}</i><span>${t.state.replace("_", " ")}</span><em>${(+t.score).toFixed(2)}</em></li>`;
+  }).join("") || `<li class="muted">no traffic heard on the FLOCK radio</li>`;
   if (el.innerHTML !== html) el.innerHTML = html;
 }
 
@@ -562,7 +564,7 @@ function drawNavMap(cv, s) {
 
   // traffic (node-reported only)
   const targets = (s.trust && s.trust.targets) || [];
-  let unplaced = 0;
+  let unplaced = 0, nearest = null;
   for (const t of targets) {
     const rel = relOf(t, o);
     if (!rel) { unplaced++; continue; }
@@ -572,6 +574,13 @@ function drawNavMap(cv, s) {
     if (dr > R + 10 * k) { x = cx + dx / dr * (R + 10 * k); y = cy + dy / dr * (R + 10 * k); }   // pin to the edge
     const col = css(TRUST_COLOR[t.state] || "#fff");
     const hot = s.adv && s.adv.target_id === t.id && ["TRAFFIC", "RESOLVE", "TAKEOVER"].includes(s.adv.level);
+    if (t.state !== "CAMERA_ONLY") {                        // distance line from own aircraft
+      ctx.strokeStyle = col; ctx.lineWidth = (hot ? 2.5 : 1.2) * k; ctx.globalAlpha = hot ? 0.95 : 0.45;
+      ctx.setLineDash(hot ? [] : [5 * k, 5 * k]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    if (t.state !== "FAKE" && t.state !== "CAMERA_ONLY" && (!nearest || rel.rng_m < nearest.rel.rng_m)) nearest = { t, rel };
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2 * k;
     if (t.state === "CAMERA_ONLY") {                         // bearing wedge, not a dot
       const a = (rel.brg_deg - up) * D2R;
@@ -589,7 +598,7 @@ function drawNavMap(cv, s) {
     }
     const d = Math.round((rel.dalt_ft || 0) / 100);
     const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
-    label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
+    label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${(rel.rng_m / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
   }
 
   // own aircraft
@@ -601,7 +610,13 @@ function drawNavMap(cv, s) {
 
   // header: orientation, north pointer, range, track / GS (dark backing so it reads over the street map)
   ctx.fillStyle = "rgba(5, 8, 12, 0.72)";
-  ctx.fillRect(0, 0, 210 * k, 44 * k); ctx.fillRect(W - 44 * k, 0, 44 * k, 48 * k); ctx.fillRect(W - 220 * k, H - 40 * k, 220 * k, 40 * k);
+  ctx.fillRect(0, 0, 210 * k, nearest ? 60 * k : 44 * k); ctx.fillRect(W - 44 * k, 0, 44 * k, 48 * k); ctx.fillRect(W - 220 * k, H - 40 * k, 220 * k, 40 * k);
+  if (nearest) {
+    const d = Math.round((nearest.rel.dalt_ft || 0) / 100);
+    const clock = ((Math.round((nearest.rel.brg_deg - o.hdg_deg) / 30) % 12) + 12) % 12 || 12;
+    label(ctx, 10 * k, 52 * k, `NEAREST ${nearest.t.id} ${(nearest.rel.rng_m / NM).toFixed(1)} NM · ${clock} o'clock · ${d >= 0 ? "+" : "-"}${Math.abs(d) * 100} ft`,
+          12 * k, "left", css(TRUST_COLOR[nearest.t.state] || "#fff"));
+  }
   const hdr = `${m.northUp ? "NORTH UP" : `HDG ${String(Math.round(o.hdg_deg) % 360).padStart(3, "0")} UP`} · ${rangeNm} NM`;
   label(ctx, 10 * k, 20 * k, hdr, 12 * k, "left", css("var(--text-2)"));
   label(ctx, 10 * k, 36 * k, `TRK ${String(Math.round(o.track_deg) % 360).padStart(3, "0")} · GS ${Math.round(o.gs_kt)} kt`, 12 * k, "left", css("var(--own)"));

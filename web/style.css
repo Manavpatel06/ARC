@@ -115,6 +115,7 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .ck-trust li b { color: var(--text); }
 .ck-trust li span { color: var(--c); font-weight: 700; }
 .ck-trust li em { color: var(--text-2); font-style: normal; }
+.ck-trust li i { color: var(--text); font-style: normal; font-weight: 700; }
 .ck-trust li[data-state="TRUSTED"] { --c: var(--trust-ok); }
 .ck-trust li[data-state="SUSPICIOUS"] { --c: var(--trust-sus); }
 .ck-trust li[data-state="FAKE"] { --c: var(--trust-fake); text-decoration: line-through; }
