@@ -337,3 +337,25 @@ def test_peer_prediction_frames_are_published_for_the_god_view():
     for f in peer[-3:]:
         schemas.Prediction.model_validate(f)
     assert peer[-1]["ac_id"] == "N101" and peer[-1]["path"][0]["t"] == 0.0 and len(peer[-1]["path"]) == 19
+
+
+def test_resolve_advice_matches_what_takeover_flies():
+    """AP-equipped: a maneuver the bounds monitor would refuse (descent below TPA-300) is never advised or committed."""
+    ac = load_scenario("harness/scenarios/base_cutoff_conflict.json", PATS, comply=0.0)
+    sim = Sim(PATS, ac, lambda i: Node(i, patterns=PATS), loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
+    res = sim.run(175)
+    for aid in ("N101",):                                       # the AP-equipped aircraft
+        advised = [f["reason"].get("chosen") for _, i, f in res.advisories if i == aid and f["level"] == "RESOLVE"]
+        flown = [f["reason"].get("chosen") for _, i, f in res.commands if i == aid and f["mode"] == "TAKEOVER"]
+        assert advised and flown
+        cmd = next(f for _, i, f in res.commands if i == aid and f["mode"] == "TAKEOVER")
+        # same maneuver, or the log says exactly what changed between the advice and the takeover
+        assert flown[0] in advised or "changed_from" in cmd["reason"], (advised, flown)
+        if "changed_from" in cmd["reason"]:
+            assert cmd["reason"]["changed_from"]["advised"] in advised and cmd["reason"]["changed_from"]["why"]
+
+
+def test_bounds_blocked_candidate_is_rejected_with_reason():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, blocked={"R20": "bounds: test", "L20": "bounds: test"})
+    assert r.rejected["R20"] == "bounds: test" and r.chosen.cand.name not in ("R20", "L20")

@@ -30,6 +30,7 @@ NMAC_V_M = 100 * FT
 MARGIN_OK = 1.5                  # NMAC-box multiples considered "clear with margin"
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
+OBSTACLE_CLEARANCE_M = 100 * FT   # data.obstacles.top_at() is already conservative (surveyed accuracy + footprint)
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
 MIN_IAS_KT = 62.0
@@ -78,7 +79,7 @@ def _hits_obstacle(path, xs, ys, own: "OwnState", obstacle_fn) -> bool:
         if top is None:
             continue
         z = path[i * 4, 2]
-        if z < top + TERRAIN_CLEARANCE_M and (top > here + 1.0 or z < own.z - 12.0):
+        if z < top + OBSTACLE_CLEARANCE_M and (top > here + 1.0 or z < own.z - 12.0):
             return True
     return False
 
@@ -218,7 +219,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              terrain_fn: Callable[[float, float], float], obstacle_fn: Optional[Callable] = None,
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
-             exclude: tuple = (), require_maneuver: bool = False) -> EscapeResult:
+             exclude: tuple = (), require_maneuver: bool = False,
+             blocked: Optional[dict] = None) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
@@ -254,6 +256,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
                 reason = "pattern altitude floor"
             elif ceiling_msl_m is not None and zs.max() > ceiling_msl_m:
                 reason = "airspace ceiling"
+        if reason is None and blocked and c.name in blocked:
+            reason = blocked[c.name]                  # e.g. the bounds monitor would refuse to fly it
         if reason is None and c.kind != "hold" and margin < MARGIN_MIN:
             reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind == "climb" else "traffic"
         ev = Evaluation(c, reason is None, reason, margin, mh, mv, path)
