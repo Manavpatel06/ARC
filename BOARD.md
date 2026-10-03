@@ -66,15 +66,15 @@ Stubs to run while building: `stubs/fake_world.py` (TRUTH feed for the channel),
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| C1 | `radio/client.py`: same API as `stubs/loopback_radio.RadioClient` + `--via-channel` transport. Validate every message with `schemas.RadioMsg`. | 12:30 | [ ] |
-| C2 | `radio/channel.py`: connect as `channel`, read TRUTH, range cutoff 4,828 m, loss, latency; mirror delivered/dropped + reason to log. | 1:00 PM ✔ status | [ ] |
-| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [ ] |
-| C4 | `radio/crypto.py`: Ed25519 keypair, sign/verify, KEYS exchange at boot, seq monotonic, ±2 s window; rejections logged. | 3:00 | [ ] |
-| C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [ ] |
-| C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [ ] |
-| C7 | `radio/slots.py`: AIS-style self-organizing slots; collision-rate number at 8 and 30 senders, with/without. | 7:00 PM ✔ status | [ ] |
-| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [ ] |
-| C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [ ] |
+| C1 | `radio/client.py`: same API as `stubs/loopback_radio.RadioClient` + `--via-channel` transport. Validate every message with `schemas.RadioMsg`. | 12:30 | [x] |
+| C2 | `radio/channel.py`: connect as `channel`, read TRUTH, range cutoff 4,828 m, loss, latency; mirror delivered/dropped + reason to log. | 1:00 PM ✔ status | [x] |
+| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [~] multicast + ws relay both built; hotspot result pending |
+| C4 | `radio/crypto.py`: Ed25519 keypair, sign/verify, KEYS exchange at boot, seq monotonic, ±2 s window; rejections logged. | 3:00 | [x] |
+| C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [x] |
+| C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [x] |
+| C7 | `radio/slots.py`: AIS-style self-organizing slots; collision-rate number at 8 and 30 senders, with/without. | 7:00 PM ✔ status | [x] |
+| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [x] |
+| C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [x] |
 | C10 | *After 7 PM go/no-go only:* ESP32-C6 node over Wi-Fi UDP speaking the envelope; "over the air" tag in log. | optional | [ ] |
 | C11 | *Queue:* one-page BOM + band/link budget for the pitch (judge ask #9). | queue | [ ] |
 
