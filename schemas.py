@@ -157,6 +157,7 @@ class LiveAircraft(BaseModel):
     vs_fpm: float = 0
     on_ground: bool = False
     age_s: float = 0
+    dist_nm: float = 0
     leg: str = "UNKNOWN"        # pattern leg from pattern.py geometry, or GROUND / ENROUTE / UNKNOWN
     runway: Optional[str] = None
     leg_conf: float = 0
