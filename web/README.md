@@ -41,3 +41,9 @@ Cockpit controls:
   indicated altitude with BARO setting (amber + ATIS value when it is stale), light rumble in turbulence.
 - Terrain awareness: red PULL UP / TERRAIN, amber SINK RATE / TOO LOW TERRAIN banner over the PFD with repeating
   voice callouts and strong rumble; touchdown notices for OFF-RUNWAY LANDING and TERRAIN IMPACT.
+- Other aircraft on the moving map come from YOUR aircraft's FLOCK node: each peer broadcasts STATE on the radio
+  (only delivered within 3 NM), the node turns it into bearing / range / height difference (TRUST `rel`), and the map
+  draws it with distance ("N204 1.2 NM +02"), a line from your aircraft (solid for the one FLOCK is warning about),
+  a NEAREST readout (distance, clock position, height) and badges sorted by distance. Aircraft without a FLOCK
+  radio (flock: false) are not heard. Run the real stack (world + radio/channel.py + node/node.py per aircraft,
+  e.g. run_demo.ps1 on the integration branch) - with only the world running there is no traffic to show.
