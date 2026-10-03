@@ -76,6 +76,12 @@ function classify(f) {
     if (p.type === "HELLO") e.sum = `world up · scenario ${p.static?.scenario || p.scenario || ""} · fleet ${(p.fleet || (p.aircraft || []).map((a) => a.id) || []).join(" ")}`;
     else if (p.type === "STICK") { e.sum = `${p.ac_id}: pilot moved the stick — authority returns to the pilot`; e.color = "var(--green)"; e.decision = true; }
     else if (p.type === "SET_DA") e.sum = `density altitude set to ${num(p.ft)} ft`;
+    else if (p.type === "LIVE_TRAFFIC") {
+      const ac = p.aircraft || [], inp = ac.filter((a) => a.in_pattern);
+      e.tag = "LIVE ADS-B"; e.color = "#0e7490"; e.src = "live";
+      e.sum = `${ac.length} real aircraft within ${p.radius_nm} NM (${p.source}) · ${inp.length} in a KDVT pattern` +
+        (inp.length ? ": " + inp.slice(0, 6).map((a) => `${a.callsign} ${a.leg} ${a.runway}`).join(", ") : "") + " · display + prediction only";
+    }
     else if (p.type === "SCHEMA_ERROR") { e.sum = `schema error from ${p.from_role} (${p.msg_type}): ${(p.error || []).join(" ")}`; e.color = "var(--red)"; }
     else e.sum = JSON.stringify(p).slice(0, 160);
   }
