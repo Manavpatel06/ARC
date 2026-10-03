@@ -16,7 +16,7 @@ on them. (They carry no FLOCK radio; in the real system they would be ADS-B-only
 
 Frame (INTERFACE.md v1.2, additive):
 {"type":"LIVE_TRAFFIC","t":...,"source":"airplanes.live","radius_nm":25,
- "aircraft":[{"id":"a1b2c3","callsign":"N123AB","type":"C172","lat":..,"lon":..,"alt_msl_ft":2500,
+ "aircraft":[{"id":"a1b2c3","callsign":"N123AB","type":"C172","lat":..,"lon":..,"alt_msl_ft":2500,"dist_nm":3.2,
               "gs_kt":92,"track_deg":86,"vs_fpm":0,"on_ground":false,"age_s":1.2,
               "leg":"DOWNWIND","runway":"07R","leg_conf":0.82,"next_leg":"BASE","in_pattern":true}]}
 """
@@ -28,6 +28,17 @@ sys.path.insert(0, ROOT)
 from pattern import legs, straight_in, to_enu, ELEV_FT, TPA_AGL_FT   # noqa: E402
 
 LAT, LON = 33.688301, -112.083000
+GROUND_KEEP_NM = 2.0        # keep taxiing aircraft only at KDVT itself (drops Sky Harbor's ramp)
+
+def _altimeter_inhg() -> float:
+    try:
+        from data.metar import load
+        return float(load().get("altimeter_inhg", 29.92))
+    except Exception:
+        return 29.92
+
+def _dist_nm(lat, lon) -> float:
+    return math.hypot((lat - LAT) * 60.0, (lon - LON) * 60.0 * math.cos(math.radians(LAT)))
 RUNWAYS = ("25L", "25R", "07L", "07R")
 NEXT = {"UPWIND": "CROSSWIND", "CROSSWIND": "DOWNWIND", "DOWNWIND": "BASE", "BASE": "FINAL",
         "FINAL": "LANDING", "STRAIGHT_IN": "LANDING"}
@@ -43,14 +54,22 @@ def _get(url: str, timeout=6):
     return r.json()
 
 def _from_readsb(js: dict, src: str) -> list[dict]:
-    """airplanes.live / adsb.lol v2 format (readsb JSON)."""
+    """airplanes.live / adsb.lol v2 format (readsb JSON).
+    Altitude: barometric (what pilots fly) corrected to MSL with the KDVT altimeter setting.
+    GPS alt_geom is height above the WGS84 ellipsoid (~100 ft below MSL here), used only as a fallback."""
     out = []
+    corr = (_altimeter_inhg() - 29.92) * 1000.0
     for a in js.get("ac", []):
         if a.get("lat") is None or a.get("lon") is None:
             continue
         alt_baro = a.get("alt_baro")
         on_ground = alt_baro == "ground"
-        alt = a.get("alt_geom") if isinstance(a.get("alt_geom"), (int, float)) else (alt_baro if isinstance(alt_baro, (int, float)) else ELEV_FT)
+        if isinstance(alt_baro, (int, float)):
+            alt = alt_baro + corr
+        elif isinstance(a.get("alt_geom"), (int, float)):
+            alt = a["alt_geom"] + 100.0          # ellipsoid -> MSL (geoid ~ -31 m at Phoenix)
+        else:
+            alt = ELEV_FT
         out.append({"id": a.get("hex", "?"), "callsign": (a.get("flight") or a.get("r") or a.get("hex", "")).strip(),
                     "type": a.get("t", ""), "lat": a["lat"], "lon": a["lon"], "alt_msl_ft": float(alt),
                     "gs_kt": float(a.get("gs") or 0), "track_deg": float(a.get("track") or a.get("true_heading") or 0),
@@ -128,11 +147,15 @@ def classify(a: dict) -> dict:
 def frame(source: str, radius_nm: float, raw: list[dict]) -> dict:
     ac = []
     for a in raw:
-        a = dict(a); a.update(classify(a))
+        a = dict(a)
+        a["dist_nm"] = round(_dist_nm(a["lat"], a["lon"]), 1)
+        if a["on_ground"] and a["dist_nm"] > GROUND_KEEP_NM:
+            continue
+        a.update(classify(a))
         for k in ("alt_msl_ft", "gs_kt", "track_deg", "vs_fpm", "age_s"):
             a[k] = round(a[k], 1)
         ac.append(a)
-    ac.sort(key=lambda a: (not a["in_pattern"], a["leg"] == "ENROUTE", a["callsign"]))
+    ac.sort(key=lambda a: (not a["in_pattern"], a["on_ground"], a["dist_nm"]))
     return {"type": "LIVE_TRAFFIC", "t": time.time(), "source": source, "radius_nm": radius_nm, "aircraft": ac}
 
 def table(f: dict) -> str:
@@ -140,7 +163,7 @@ def table(f: dict) -> str:
             f"{sum(a['in_pattern'] for a in f['aircraft'])} in a KDVT pattern"]
     for a in f["aircraft"][:25]:
         leg = f"{a['leg']}{' ' + a['runway'] if a['runway'] else ''}" + (f" ({a['leg_conf']:.2f}) next {a['next_leg']}" if a["in_pattern"] else "")
-        rows.append(f"  {a['callsign'][:8]:8s} {a['type'][:4]:4s} {a['alt_msl_ft']:6.0f} ft {a['gs_kt']:4.0f} kt trk {a['track_deg']:3.0f}  {leg}")
+        rows.append(f"  {a['callsign'][:8]:8s} {a['type'][:4]:4s} {a['dist_nm']:4.1f} NM {a['alt_msl_ft']:6.0f} ft {a['gs_kt']:4.0f} kt trk {a['track_deg']:3.0f}  {leg}")
     return "\n".join(rows)
 
 # ---------------- main ----------------
@@ -175,7 +198,7 @@ async def run(args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--world", help="ws://<world-ip>:8765 (omit to just print)")
-    ap.add_argument("--radius", type=float, default=25, help="NM around KDVT")
+    ap.add_argument("--radius", type=float, default=12, help="NM around KDVT (12 keeps Sky Harbor's ramp out)")
     ap.add_argument("--every", type=float, default=5, help="seconds between polls (keep >= 5: free feeds)")
     ap.add_argument("--print", action="store_true", help="print the full table even when sending to the world")
     ap.add_argument("--record", action="store_true", help="append every frame to harness/out/live_<ts>.jsonl")
