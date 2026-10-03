@@ -30,6 +30,8 @@ NMAC_V_M = 100 * FT
 MARGIN_OK = 1.5                  # NMAC-box multiples considered "clear with margin"
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
+TERRAIN_FLOOR_MIN_M = 50 * FT      # even on short final no maneuver may go below this over the ground
+OBSTACLE_CLEARANCE_M = 100 * FT   # data.obstacles.top_at() is already conservative (surveyed accuracy + footprint)
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
 MIN_IAS_KT = 62.0
@@ -66,6 +68,37 @@ def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
         return candidate_cost(c.name, bank_deg=abs(c.bank), vs_fpm=c.vs_fpm, hold_s=hold_s, kt=max(own.gs / KT, 40.0))
     except Exception:
         return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
+
+
+def _hits_obstacle(path, xs, ys, hold, obstacle_fn) -> bool:
+    """Below top + 100 ft inside an obstacle's protection cylinder, but only if the maneuver is worse than the
+    flight we are already on (HOLD): it is >12 m lower at that instant, or meets an obstacle taller than HOLD does."""
+    for i in range(len(xs)):
+        top = obstacle_fn(float(xs[i]), float(ys[i]))
+        if top is None:
+            continue
+        z = path[i * 4, 2]
+        if z >= top + OBSTACLE_CLEARANCE_M:
+            continue
+        hx, hy, hz = hold[min(i * 4, len(hold) - 1)]
+        hold_top = obstacle_fn(float(hx), float(hy))
+        hold_top = -1e9 if hold_top is None else hold_top
+        if top > hold_top + 1.0 or z < hz - 12.0:
+            return True
+    return False
+
+
+def _hits_terrain(path, xs, ys, hold, terrain_fn) -> bool:
+    """Below 300 ft over terrain, but never judged against a stricter floor than the flight we are already on:
+    the floor is min(300 ft, HOLD's own clearance at that instant - 12 m).  A short final that lands 15 m below
+    rising ground ahead must still be able to climb; a descent or a turn that gets closer to the ground cannot."""
+    for i in range(len(xs)):
+        k = min(i * 4, len(hold) - 1)
+        hold_clear = hold[k, 2] - terrain_fn(float(hold[k, 0]), float(hold[k, 1]))
+        floor = min(TERRAIN_CLEARANCE_M, max(TERRAIN_FLOOR_MIN_M, hold_clear - 12.0))
+        if path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < floor:
+            return True
+    return False
 
 
 def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
@@ -203,7 +236,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              terrain_fn: Callable[[float, float], float], obstacle_fn: Optional[Callable] = None,
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
-             exclude: tuple = (), require_maneuver: bool = False) -> EscapeResult:
+             exclude: tuple = (), require_maneuver: bool = False,
+             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
@@ -219,6 +253,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
             path = simulate_maneuver(own.x, own.y, own.z, own.hdg, own.gs, own.bank, own.vs,
                                      c.bank, c.vs_fpm, hold_s)
         margin, mh, mv = _margin(path, peers, sigmas)
+        if peers_alt:                          # also safe if a pilot-only peer flies its own advised maneuver
+            margin = min(margin, _margin(path, {**peers, **peers_alt}, sigmas)[0])
         reason = None
         if c.kind == "turn" and abs(c.bank) > max_bank:
             reason = f"exceeds {max_bank:.0f} deg authority bound"
@@ -229,17 +265,16 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         elif c.kind != "hold":
             zs = path[:, 2]
             xs, ys = path[::4, 0], path[::4, 1]
-            # keep >= 300 ft over terrain; an aircraft already lower than that (short final) only has to not lose height
-            clear = min(TERRAIN_CLEARANCE_M, max(0.0, own.agl - 12.0))
-            if any(path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < clear for i in range(len(xs))):
+            if _hits_terrain(path, xs, ys, hold_path, terrain_fn):
                 reason = "terrain floor"
-            elif obstacle_fn and any(path[i * 4, 2] < (obstacle_fn(float(xs[i]), float(ys[i])) or -1e9) + TERRAIN_CLEARANCE_M
-                                     for i in range(len(xs))):
+            elif obstacle_fn and _hits_obstacle(path, xs, ys, hold_path, obstacle_fn):
                 reason = "obstacle"
             elif c.kind == "descend" and pattern_floor is not None and zs.min() < pattern_floor:
                 reason = "pattern altitude floor"
             elif ceiling_msl_m is not None and zs.max() > ceiling_msl_m:
                 reason = "airspace ceiling"
+        if reason is None and blocked and c.name in blocked:
+            reason = blocked[c.name]                  # e.g. the bounds monitor would refuse to fly it
         if reason is None and c.kind != "hold" and margin < MARGIN_MIN:
             reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind == "climb" else "traffic"
         ev = Evaluation(c, reason is None, reason, margin, mh, mv, path)

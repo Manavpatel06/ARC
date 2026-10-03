@@ -9,12 +9,21 @@ plus the advisory text/speech builders and the pattern sequencing plan
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
 from node.geometry import FT, bearing_deg, wrap360
 
-THRESHOLDS = [("TAKEOVER", 8.0), ("RESOLVE", 20.0), ("TRAFFIC", 35.0), ("SEQUENCE", 90.0)]
+# Layer timings (seconds to predicted conflict).  "spec" is the contract in CONTEXT.md and the default.
+# "early" warns the pilot 5 s sooner at the TRAFFIC and RESOLVE layers: in the Monte Carlo it cuts NMACs and
+# NO_SOLUTION further (more chances for a pilot to respond) but raises nuisance alerts on benign traffic
+# (about 3 % -> 7 %), so it is opt-in:  FLOCK_LAYERS=early python node/node.py ...
+_PROFILES = {
+    "spec": [("TAKEOVER", 8.0), ("RESOLVE", 20.0), ("TRAFFIC", 35.0), ("SEQUENCE", 90.0)],
+    "early": [("TAKEOVER", 8.0), ("RESOLVE", 25.0), ("TRAFFIC", 40.0), ("SEQUENCE", 90.0)],
+}
+THRESHOLDS = _PROFILES.get(os.environ.get("FLOCK_LAYERS", "spec"), _PROFILES["spec"])
 RANK = {"CLEAR": 0, "SEQUENCE": 1, "TRAFFIC": 2, "RESOLVE": 3, "TAKEOVER": 4}
 LAYER_NUM = {"CLEAR": 0, "SEQUENCE": 1, "TRAFFIC": 2, "RESOLVE": 3, "TAKEOVER": 4, "RELEASE": 4, "NO_SOLUTION": 4}
 _THR = dict(THRESHOLDS)

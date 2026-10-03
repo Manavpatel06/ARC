@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from node.escape import EscapeResult, Evaluation
+from node.escape import MARGIN_OK, EscapeResult, Evaluation
 
 LINK_TIMEOUT_S = 3.0
 FALLBACK_NAME = "R30"
@@ -107,6 +107,14 @@ class Negotiator:
 
         if p.peer_commit is not None:
             peer_c, basis = p.peer_commit, ("responding" if not lower else "lower-first")
+            if p.my_commit is not None:
+                # we already advised/committed: keep it if it still clears with the peer's maneuver on top,
+                # so the pilot is not handed a different instruction every time a commit arrives
+                res_keep = evaluate(peer_c)
+                mine = next((e for e in res_keep.evals if e.cand.name == p.my_cand), None)
+                p.seen_version = p.peer_version
+                if mine is not None and mine.feasible and mine.margin >= MARGIN_OK:
+                    return Decision(target, p.my_cand, p.my_commit["sense"], p.my_basis, peer_c.get("sense"), res_keep, None)
         elif not lower:
             peer_c, basis = expected_peer(), "precomputed"
         else:

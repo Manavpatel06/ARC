@@ -42,6 +42,8 @@ PEER_TIMEOUT_S = 30.0          # a silent peer stays on the table (sigma growing
 LATENCY_EST_S = 0.3
 PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
+PILOT_MAX_BANK = 45.0
+PILOT_HOLD_S = 15.0
 ESC_GRID = np.arange(0.0, escape.HORIZON_S + 1e-9, escape.DT)
 RELEVANT_RADIUS_M = 6000.0
 STICK_INHIBIT_S = 5.0
@@ -117,21 +119,19 @@ class Node:
         self._takeover_target: Optional[str] = None
         self.first_conflict_seen: Optional[float] = None            # first time the predictor showed any conflict
         self._near_ids: list[str] = []
+        self._tk_retry_at = -1e9
         self._seq_extend: Optional[tuple[float, float, str]] = None  # (time advised, seconds, leg it applies to)
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
     def _default_obstacles() -> Optional[Callable[[float, float], Optional[float]]]:
-        """data/obstacles.py (Lane D) when it exists: top_at(lat, lon) -> obstacle top in ft MSL, or None."""
+        """data/obstacles.py (Lane D): obstacle_fn_enu(to_latlon) -> fn(x_m, y_m) = highest obstacle top in
+        metres MSL within the 600 m protection radius, or None."""
         try:
-            from data.obstacles import top_at
+            from data.obstacles import obstacle_fn_enu
+            return obstacle_fn_enu(to_latlon)
         except Exception:
             return None
-
-        def fn(x: float, y: float) -> Optional[float]:
-            v = top_at(*to_latlon(x, y))
-            return None if v is None else float(v) * FT
-        return fn
 
     @staticmethod
     def _default_terrain() -> Callable[[float, float], float]:
@@ -481,13 +481,36 @@ class Node:
         peer_state = {"x": tr.x, "y": tr.y, "z": tr.alt_press_ft * FT + self.baro_offset_m,
                       "hdg": tr.track, "gs": tr.gs, "vs": tr.vs}
 
+        # What the bounds monitor would refuse to fly is not offered to an AP-equipped pilot either: the RESOLVE
+        # advice, the commit sent to the peer and the later TAKEOVER are then the same maneuver.
+        blocked = {}
+        neutral = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": 0.0, "vs_cmd_fpm": 0.0, "hold_s": 10.0}, ctx)
+        if ctx["ap_equipped"] and not ctx["stick_active"] and neutral.ok:     # situation-level refusals (e.g. below 300 ft
+            for cand in escape.candidates(escape.climb_rate_fpm(self.da_ft), o.bank):
+                if cand.kind == "hold":
+                    continue
+                v = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": cand.bank, "vs_cmd_fpm": cand.vs_fpm, "hold_s": 10.0}, ctx)
+                if not v.ok:
+                    blocked[cand.name] = f"bounds: {v.rejected}"
+
+        # FLOCK flies at most 30 deg for 10 s on its own authority; a pilot can be advised up to 45 deg for 15 s
+        pilot_mode = not (ctx["ap_equipped"] and not ctx["stick_active"])
+        hold_s = PILOT_HOLD_S if pilot_mode else 10.0
+
         def evaluate(peer_commit):
             pp = dict(peers)
+            alt = None
+            if peer_commit and not tr.ap_equipped:
+                # a pilot may or may not follow its advisory: the main case assumes it holds, and the candidate must
+                # also stay safe if it does fly it (two aircraft turning the same way can cancel each other out)
+                alt = {pid: escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])}
+                peer_commit = None
             if peer_commit:
                 pp[pid] = escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
-            return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=10.0,
-                                   require_maneuver=comp)
+            return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=hold_s,
+                                   require_maneuver=comp, blocked=blocked, peers_alt=alt,
+                                   max_bank=PILOT_MAX_BANK if pilot_mode else 30.0)
 
         def expected_peer():
             po = escape.OwnState(tr.x, tr.y, peer_state["z"], tr.track, tr.gs, 0.0, tr.vs, tr.gs / KT, 300.0, self.da_ft,
@@ -500,7 +523,7 @@ class Node:
             return None if ch is None else {"sense": ch.cand.sense, "bank_deg": abs(ch.cand.bank), "start_t": now,
                                             "hold_s": 10.0, "vs_fpm": ch.cand.vs_fpm}
 
-        dec = self.negotiator.decide(now, pid, evaluate, expected_peer)
+        dec = self.negotiator.decide(now, pid, evaluate, expected_peer, hold_s=hold_s)
         if dec is None:
             self._no_solution(now, pid, c, evaluate(None))
             return
@@ -510,11 +533,14 @@ class Node:
         if dec.result is not None:
             self._esc_cache[pid] = (now, dec.result)
         ttc = c.ttc_s
-        why = dict(res.reason(ttc) if res else {"chosen": dec.cand}, basis=dec.basis, peer_sense=dec.peer_sense,
+        why = dict(res.reason(ttc) if res else {"chosen": dec.cand}, basis=dec.basis, peer_sense=dec.peer_sense, hold_s=hold_s,
                    method=c.method, predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2))
         eligible = (level == "TAKEOVER" and ctx["ap_equipped"] and not ctx["stick_active"]
                     and now >= self._no_takeover_until and self.trust.may_negotiate(pid) and not self.auth.engaged)
         if eligible:
+            if now < self._tk_retry_at:          # a refused takeover is re-tried once a second, not every tick
+                return
+            self._tk_retry_at = now + 1.0
             self._try_takeover(now, pid, c, dec, res, why, ctx, evaluate)
             return
         if self.auth.engaged:
@@ -542,6 +568,9 @@ class Node:
             cmd = verdict.command
             cmd["reason"] = dict(why, chosen=ev.cand.name, rejected=dict(res.rejected, **rejected_by_auth),
                                  clipped=verdict.clipped, ttc_s=round(c.ttc_s, 1))
+            if ev.cand.name != dec.cand:         # say so when conditions changed between the advice and the takeover
+                cmd["reason"]["changed_from"] = {"advised": dec.cand,
+                                                 "why": (res.rejected.get(dec.cand) or rejected_by_auth.get(dec.cand) or "re-evaluated")}
             if ev.cand.name != dec.cand:                   # authority changed the plan: tell the peer
                 p = self.negotiator.pair(pid)
                 body = {"target": pid, "sense": ev.cand.sense, "bank_deg": abs(ev.cand.bank), "vs_fpm": ev.cand.vs_fpm,
