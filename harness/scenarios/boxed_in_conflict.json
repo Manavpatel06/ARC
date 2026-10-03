@@ -1,0 +1,5 @@
+{"name":"boxed_in_conflict","note":"boxed_in.json with offsets that really merge under pattern.place(): N101 at the base-to-final corner at 350 ft AGL, N204 22 s into BASE at the same altitude, merging from the right of the pattern with ~5 s to spare. Used by harness/accept_b.py (flat terrain, and with a synthetic ridge so every escape candidate is blocked).",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"FINAL","runway":"25L","offset_s":0,"agl_ft":350},"ap":true},
+ {"id":"N204","start":{"leg":"BASE","runway":"25L","offset_s":22,"agl_ft":350},"ap":false}
+],"channel":{"loss":0.0,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}

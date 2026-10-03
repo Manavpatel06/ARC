@@ -46,18 +46,18 @@ Stubs to run while building: `stubs/fake_world.py` (OWNSHIP in, COMMAND applied)
 
 | # | Task | Target | Status |
 |---|---|---|---|
-| B1 | `node/node.py`: 10 Hz loop, connect `node:<id>`, read OWNSHIP, broadcast STATE via RadioClient, track table of peers. | 12:30 | [ ] |
-| B2 | `node/geometry.py`: lat/lon ↔ ENU around KDVT; pattern leg polygons for 25L from `runways_kdvt.sample.json`. | 1:00 PM | [ ] |
-| B3 | Straight-line CPA vs one peer → TRAFFIC advisory (text + reason). | 1:00 PM ✔ status | [ ] |
-| B4 | `node/predict.py`: leg classifier with confidence; turn-aware 90 s prediction; `< 0.6` → straight-line fallback. | 3:00 | [ ] |
-| B5 | `node/conflict.py`: predicted miss < 500 ft H & < 100 ft V within 90 s, with sigma; ttc. | 3:00 | [ ] |
-| B6 | `node/layers.py`: SEQUENCE ≤90 / TRAFFIC ≤35 / RESOLVE ≤20 / TAKEOVER ≤8 with hysteresis; SEQ_PROPOSE/ACCEPT. | 4:00 PM ✔ status | [ ] |
-| B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [ ] |
-| B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [ ] |
-| B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [ ] |
-| B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [ ] |
-| B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [ ] |
-| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [ ] |
+| B1 | `node/node.py`: 10 Hz loop, connect `node:<id>`, read OWNSHIP, broadcast STATE via RadioClient, track table of peers. | 12:30 | [x] |
+| B2 | `node/geometry.py`: lat/lon ↔ ENU around KDVT; pattern leg polygons for 25L from `runways_kdvt.sample.json`. | 1:00 PM | [x] |
+| B3 | Straight-line CPA vs one peer → TRAFFIC advisory (text + reason). | 1:00 PM ✔ status | [x] |
+| B4 | `node/predict.py`: leg classifier with confidence; turn-aware 90 s prediction; `< 0.6` → straight-line fallback. | 3:00 | [x] |
+| B5 | `node/conflict.py`: predicted miss < 500 ft H & < 100 ft V within 90 s, with sigma; ttc. | 3:00 | [x] |
+| B6 | `node/layers.py`: SEQUENCE ≤90 / TRAFFIC ≤35 / RESOLVE ≤20 / TAKEOVER ≤8 with hysteresis; SEQ_PROPOSE/ACCEPT. | 4:00 PM ✔ status | [x] |
+| B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [x] |
+| B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [x] |
+| B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [x] |
+| B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
+| B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [~] |  trust gating + `rel` radar positions done; peers hard-coded TRUSTED until `radio/evidence.py` lands (`TrustTable.set_scorer`) |
+| B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [x] |  lost-link R/R fallback + stale-track handling (`accept_b.py` B12), `three_on_final.json` added |
 | B13 | *Phase 3:* Marana replay scenario `harness/scenarios/marana_2025.json`. | after go/no-go | [ ] |
 | B14 | *Queue:* out-of-sample validation on recorded KDVT ADS-B (OpenSky) if account arrives. | queue | [ ] |
 
