@@ -39,6 +39,7 @@ class Spoofer:
         self.site = {"ctl": "SITE", "tx": TX_ID, "lat": lat, "lon": lon, "alt_ft": 1500}
         self.ids = [f"GHOST{7 + i}" for i in range(max(1, a.sybil))]
         self.captured: list[dict] = []
+        self.rng = random.Random(a.seed)              # fixed seed: the same attack every run
         self.sent = 0
 
     async def up(self, frame: dict):
@@ -88,7 +89,7 @@ class Spoofer:
                 "track_deg": round(p["hdg_deg"], 1), "vs_fpm": -500, "leg": "FINAL", "intent": "LANDING_25L",
                 "ap_equipped": False}
         if self.a.mode == "impossible":
-            body.update(gs_kt=400, lat=round(lat + random.choice([-1, 1]) * 0.009, 6))
+            body.update(gs_kt=400, lat=round(lat + self.rng.choice([-1, 1]) * 0.009, 6))
         return body
 
     async def run(self):
@@ -135,6 +136,7 @@ if __name__ == "__main__":
     ap.add_argument("--via-channel")
     ap.add_argument("--iface")
     ap.add_argument("--world", help="accepted for run_demo.sh compatibility; not used")
+    ap.add_argument("--seed", type=int, default=7)
     try:
         asyncio.run(Spoofer(ap.parse_args()).run())
     except KeyboardInterrupt:
