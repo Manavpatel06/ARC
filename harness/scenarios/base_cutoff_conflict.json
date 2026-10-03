@@ -1,5 +1,5 @@
-{"name":"base_cutoff_conflict","note":"base_cutoff.json with offsets chosen so the two aircraft really do reach the base-to-final merge together under pattern.place() semantics: N101 62 s into DOWNWIND, N399 at the start of STRAIGHT_IN (both ~91 s from the final turn at 90 kt).",
+{"name":"base_cutoff_conflict","note":"base_cutoff.json with offsets chosen so the two aircraft really do reach the base-to-final merge together under pattern.place() semantics: N101 48 s into DOWNWIND, N399 at the start of STRAIGHT_IN (both ~91 s from the final turn at 90 kt).",
  "aircraft":[
- {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":62},"ap":true,"human":false},
+ {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":48},"ap":true,"human":false},
  {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"flock":true}
 ],"channel":{"loss":0.0,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}
