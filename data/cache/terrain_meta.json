@@ -1,0 +1,15 @@
+{
+ "grid": "USGS 3DEP 1 arc-second, max-pooled 3x3",
+ "lat0": 33.438301,
+ "lon0": -112.38345643071085,
+ "dlat": 0.0008333333333609971,
+ "dlon": 0.0008333333333609971,
+ "rows": 600,
+ "cols": 721,
+ "units": "m MSL",
+ "elev_m_default": 458.6201171875,
+ "source_tiles": [
+  "USGS_1_n34w113.tif",
+  "USGS_1_n34w112.tif"
+ ]
+}

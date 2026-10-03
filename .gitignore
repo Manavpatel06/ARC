@@ -4,6 +4,9 @@ __pycache__/
 data/cache/*
 !data/cache/.gitkeep
 !data/cache/*.sample.json
+!data/cache/terrain_kdvt.npy
+!data/cache/terrain_meta.json
+!data/cache/obstacles_kdvt.csv
 harness/out/*
 !harness/out/.gitkeep
 !harness/out/flock_vs_baseline.png
