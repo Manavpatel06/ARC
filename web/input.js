@@ -4,7 +4,8 @@
 // autopilot flies the aircraft); after that INPUT goes out at 30 Hz.
 //
 // Gamepad: left stick X = roll, left stick Y = pitch (pull back = climb; ?invert=1 flips),
-//          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle.
+//          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle,
+//          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event).
 // Keyboard: ←/→ roll, ↓ pull (climb) / ↑ push (descend), W/S throttle up/down.
 
 const DEADZONE = 0.12;
@@ -19,6 +20,7 @@ export function startInput(send, onState = () => {}) {
   const tapped = new Set();      // keys pressed since the last tick (a quick tap still counts once)
   const st = { roll: 0, pitch: 0, throttle: 0.5, source: "none", engaged: false, pad: null };
   let kRoll = 0, kPitch = 0;
+  let chaseWasDown = false;
 
   addEventListener("keydown", (e) => {
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(e.code)) {
@@ -49,6 +51,9 @@ export function startInput(send, onState = () => {}) {
       if (dThr) st.throttle = clamp(st.throttle + dThr * dt, 0, 1);
       active = roll !== 0 || pitch !== 0 || dThr !== 0;
       if (active) st.source = "gamepad";
+      const chaseDown = !!(pad.buttons[3] && pad.buttons[3].pressed);    // Triangle / Y
+      if (chaseDown && !chaseWasDown) dispatchEvent(new Event("flock:chase"));
+      chaseWasDown = chaseDown;
     }
 
     const down = (c) => keys.has(c) || tapped.has(c);
