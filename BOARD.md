@@ -68,7 +68,7 @@ Stubs to run while building: `stubs/fake_world.py` (TRUTH feed for the channel),
 |---|---|---|---|
 | C1 | `radio/client.py`: same API as `stubs/loopback_radio.RadioClient` + `--via-channel` transport. Validate every message with `schemas.RadioMsg`. | 12:30 | [x] |
 | C2 | `radio/channel.py`: connect as `channel`, read TRUTH, range cutoff 4,828 m, loss, latency; mirror delivered/dropped + reason to log. | 1:00 PM ✔ status | [x] |
-| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [~] multicast + ws relay both built; hotspot result pending |
+| C3 | Test both transports on the hotspot (multicast vs via-channel). **Report which works by 1 PM.** | 1:00 PM ✔ status | [x] multicast works on the Windows hotspot (Mac N101 ↔ Windows N102); ws relay :8766 as fallback |
 | C4 | `radio/crypto.py`: Ed25519 keypair, sign/verify, KEYS exchange at boot, seq monotonic, ±2 s window; rejections logged. | 3:00 | [x] |
 | C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [x] |
 | C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [x] |
