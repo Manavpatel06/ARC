@@ -1,0 +1,6 @@
+{"name":"three_on_final","note":"Pull Queue item / B12: N101 and N204 on DOWNWIND 8 s apart, N399 straight-in, all three arriving at the 25L final turn together (pattern.place() semantics, 90 kt). N101 and N399 collide with no avoidance; N204 trails N101 by ~370 m.",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":46},"ap":true,"human":false},
+ {"id":"N204","start":{"leg":"DOWNWIND","runway":"25L","offset_s":38},"ap":true,"human":false},
+ {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":true,"flock":true}
+],"channel":{"loss":0.1,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}

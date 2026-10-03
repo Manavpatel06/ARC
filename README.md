@@ -32,7 +32,10 @@ pip install -r requirements.txt
 ```
 All laptops on the same phone hotspot. Note the world server laptop's IP; every process takes `--world ws://<ip>:8765`.
 
-## Run order (Lane D owns run_demo.sh)
+## Run the whole demo with one command
+Windows (world laptop): `.\run_demo.ps1` (add `-Spoof` for GHOST7, `-Stubs` to force stand-ins, `-Stop` to end). macOS/Linux: `./run_demo.sh`. It prints the URLs for the other laptops.
+
+## Run order by hand (what run_demo does)
 1. `python world/world_server.py --scenario harness/scenarios/judges.json`
 2. `python radio/channel.py --world ws://<ip>:8765 --loss 0.1 --latency 0.3`
 3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per FLOCK aircraft; `run_demo.sh` spawns all)

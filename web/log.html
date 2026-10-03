@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLOCK Comms Log</title>
+<style>
+:root{
+  --bg:#ffffff; --panel:#f7f8fa; --line:#e3e6eb; --ink:#14171c; --muted:#6b7280; --faint:#9aa1ac;
+  --teal:#0f766e; --amber:#b45309; --orange:#c2410c; --red:#b91c1c; --green:#15803d; --purple:#7e22ce;
+  --blue:#1d4ed8; --grey:#6b7280; --sel:#eef4ff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.35 var(--sans)}
+body{display:grid;grid-template-rows:auto auto auto 1fr;height:100vh;overflow:hidden}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 16px;border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+header h1 span{color:var(--muted);font-weight:500}
+.stat{display:flex;flex-direction:column}
+.stat b{font:600 14px/1.1 var(--mono)}
+.stat small{color:var(--muted);font-size:11px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block;margin-right:6px;vertical-align:middle}
+.dot.on{background:var(--green)}
+.spacer{flex:1}
+button{font:inherit;font-size:12px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer}
+button:hover{background:var(--panel)}
+button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+#banner{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:baseline;min-height:52px;background:var(--panel)}
+#banner .lvl{font:700 18px var(--sans);padding:2px 10px;border-radius:6px;color:#fff}
+#banner .txt{font:600 20px var(--sans)}
+#banner .why{color:var(--muted);font-size:13px}
+#filters{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line)}
+#filters label{display:inline-flex;gap:4px;align-items:center;color:var(--ink);cursor:pointer}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer;font:600 12px var(--mono);user-select:none}
+.chip.off{color:var(--faint);background:#fff;text-decoration:line-through}
+#search{border:1px solid var(--line);border-radius:6px;padding:4px 8px;width:180px;font:inherit}
+main{display:grid;grid-template-columns:1fr 420px;min-height:0}
+#tablewrap{overflow:auto;min-height:0}
+table{border-collapse:collapse;width:100%}
+thead th{position:sticky;top:0;background:#fff;text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+tbody td{padding:3px 8px;border-bottom:1px solid #f0f2f5;white-space:nowrap;vertical-align:top}
+tbody td.sum{white-space:normal}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#fafbfc}
+tbody tr.sel{background:var(--sel)}
+tr.decision td{font-weight:600}
+tr.drop td.sum, tr.drop td.typ{color:var(--red);text-decoration:line-through}
+td.t{font-family:var(--mono);color:var(--muted)}
+td.src{font-family:var(--mono)}
+.tag{display:inline-block;padding:0 6px;border-radius:4px;font:600 11px/18px var(--mono);color:#fff}
+aside{border-left:1px solid var(--line);overflow:auto;padding:14px 16px;background:var(--panel)}
+aside h2{font-size:15px;margin:0 0 4px}
+aside h3{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:16px 0 6px}
+aside .empty{color:var(--muted)}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:3px 10px}
+.kv div:nth-child(odd){color:var(--muted)}
+.kv div:nth-child(even){font-family:var(--mono)}
+.mtab{width:100%;border-collapse:collapse;font-size:12px}
+.mtab td,.mtab th{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left}
+.mtab th{color:var(--muted);font-weight:600}
+.ok{color:var(--green);font-weight:700}.bad{color:var(--red);font-weight:700}
+pre{font:11px/1.4 var(--mono);background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;max-height:320px}
+.tx{font:12px/1.5 var(--mono)}
+.tx div{padding:1px 0}
+@media (max-width:900px){main{grid-template-columns:1fr}aside{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot" id="conn"></span>FLOCK <span>comms log</span></h1>
+  <div class="stat"><b id="sWx">—</b><small>KDVT METAR</small></div>
+  <div class="stat"><b id="sDa">—</b><small>density alt</small></div>
+  <div class="stat"><b id="sAc">0</b><small>aircraft</small></div>
+  <div class="stat"><b id="sRate">0</b><small>msgs / s</small></div>
+  <div class="stat"><b id="sDel">0</b><small>delivered</small></div>
+  <div class="stat"><b id="sDrop">0</b><small>dropped</small></div>
+  <div class="stat"><b id="sLoss">0%</b><small>link loss (in range)</small></div>
+  <div class="stat"><b id="sLat">—</b><small>mean latency</small></div>
+  <div class="stat"><b id="sSlot">0</b><small>slot collisions</small></div>
+  <div class="stat"><b id="sRej">0</b><small>rejected sig/seq/time</small></div>
+  <div class="spacer"></div>
+  <button id="bPause" title="Space">Pause</button>
+  <button id="bExport">Export JSONL</button>
+  <button id="bLoad">Load JSONL</button>
+  <button id="bClear">Clear</button>
+  <input type="file" id="fLoad" accept=".jsonl,.json,.txt" hidden>
+</header>
+<div id="banner"><span class="why">Waiting for the first decision…</span></div>
+<div id="filters">
+  <span id="acChips"></span>
+  <label><input type="checkbox" id="kDec" checked> decisions</label>
+  <label><input type="checkbox" id="kRadio" checked> radio</label>
+  <label><input type="checkbox" id="kWorld" checked> world</label>
+  <span style="color:var(--line)">|</span>
+  <label title="Routine 1 Hz position reports. Rejected (spoofed) ones always show."><input type="checkbox" id="mState"> STATE</label>
+  <label><input type="checkbox" id="mHb"> HEARTBEAT</label>
+  <label><input type="checkbox" id="mTrustAll"> every TRUST frame</label>
+  <label><input type="checkbox" id="mDropOnly"> dropped only</label>
+  <input id="search" placeholder="search (e.g. GHOST7, COMMIT)">
+</div>
+<main>
+  <div id="tablewrap">
+    <table>
+      <thead><tr><th>time</th><th>src</th><th>type</th><th>summary</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <aside id="detail"><div class="empty">Click any row to see why: predicted miss, time to conflict, method, confidence, chosen and rejected maneuvers, bounds, trust evidence and the negotiation transcript.</div></aside>
+</main>
+<script type="module" src="log.js"></script>
+</body>
+</html>
