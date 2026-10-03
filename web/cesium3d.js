@@ -41,8 +41,23 @@ export function ionToken() {
   }
 }
 
+// WebGL renderer string if the browser exposes it; flags CPU-only rendering (no GPU acceleration):
+// Windows "Microsoft Basic Render Driver", SwiftShader, llvmpipe. 3D is unusable there.
+export function gpuInfo() {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    if (!gl) return { renderer: "no WebGL", software: true };
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "unknown";
+    return { renderer, software: /Basic Render Driver|SwiftShader|llvmpipe|Software/i.test(renderer) };
+  } catch {
+    return { renderer: "unknown", software: false };
+  }
+}
+
 // Create a bare viewer (no Cesium UI chrome). Returns {viewer, terrain:boolean}.
-export async function makeViewer(Cesium, container, { buildings = true } = {}) {
+// lite = half resolution, no fog/atmosphere, coarser tiles: for weak or CPU-only graphics.
+export async function makeViewer(Cesium, container, { buildings = true, lite = false } = {}) {
   const token = ionToken();
   const opts = {
     animation: false, timeline: false, baseLayerPicker: false, geocoder: false, homeButton: false,
@@ -57,9 +72,14 @@ export async function makeViewer(Cesium, container, { buildings = true } = {}) {
   }
   const viewer = new Cesium.Viewer(container, opts);
   viewer.scene.globe.depthTestAgainstTerrain = !!token;
-  viewer.scene.skyAtmosphere.show = true;
-  viewer.scene.fog.enabled = true;
-  if (token && buildings) {
+  viewer.scene.skyAtmosphere.show = !lite;
+  viewer.scene.fog.enabled = !lite;
+  if (lite) {
+    viewer.resolutionScale = 0.5;
+    viewer.scene.globe.maximumScreenSpaceError = 4;
+    viewer.scene.globe.showGroundAtmosphere = false;
+  }
+  if (token && buildings && !lite) {
     try { viewer.scene.primitives.add(await Cesium.createOsmBuildingsAsync()); } catch (e) { console.warn("[3d] OSM buildings", e); }
   }
   return { viewer, terrain: !!token };

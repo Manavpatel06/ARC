@@ -51,13 +51,13 @@ export function startInput(send, onState = () => {}) {
       if (active) st.source = "gamepad";
     }
 
-    // keyboard: ramp toward full deflection so a tap is not a slam
     const down = (c) => keys.has(c) || tapped.has(c);
     const kr = (down("ArrowRight") ? 1 : 0) - (down("ArrowLeft") ? 1 : 0);
     const kp = (down("ArrowDown") ? 1 : 0) - (down("ArrowUp") ? 1 : 0);
-    // keyboard deflection ramps in while held and eases out after release
-    kRoll = kr ? clamp(kRoll + kr * 2.5 * dt, -1, 1) : kRoll * Math.max(0, 1 - 4 * dt);
-    kPitch = kp ? clamp(kPitch + kp * 2.5 * dt, -1, 1) : kPitch * Math.max(0, 1 - 4 * dt);
+    // keyboard: full deflection while held (the world already limits bank rate to 15 deg/s),
+    // quick ease-out after release so wings come level smoothly
+    kRoll = kr ? kr : kRoll * Math.max(0, 1 - 8 * dt);
+    kPitch = kp ? kp : kPitch * Math.max(0, 1 - 8 * dt);
     if (Math.abs(kRoll) < 0.02) kRoll = 0;
     if (Math.abs(kPitch) < 0.02) kPitch = 0;
     const kt = (down("KeyW") ? 1 : 0) - (down("KeyS") ? 1 : 0);
