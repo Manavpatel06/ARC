@@ -171,7 +171,7 @@ class PatternPilot:
             if math.hypot(de, dn) < 1.5 * r:                     # close enough: roll onto downwind
                 self.leg, self.phase = "DOWNWIND", "PATTERN"
             else:
-                vs = clamp(6.0 * (p.tpa_ft - ac.alt_msl_ft), -800, 9_999)
+                vs = clamp(6.0 * (p.tpa_ft - ac.indicated_ft), -800, 9_999)      # TPA on the altimeter
                 return self._steer_to(ac, math.degrees(math.atan2(de, dn)) % 360), vs, LEG_IAS["DOWNWIND"] + self.ias_bias
 
         L = p.legs[self.leg]
@@ -202,8 +202,13 @@ class PatternPilot:
 
         # vertical: follow the leg's AGL profile, feed-forward the descent on descending legs
         ground = ac.alt_msl_ft - ac.agl_ft
-        tgt_alt = ground + L.agl_at(along)
-        vs = 6.0 * (tgt_alt - ac.alt_msl_ft) - ac.gs_kt * 101.27 * L.slope
+        if self.leg in ("CROSSWIND", "DOWNWIND", "BASE"):
+            # flown by the altimeter: published altitudes, read with this aircraft's setting
+            tgt_alt, cur = p.elev_ft + L.agl_at(along), ac.indicated_ft
+        else:
+            # upwind / final are flown visually against the ground
+            tgt_alt, cur = ground + L.agl_at(along), ac.alt_msl_ft
+        vs = 6.0 * (tgt_alt - cur) - ac.gs_kt * 101.27 * L.slope
         if self.leg == "UPWIND" and along < 0:
             # over the runway after final: flare onto the wheels, roll, then climb (touch-and-go)
             on_runway_m = along + p.runway_len_m
@@ -212,7 +217,7 @@ class PatternPilot:
                 vs = -150.0 - 5.0 * ac.agl_ft
             else:
                 vs = 0.0 if ac.agl_ft < 5 and on_runway_m < GROUND_ROLL_M else 9_999
-        elif self.leg in ("UPWIND", "CROSSWIND") and ac.alt_msl_ft < tgt_alt - 50:
+        elif self.leg in ("UPWIND", "CROSSWIND") and cur < tgt_alt - 50:
             vs = 9_999                                             # best climb (capped by DA)
         if self.leg in ("FINAL", "STRAIGHT_IN") and ac.agl_ft < 40:
             vs = max(vs, -150.0 - 5.0 * ac.agl_ft)                # flare: ~-350 fpm at 40 ft to -150 at the wheels

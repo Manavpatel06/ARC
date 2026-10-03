@@ -28,3 +28,6 @@ Cockpit controls:
   light pulse every 2 s on TRAFFIC, double pulse every 1 s on RESOLVE, continuous shake while FLOCK has control,
   faster/stronger pulses as a TRUSTED target closes inside 1 NM, one knock when control is handed back.
   FAKE / SUSPICIOUS targets never rumble. Footer shows "rumble ✓" when the pad supports it.
+- Weather (god view panel): preset, turbulence, wind / gusts / shear / thermals / visibility / cloud base / QNH sliders,
+  "Update all altimeters to QNH". Cockpit: dust / haze / cloud over the 3D view, METAR line on the PFD, altimeter shows
+  indicated altitude with BARO setting (amber + ATIS value when it is stale), light rumble in turbulence.

@@ -9,6 +9,7 @@
 //   TAKEOVER        continuous shake (stick-shaker) while FLOCK has control
 //   proximity       TRUSTED target inside 1 NM: pulses speed up and strengthen as range closes
 //   bump()          one short knock: control handed back (STICK / AP disconnect)
+//   turbulence      light rumble while the own aircraft is being bounced (own state, not traffic)
 //
 // Chrome Gamepad API "dual-rumble" (Xbox, DualShock 4 on Windows; DualSense varies). ?haptics=0 disables.
 
@@ -39,6 +40,11 @@ export function plan(st, now, mem) {
       out.push(haptic(0.65, 0.6, 120), { ...haptic(0.65, 0.6, 120), delay: 240 });
       mem.next = now + 1000;
     } else mem.next = now + 250;
+  }
+  // turbulence on the own aircraft: light, frequent rumble (lowest priority)
+  if ((st.turb || 0) > 0.15 && now >= (mem.turbT || 0)) {
+    out.push(haptic(0.05 + 0.3 * st.turb, 0.1 + 0.4 * st.turb, 120));
+    mem.turbT = now + 180;
   }
   // proximity of the nearest TRUSTED target (only when no faster pattern is running)
   if (st.nearestTrustedM != null && st.nearestTrustedM < NM && level !== "RESOLVE" && level !== "TAKEOVER") {
