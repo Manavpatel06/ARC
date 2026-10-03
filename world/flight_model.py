@@ -55,7 +55,8 @@ GROUND_ACCEL_KT_S = 3.0    # full-power takeoff roll
 BRAKE_KT_S = 5.0           # braking / rollout
 STEER_DPS = 12.0           # nosewheel steering at full deflection (taxi speed and above)
 HARD_LANDING_FPM = 800.0
-AP_REQUIRES_EQUIPMENT = True   # the AP button only works on ap_equipped aircraft (same rule as FLOCK takeover)
+AP_REQUIRES_EQUIPMENT = True   # AI aircraft need ap_equipped for the AP button; judge (human) aircraft always get it
+                               # as a sim convenience. FLOCK takeover (apply_command) still requires ap_equipped.
 
 def climb_capability_fpm(da_ft: float) -> float:
     """Max sustained climb (fpm) vs density altitude — Lane D's table, one source for everyone."""
@@ -180,7 +181,7 @@ class Aircraft:
             return True, "disconnected" if was else "already off"
         if self.autopilot is None or not hasattr(self.autopilot, "engage"):
             return False, "no autopilot for this aircraft"
-        if AP_REQUIRES_EQUIPMENT and not self.ap_equipped:
+        if AP_REQUIRES_EQUIPMENT and not self.ap_equipped and not self.human:
             return False, "no autopilot installed (ap_equipped=false)"
         self.has_pilot = True
         self.ap_engaged = True

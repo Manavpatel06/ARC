@@ -19,7 +19,7 @@ Cockpit URL options:
 Cockpit controls:
 - Gamepad: left stick = bank / pitch, R2 / L2 = throttle, **Triangle / Y** = chase cam, **Cross / A** = autopilot on/off.
 - Keyboard: arrows = bank / pitch, W / S = throttle, **C** = chase cam, **A** = autopilot on/off. On-screen **AP** button too.
-- Autopilot (ap_equipped aircraft only): in the air it levels, joins the pattern (the leg it is lined up with, else a
+- Autopilot (every judge aircraft; AI aircraft only if ap_equipped — FLOCK takeover still needs ap_equipped): in the air it levels, joins the pattern (the leg it is lined up with, else a
   downwind entry at pattern altitude), flies the circuit and lands to a full stop. Pressed again while stopped on the
   runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.
 - On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off; throttle to
