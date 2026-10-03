@@ -5,17 +5,18 @@ radio/evidence.py — trust EVIDENCE per radio target (Lane C, task C8), consume
 Four independent checks, each producing evidence strings:
   1. signature        "signed" | "unsigned" | "unknown_key"     (unsigned -> score capped at 0.55 = SUSPICIOUS)
   2. kinematics       speed <= 200 kt, accel <= 0.5 g, turn rate <= 10 deg/s, climb/descent <= 2,000 fpm,
-                      and the claimed positions must be reachable from each other ("position_jump")
+                      and each position must follow from the last one + its claimed velocity ("position_jump")
                       -> "plausible" | "kinematics_violation:<which>"
   3. RF consistency   the channel attaches an emulated RSSI + Doppler measured from the TRUE transmitter;
                       we predict both from the CLAIMED position/velocity and our own state. Median error over
-                      the last 5 packets: > 6 dB or > 25 Hz -> "rf_rssi_mismatch:9dB" / "rf_doppler_mismatch:80Hz"
+                      the last 5 packets: > 9 dB or > 25 Hz -> "rf_rssi_mismatch:9dB" / "rf_doppler_mismatch:80Hz"
   4. peer corroboration  every node puts {target: 1|0} for what it heard (1 = RF + kinematics agree) in its
                       HEARTBEAT as "nb". Signed peers that report the target 1 from different bearings
                       (>= 30 deg apart, seen from the target) -> "corroborated:2". Signed peers that should
-                      hear it (claimed range < 3.9 km) but report 0 or nothing -> "refuted_by:N204".
+                      hear it (claimed range < 3 km) but report 0 or nothing -> "refuted_by:N204".
 Score starts at 1.0: unsigned caps at 0.55, each kinematic flag -0.35, RF mismatch -0.35, each failed
-corroboration -0.25 (max two). Thresholds live in node/trust.py: TRUSTED >= 0.7, SUSPICIOUS >= 0.4, else FAKE.
+refutation -0.25, each silent peer -0.1 for a signed RF-consistent
+target (else -0.25), at most -0.5 in total. Thresholds live in node/trust.py: TRUSTED >= 0.7, SUSPICIOUS >= 0.4, else FAKE.
 So a lone unsigned GHOST7 is SUSPICIOUS; once two peers fail to corroborate it (or its RF disagrees) it is FAKE.
 Camera corroboration: schema field exists, NOT implemented (CV is cut).
 
@@ -39,13 +40,14 @@ MAX_SPEED_KT = 200.0
 MAX_ACCEL_KT_S = 0.5 * 9.80665 / rf.KT          # 0.5 g ~ 9.5 kt/s
 MAX_TURN_DEG_S = 10.0
 MAX_VS_FPM = 2000.0
-RSSI_TOL_DB = 6.0
+RSSI_TOL_DB = 9.0
 DOPPLER_TOL_HZ = 25.0
 RF_MIN_SAMPLES = 3
-CORROB_RANGE_M = 3900.0          # peers closer than this (claimed) to a target are expected to hear it
+CORROB_RANGE_M = 3000.0          # peers closer than this (claimed) are expected to hear it (well inside 4,828 m)
 FLAG_HOLD_S = 15.0
 NB_FRESH_S = 5.0
 STALE_S = 5.0
+POS_RESIDUAL_M = 300.0
 BEARING_SEP_DEG = 30.0
 
 
@@ -108,22 +110,29 @@ class TrustEvidence:
 
     def _kinematics(self, tr: _Track, t0: float, b0: dict, t1: float, b1: dict):
         now = self.clock()
-        dt = t1 - t0
         if b1.get("gs_kt", 0) > MAX_SPEED_KT:
             tr.flags["speed"] = now
         if abs(b1.get("vs_fpm", 0)) > MAX_VS_FPM:
             tr.flags["climb_rate"] = now
-        if dt < 0.3:
+        dt = t1 - t0
+        if dt <= 0 or dt > 6:
             return
-        dist = rf.horiz_range_m(rf.from_state_body(b0), rf.from_state_body(b1))
-        if dist / dt / rf.KT > MAX_SPEED_KT * 1.15 + 20:
+        # Position must follow from the previous position + its own claimed velocity. Slot timing can put two
+        # STATEs 0.35 s apart on the air though their positions were sampled ~1 s apart, so compare against the
+        # better of both gaps and allow 300 m; a real aircraft is off by ~45 m, a spoofer jump by ~1 km.
+        p0 = rf.from_state_body(b0)
+        best = min(rf.horiz_range_m(dict(p0, lat=lat, lon=lon), rf.from_state_body(b1))
+                   for gap in (dt, max(dt, 1.0))
+                   for lat, lon, _ in [rf.extrapolate(p0["lat"], p0["lon"], p0["alt_ft"], p0["gs_kt"], p0["track_deg"], 0, gap)])
+        if best > POS_RESIDUAL_M:
             tr.flags["position_jump"] = now
-        if abs(b1.get("gs_kt", 0) - b0.get("gs_kt", 0)) / dt > MAX_ACCEL_KT_S * 1.2:
+        dt_eff = max(dt, 1.0)                           # rates over at least one STATE period (slot jitter)
+        if abs(b1.get("gs_kt", 0) - b0.get("gs_kt", 0)) / dt_eff > MAX_ACCEL_KT_S * 1.2:
             tr.flags["accel"] = now
         dtrk = (b1.get("track_deg", 0) - b0.get("track_deg", 0) + 540) % 360 - 180
-        if abs(dtrk) / dt > MAX_TURN_DEG_S * 1.2:
+        if abs(dtrk) / dt_eff > MAX_TURN_DEG_S * 1.2:
             tr.flags["turn_rate"] = now
-        dalt_fpm = (b1.get("alt_press_ft", 0) - b0.get("alt_press_ft", 0)) / dt * 60
+        dalt_fpm = (b1.get("alt_press_ft", 0) - b0.get("alt_press_ft", 0)) / dt_eff * 60
         if abs(dalt_fpm) > MAX_VS_FPM * 1.5 + 300:
             tr.flags["climb_rate"] = now
 
@@ -183,8 +192,9 @@ class TrustEvidence:
                 bearings.append(rf.bearing_deg(tpos, ppos))
             elif nb.get(tid) == 0:
                 refuters.append(pid)
-            elif rf.horiz_range_m(tpos, ppos) < CORROB_RANGE_M:
-                silent.append(pid)
+            elif (rf.horiz_range_m(tpos, ppos) < CORROB_RANGE_M and now - tr.states[-1][2] < 3.0
+                  and now - ptr.states[-1][2] < 3.0):
+                silent.append(pid)                     # only judge silence on fresh positions for both
         clusters: list[float] = []
         for b in sorted(bearings):
             if all(abs((b - c + 180) % 360 - 180) >= BEARING_SEP_DEG for c in clusters):
@@ -215,12 +225,15 @@ class TrustEvidence:
         if n:
             ev.append(f"corroborated:{n}")
         fails = refuters + silent
+        # Silence is weak evidence (loss, shadowing): for a signed target whose RF agrees with its claim it costs
+        # 0.1 per peer; an explicit refutation (a peer whose RF disagrees) costs 0.25. Total capped at 0.5.
+        silent_cost = 0.1 if (tr.auth == "ok" and rf_ok is not False) else 0.25
         if refuters:
             ev.append("refuted_by:" + ",".join(sorted(refuters)))
         if silent:
             ev.append("not_heard_by:" + ",".join(sorted(silent)))
         if fails and n < 2:
-            score -= 0.25 * min(2, len(fails))
+            score -= min(0.5, 0.25 * len(refuters) + silent_cost * len(silent))
         if fails and not n:
             ev.append("no_corroboration")
         if tr.states and self.clock() - tr.states[-1][2] > STALE_S:
