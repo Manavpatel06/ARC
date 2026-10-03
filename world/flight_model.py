@@ -291,11 +291,10 @@ class Aircraft:
             rwy = env.runway_at(self) if env.runway_at else "RWY"
             self.surface = rwy or "OFF"
             decel, can_fly = BRAKE_KT_S, True
-            if self.mode == "HUMAN":
-                if not rwy:                                   # off the runway: rough ground, no takeoff
-                    ias_t, decel, can_fly = 0.0, ROUGH_GROUND_KT_S, False
-                elif self.inp_brake or self.inp_throttle < IDLE_THROTTLE:
-                    ias_t = 0.0                               # idle / brakes: stop on the runway
+            if not rwy:                                       # off the runway: rough ground, nobody takes off
+                ias_t, decel, can_fly = 0.0, ROUGH_GROUND_KT_S, False
+            elif self.mode == "HUMAN" and (self.inp_brake or self.inp_throttle < IDLE_THROTTLE):
+                ias_t = 0.0                                   # idle / brakes: stop on the runway
             ias_t = clamp(ias_t, 0.0, VMAX_KT)
             was_rolling = self.ias_kt >= 0.5
             self.ias_kt = max(0.0, self.ias_kt + clamp(ias_t - self.ias_kt, -decel * dt, GROUND_ACCEL_KT_S * dt))
@@ -334,6 +333,10 @@ class Aircraft:
         self.alt_msl_ft += (self.vs_fpm + w_air) * dt / 60.0
         ground = env.terrain_ft(self.lat, self.lon)
         sink_fpm = self.vs_fpm + w_air
+        if was_on_ground and self.vs_fpm <= 0.0:
+            # rolling: the wheels follow the ground, also downhill (real runways slope - 25L drops ~38 ft),
+            # otherwise each terrain step leaves the aircraft "airborne" and the airborne speed floor kicks in
+            self.alt_msl_ft = min(self.alt_msl_ft, ground)
         if self.alt_msl_ft <= ground:         # no sinking into terrain
             self.alt_msl_ft = ground
             self.vs_fpm = max(0.0, self.vs_fpm)

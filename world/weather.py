@@ -49,7 +49,8 @@ class Weather:
     def from_metar(cls, wx: dict) -> "Weather":
         return cls(name="metar", wind_from_deg=float(wx.get("wind_dir_deg", 0) or 0), wind_kt=float(wx.get("wind_kt", 0) or 0),
                    gust_kt=float(wx.get("wind_gust_kt", 0) or 0), qnh_inhg=float(wx.get("altimeter_inhg", 29.92) or 29.92),
-                   visibility_sm=float(wx.get("visibility_sm", 10) or 10), da_ft=None)
+                   visibility_sm=float(wx.get("visibility_sm", 10) or 10),
+                   da_ft=wx.get("density_altitude_ft"))          # "metar" preset restores the METAR's own DA
 
     def update(self, **kw) -> list[str]:
         """Apply a partial change (SET_WX). Returns the field names that changed."""
@@ -202,7 +203,7 @@ PRESETS: dict[str, dict] = {
     "low_ceiling": dict(wind_from_deg=270, wind_kt=10, gust_kt=0, shear_kt=0, turbulence=1, thermals=0.0,
                         visibility_sm=4, ceiling_ft_agl=1100, qnh_inhg=29.92, da_ft=3500),
     "pressure_drop": dict(wind_from_deg=250, wind_kt=8, gust_kt=0, shear_kt=0, turbulence=0, thermals=0.0,
-                          visibility_sm=10, ceiling_ft_agl=None, qnh_inhg=29.42, da_ft=None),
+                          visibility_sm=10, ceiling_ft_agl=None, qnh_inhg=29.42),   # DA from the METAR
 }
 PRESET_NOTES = {
     "metar": "live / cached METAR: steady wind, no turbulence",

@@ -40,3 +40,9 @@ re-check with find_conflict.py after any change to physics, terrain or pattern g
 | `harness/scenarios/base_vs_straight_in.json` | N101 turns base/final into straight-in N399: NMAC on final ~149 s |
 | `harness/scenarios/three_on_final.json` | N101 (judge), N204, straight-in N399 converge on final: all three pairs NMAC, 155-160 s |
 | `harness/scenarios/head_on_judges.json` | both judges (N101 25L downwind 086°, N102 07R downwind 266°) head-on, collision ~76 s |
+
+Tests (Lane A):
+```
+python -m pytest -q world/tests      # physics, pattern AI, autopilot, ground, TAWS, weather, scenarios + server contract
+node web/tests/run.mjs               # rumble patterns, reset hold, controller buttons, brakes (no browser needed)
+```
