@@ -48,6 +48,8 @@ Frames the god view receives (v1.1, models in `schemas.py`):
 {"type":"CRYSTAL","ac_id":"N101","t":...,"mfi":0.38,
  "points":[{"bank_deg":-30,"vs_fpm":0,"lat":..,"lon":..,"alt_msl_ft":2500,"safe":false,"why":"traffic"}, ...]}  // Phase 3
 ```
+Live sky (v1.2, Lane D `data/live_traffic.py` → world as role `data` → **god + log only**): `{"type":"LIVE_TRAFFIC","t","source","radius_nm","aircraft":[{"id","callsign","type","lat","lon","alt_msl_ft","gs_kt","track_deg","vs_fpm","on_ground","leg","runway","leg_conf","next_leg","in_pattern"}]}` every ~5 s. Real ADS-B aircraft around KDVT with their pattern leg classified by `pattern.py`. **Display and prediction only — never forwarded to nodes, never acted on.** World: `if t == "LIVE_TRAFFIC": send("god", m); log(...)`.
+
 God → world: `{"type":"SET_DA","ft":6500}` overrides density altitude for climb capability (world logs it).
 **TRUTH never goes to a node or cockpit.**
 ### Anything → log — every radio message and every ADVISORY/COMMAND/TRUST is mirrored to role `log` as `{"type":"LOG","src":"N101","kind":"radio|decision","payload":{...}}`.
@@ -113,5 +115,6 @@ World physics 20 Hz; node loop 10 Hz; STATE 1 Hz; HEARTBEAT 0.5 Hz; cockpit inpu
 ```
 
 ## 6. Changelog
+- **v1.2 (Sat 1:30 PM)** — additive: `LIVE_TRAFFIC` (real ADS-B overlay for the god view; model `schemas.LiveTraffic`).
 - **v1.1 (Sat 12:20 PM)** — from Lane A review. Additive: `TrustTarget.rel` (radar positions); `HELLO` + `cockpit:A|B` resolution + `&ac=` override; `TRUTH`/`PREDICTION`/`SET_DA`/`CRYSTAL` models; INPUT semantics; OWNSHIP gs/track include wind, agl from terrain; scenario start semantics via `pattern.py`. Corrected KDVT geometry (true headings 086/266; 25R is the north runway). Agreed by: Manav (lead), Manas (requested) — Reya/Mansi please ack in chat.
 - **v1 (Sat 11:30 AM)** — initial freeze.

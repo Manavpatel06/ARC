@@ -225,8 +225,10 @@ class Hub:
                     await self.log(ac.id, "world", stick)
                     print(f"[world] STICK {ac.id} — pilot took it back")
                 ac.stick_active = True
-        elif t in ("PREDICTION", "CRYSTAL"):
+        elif t in ("PREDICTION", "CRYSTAL", "LIVE_TRAFFIC"):
             await self.to_role("god", m)
+            if t == "LIVE_TRAFFIC":
+                await self.log("live", "world", m)
         elif t == "SET_DA":
             self.da_ft = float(m.get("ft", self.da_ft))
             await self.log("god", "world", m)
