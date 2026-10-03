@@ -152,6 +152,7 @@ class Hub:
             if ac_id != own_id:
                 print(f"[world] {role} sent {t} for {ac_id}; using its own id {own_id}")
                 ac_id = own_id
+                m = dict(m, ac_id=own_id)          # forward / log under the sender's real id, never the claimed one
             cockpit = f"cockpit:{ac_id}"
             if t in ("ADVISORY", "TRUST"):
                 self.latest[f"{t}:{ac_id}"] = m
