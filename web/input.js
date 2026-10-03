@@ -8,9 +8,12 @@
 //          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event),
 //          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap").
 // Buttons act on the press, not while held; a button already held when the page starts is ignored.
+// Reset own aircraft: hold L2 + R2 together (or keyboard R, or the on-screen RESET button) for 5 s;
+// fires "flock:reset" once, st.resetProgress (0..1) drives the countdown. Both triggers held = no throttle change.
 // Keyboard: ←/→ roll, ↓ pull (climb) / ↑ push (descend), W/S throttle up/down.
 
 const DEADZONE = 0.12;
+const RESET_HOLD_S = 5;
 const SEND_HZ = 30;
 
 const dz = (v) => (Math.abs(v) < DEADZONE ? 0 : (v - Math.sign(v) * DEADZONE) / (1 - DEADZONE));
@@ -20,12 +23,14 @@ export function startInput(send, onState = () => {}) {
   const invert = new URLSearchParams(location.search).get("invert") === "1";
   const keys = new Set();
   const tapped = new Set();      // keys pressed since the last tick (a quick tap still counts once)
-  const st = { roll: 0, pitch: 0, throttle: 0.5, source: "none", engaged: false, pad: null };
+  const st = { roll: 0, pitch: 0, throttle: 0.5, source: "none", engaged: false, pad: null,
+               resetButton: false, resetProgress: 0 };
+  let resetHeld = 0, resetFired = false;
   let kRoll = 0, kPitch = 0;
   const wasDown = { 0: true, 3: true };            // ignore the press that dismissed the start screen
 
   addEventListener("keydown", (e) => {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(e.code)) {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyS", "KeyR"].includes(e.code)) {
       keys.add(e.code); tapped.add(e.code); e.preventDefault();
     }
   });
@@ -41,13 +46,14 @@ export function startInput(send, onState = () => {}) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     const pad = pads[0] || null;
     st.pad = pad ? pad.id : null;
-    let roll = 0, pitch = 0, active = false;
+    let roll = 0, pitch = 0, active = false, triggersHeld = false;
 
     if (pad) {
       roll = dz(pad.axes[0] || 0);
       pitch = dz(pad.axes[1] || 0) * (invert ? -1 : 1);          // stick toward you (+1) = nose up
       const up = pad.buttons[7] ? pad.buttons[7].value : 0;       // R2
       const down = pad.buttons[6] ? pad.buttons[6].value : 0;     // L2
+      triggersHeld = up > 0.75 && down > 0.75;
       const rs = dz(pad.axes[3] || 0);
       const dThr = (up - down) * 0.5 - rs * 0.4;
       if (dThr) st.throttle = clamp(st.throttle + dThr * dt, 0, 1);
@@ -73,6 +79,13 @@ export function startInput(send, onState = () => {}) {
     tapped.clear();
     if (kt) st.throttle = clamp(st.throttle + kt * 0.5 * dt, 0, 1);
     if (kr || kp || kt || kRoll || kPitch) { roll = kRoll; pitch = kPitch; active = kr || kp || kt; st.source = "keyboard"; }
+
+    // reset: hold for RESET_HOLD_S, fire once, then wait for release
+    if (triggersHeld || keys.has("KeyR") || st.resetButton) {
+      resetHeld += dt;
+      if (!resetFired && resetHeld >= RESET_HOLD_S) { resetFired = true; dispatchEvent(new Event("flock:reset")); }
+    } else { resetHeld = 0; resetFired = false; }
+    st.resetProgress = resetFired ? 1 : Math.min(1, resetHeld / RESET_HOLD_S);
 
     st.roll = clamp(roll, -1, 1);
     st.pitch = clamp(pitch, -1, 1);

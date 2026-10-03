@@ -90,6 +90,11 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .ck-taws[data-level="caution"] { --c: var(--lvl-traffic); }
 .ck-taws[data-level="warning"] { animation: tawsflash .5s steps(2) infinite; }
 @keyframes tawsflash { 50% { color: #fff; border-color: #fff; } }
+.ck-reset { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); width: min(360px, 80%); padding: 8px 12px;
+            border-radius: 8px; background: rgba(5, 8, 12, .85); border: 2px solid var(--lvl-traffic); font: 700 13px var(--mono);
+            color: var(--lvl-traffic); text-align: center; pointer-events: none; }
+.ck-reset i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; --p: 0;
+              background: linear-gradient(90deg, var(--lvl-traffic) calc(var(--p) * 100%), var(--panel-2) 0); }
 .ck-haze { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s, background-color .6s; }
 .ck-3d-note { position: absolute; left: 8px; bottom: 6px; font: 11px var(--mono); color: var(--text-2); text-shadow: 0 1px 2px #000; pointer-events: none; }
 .ck-side { display: grid; grid-template-rows: 1fr auto auto; gap: 8px; min-height: 0; }

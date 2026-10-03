@@ -144,6 +144,10 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "RESET") {
+    pushEvent(s, m.t, m.a, "CLEAR", `reset to scenario start (was ${m.was})`);
+    s.trails.delete(m.a);
+    return;
   } else if (m.event === "TAWS") {
     if (m.alert) pushEvent(s, m.t, m.a, m.alert === "PULL UP" || m.alert === "TERRAIN" ? "NMAC" : "TRAFFIC",
                            `TAWS ${m.alert} · ${m.agl_ft} ft AGL, ${m.vs_fpm} fpm`);
