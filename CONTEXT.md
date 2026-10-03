@@ -17,13 +17,13 @@ FLOCK is a peer-to-peer collision-avoidance node for general aviation (GA), buil
 ## Phases
 - **Phase 1 — core avoidance ("ACAS core")**, target green by Sat 7 PM: world + controllers + AI pattern traffic, nodes with turn-aware prediction, four layers, Escape Field (performance + terrain), authority protocol with bounds, comms log + explain panel, Monte Carlo chart.
 - **Phase 2 — radio trust ("radio spoofing & channel")**, Sat evening: channel emulator with range/loss/latency/congestion, signed messages + replay protection, trust engine (plausibility, Doppler consistency, peer corroboration), spoof injection demo, lost-link fallback, AIS-style self-organizing slots for "avoiding clash of signals".
-- **Phase 3 — add-ons from FLOCK-X SENTINEL**, one at a time, only when 1 and 2 are green. Priority order: (1) Escape Crystal + Maneuver Freedom Index, (2) Collective Parallax (two-view triangulation of a camera-only target), (3) Marana historical replay, (4) LGMD looming score on the webcam track, (5) Constraint Exchange / 4D contracts, (6) RED FLOCK simple adversarial search + regression library, (7) Threat Tubes with simple uncertainty inflation, (8) dragonfly threat attention.
+- **Phase 3 — add-ons from FLOCK-X SENTINEL**, one at a time, only when 1 and 2 are green. Priority order: (1) Escape Crystal + Maneuver Freedom Index, (2) Marana historical replay, (3) Constraint Exchange / 4D contracts, (4) RED FLOCK simple adversarial search + regression library, (5) Threat Tubes with simple uncertainty inflation, (6) dragonfly threat attention. Camera/CV items are cut.
 
 ## Team and lanes
 - **Manas — Lane A, Sim world** (`/world`, `/web` views): CesiumJS/three.js Deer Valley, 3-DOF flight model, controllers, AI pattern traffic, cockpit/god/log views, world server.
 - **Reya — Lane B, Node logic + evidence** (`/node`, `/harness`): trust thresholds, pattern-leg classifier, turn-aware prediction, four layers, Escape Field, authority protocol + bounds monitor, Monte Carlo chart.
 - **Mansi — Lane C, Radio, protocol, security** (`/radio`): channel emulator, schemas enforcement, Ed25519 signing, replay protection, trust evidence (RF consistency), spoof injector, AIS-style slots, lost-link fallback; optional ESP32-C6 node port.
-- **Manav — Lane D, Integration, data, camera, hard algorithms, pitch** (`/data`, `/web/log`, integration): METAR/terrain/obstacles, comms log + explain panel, webcam intruder, Escape Crystal/MFI and Collective Parallax in Phase 3, pitch, mentors.
+- **Manav — Lane D, Integration, data, hard algorithms, pitch** (`/data`, `/web/log`, integration): METAR/terrain/obstacles, comms log + explain panel, run_demo, Escape Crystal/MFI in Phase 3, pitch, mentors.
 
 ## Repo layout
 ```
@@ -33,7 +33,7 @@ flock/
   web/        # Lane A (+D for log): index.html?role=cockpitA|cockpitB|god|log
   node/       # Lane B: node.py, predict.py, layers.py, escape.py, authority.py, trust.py
   radio/      # Lane C: channel.py, crypto.py, spoofer.py, slots.py
-  data/       # Lane D: metar.py, terrain.py, obstacles.py, opensky.py, camera.py
+  data/       # Lane D: metar.py, terrain.py, obstacles.py, opensky.py
   harness/    # Lane B: montecarlo.py (extends tcas_ga_sim.py), scenarios/
   lanes/      # one brief per lane for AI agents
   stubs/      # stand-ins for every lane (fake_world, fake_node, loopback_radio, tail_log) so no lane waits
@@ -48,4 +48,4 @@ flock/
 - Physics facts for the pitch (from Friday's sim): head-on 120+120 kt closes 3 mi in 39 s; 30° bank at 120 kt gains ~700 ft lateral in 10 s vs ~150 ft from a 500 fpm climb/descend pair; naive left/right rule left 23% of crossings unresolved, CPA-maximizing negotiation 0%.
 
 ## Demo (Sunday noon, 5 min + 3 min Q&A)
-Four laptops: cockpit A (PS controller 1), cockpit B (PS controller 2), god view on projector, comms log + explain panel. Judges fly; the flock sequences them; they try to crash; warn → negotiate → bounded takeover → handback on stick input; toy plane under webcam appears as a camera-only target shared to the flock; spoofed aircraft is flagged and never acted on. All four teammates speak.
+Four laptops: cockpit A (PS controller 1), cockpit B (PS controller 2), god view on projector, comms log + explain panel. Judges fly; the flock sequences them; they try to crash; warn → negotiate → bounded takeover → handback on stick input; spoofed aircraft is flagged and never acted on. (Camera/CV is cut from the build — see BOARD.md.) All four teammates speak.

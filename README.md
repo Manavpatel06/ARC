@@ -10,7 +10,7 @@ GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for b
 | A — Sim world & views | **Manas** | `lane-a-world` | `world/`, `web/index.html` | `lanes/A-world-manas.md` | `BOARD.md` → Lane A |
 | B — Node logic & evidence | **Reya** | `lane-b-node` | `node/`, `harness/` | `lanes/B-node-reya.md` | `BOARD.md` → Lane B |
 | C — Radio, protocol, security | **Mansi** | `lane-c-radio` | `radio/` | `lanes/C-radio-mansi.md` | `BOARD.md` → Lane C |
-| D — Integration, data, log, camera, pitch | **Manav** | `lane-d-integration` | `data/`, `web/log.html`, `run_demo.*`, `docs/` | `lanes/D-integration-manav.md` | `BOARD.md` → Lane D |
+| D — Integration, data, log, pitch | **Manav** | `lane-d-integration` | `data/`, `web/log.html`, `run_demo.*`, `docs/` | `lanes/D-integration-manav.md` | `BOARD.md` → Lane D |
 
 Finished your rows? Take from the **Pull Queue** at the bottom of `BOARD.md`. Blocked? Use the stub in `stubs/` (table at the top of `BOARD.md`) and keep going.
 
@@ -36,8 +36,7 @@ All laptops on the same phone hotspot. Note the world server laptop's IP; every 
 1. `python world/world_server.py --scenario harness/scenarios/judges.json`
 2. `python radio/channel.py --world ws://<ip>:8765 --loss 0.1 --latency 0.3`
 3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per FLOCK aircraft; `run_demo.sh` spawns all)
-4. `python data/camera.py --world ws://<ip>:8765 --observer N311`
-5. Open `web/index.html?role=cockpitA` / `cockpitB` / `god` / `log` on the four laptops.
+4. Open `web/index.html?role=cockpitA` / `cockpitB` / `god` / `log` on the four laptops.
 
 ## Start working in the next 5 minutes (no other lane needed)
 ```

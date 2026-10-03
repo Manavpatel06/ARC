@@ -28,7 +28,7 @@ Stubs to run while building: `stubs/fake_node.py` (gives views real ADVISORY/TRU
 | A2 | `world/flight_model.py`: 3-DOF, bank-to-turn, bank rate 15°/s, climb vs density altitude, speed envelope. | 1:00 PM | [ ] |
 | A3 | `web/index.html?role=cockpitA`: own aircraft moving, Gamepad API → INPUT at 30 Hz, keyboard fallback. Test with `fake_node`. | 1:00 PM ✔ status | [ ] |
 | A4 | `web/index.html?role=god`: KDVT map (flat image OK), all aircraft, labels. | 1:00 PM ✔ status | [ ] |
-| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` and `camera=True` flags. | 2:30 | [ ] |
+| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` flag (aircraft with no node). | 2:30 | [ ] |
 | A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [ ] |
 | A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [ ] |
 | A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [ ] |
@@ -71,13 +71,13 @@ Stubs to run while building: `stubs/fake_world.py` (TRUTH feed for the channel),
 | C5 | HEARTBEAT 0.5 Hz; lost-link flag within 3 s. | 4:00 PM ✔ status | [ ] |
 | C6 | `radio/spoofer.py`: GHOST7 unsigned / unknown key / impossible kinematics; `--sybil 3`. | 5:30 | [ ] |
 | C7 | `radio/slots.py`: AIS-style self-organizing slots; collision-rate number at 8 and 30 senders, with/without. | 7:00 PM ✔ status | [ ] |
-| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature, camera flag → score + evidence strings. | 9:00 PM | [ ] |
+| C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [ ] |
 | C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [ ] |
 | C10 | *After 7 PM go/no-go only:* ESP32-C6 node over Wi-Fi UDP speaking the envelope; "over the air" tag in log. | optional | [ ] |
 | C11 | *Queue:* one-page BOM + band/link budget for the pitch (judge ask #9). | queue | [ ] |
 
-## Lane D — Integration, data, log, camera, pitch · Manav · branch `lane-d-integration`
-Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed 4` (gives the log page real frames).
+## Lane D — Integration, data, log, pitch · Manav · branch `lane-d-integration`
+Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed 4` (gives the log page real frames). No camera/CV work in this lane — see Parking lot.
 
 | # | Task | Target | Status |
 |---|---|---|---|
@@ -86,12 +86,10 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 | D3 | Hotspot test: four laptops reach the world server; write the IP in team chat. | 12:00 | [ ] |
 | D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
 | D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [ ] |
-| D6 | `data/camera.py`: ArUco toy plane → SIGHTING at ≥ 5 Hz; test under room lights. | 4:30 | [ ] |
 | D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. | 6:00 | [ ] |
 | D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [ ] |
 | D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [ ] |
 | D10 | *Phase 3:* `node/crystal.py` Escape Crystal + MFI → CRYSTAL frames. | after go/no-go | [ ] |
-| D11 | *Phase 3:* `node/parallax.py` Collective Parallax (two SIGHTING bearings → position). | after go/no-go | [ ] |
 | D12 | Pitch deck + 5-min script, four speakers × 70 s; wording fixes from `docs/judge-round-1.md`. | Sat night | [ ] |
 
 ---
@@ -107,6 +105,9 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 | Status-report one-pager template for 1 PM and 7 PM (`docs/status.md`) | | [ ] |
 | Glossary for the slide footer (GA, TCAS, RA/TA, ADS-B, NMAC, CPA, DA) | | [ ] |
 | OBS set up on the recording laptop; test 30 s capture of all four windows | | [ ] |
+
+## Parking lot — NOT planned (decided Sat 11:50 AM)
+Computer vision is cut from the build: webcam camera node (`data/camera.py`), Collective Parallax (`node/parallax.py`), LGMD looming score. Reason: it does not strengthen the ACAS core or the radio-trust story, is hard to make trustworthy in 40 hours, and would be a third thing to defend in Q&A. The `SIGHTING` message and `CAMERA_ONLY` trust state stay in the frozen schema (harmless, unused). Nobody works on these unless Phases 1–3 are all green and the team re-decides together. The pitch mentions cameras only as a future sensor, in one sentence.
 
 ## Blocked right now
 (Write here: who, on what, since when, who can unblock. Delete when cleared.)

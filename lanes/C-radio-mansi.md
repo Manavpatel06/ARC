@@ -18,7 +18,7 @@ Build the emulated peer-to-peer radio and everything that makes it trustworthy: 
    - RF consistency (emulated): the channel attaches a noisy RSSI and Doppler to each delivered packet derived from true geometry; evidence compares them with the *claimed* position/velocity; disagreement lowers trust;
    - peer corroboration: count of distinct peers (by bearing diversity) that also hear this target; ≥2 raises trust;
    - signature validity (unsigned = immediate SUSPICIOUS);
-   - camera corroboration flag from SIGHTING bodies.
+   - (camera corroboration: schema field exists, NOT implemented — CV is cut.)
    Output a score 0–1 and an evidence list of strings.
 6. `radio/spoofer.py` — rogue node: broadcasts `GHOST7` on final (unsigned, or signed with an unknown key, or kinematically impossible); CLI flags for each attack; `--sybil 3` broadcasts three mutually consistent fakes to show the known limit.
 7. `radio/faults.py` — scripted faults for the demo and for RED FLOCK later: drop a specific MANEUVER_COMMIT, kill a node's heartbeat for 5 s, spike latency to 2 s.
