@@ -59,6 +59,7 @@ class _Track:
         self.rf_err: collections.deque = collections.deque(maxlen=5)    # (|drssi|, |ddop|)
         self.nb: Optional[tuple[float, dict]] = None                    # this peer's latest neighbor report
         self.last_rx = 0.0
+        self.first_rx = 0.0
 
 
 class TrustEvidence:
@@ -97,6 +98,8 @@ class TrustEvidence:
         tr = self.tracks[frm]
         tr.auth = env.get("_auth", "ok")
         tr.last_rx = env.get("_rx_t", self.clock())
+        if not tr.first_rx:
+            tr.first_rx = tr.last_rx
         if env["msg"] == "HEARTBEAT" and isinstance(env["body"].get("nb"), dict):
             tr.nb = (tr.last_rx, env["body"]["nb"])
         if env["msg"] != "STATE":
@@ -167,14 +170,18 @@ class TrustEvidence:
         return sorted(k for k, t in tr.flags.items() if now - t < FLAG_HOLD_S)
 
     def neighbor_report(self) -> dict:
-        """{target: 1|0} for targets heard in the last 3 s; 1 = RF and kinematics agree with the claim."""
+        """{target: 1|0} for targets heard in the last 3 s: 1 = our own RF check passed and kinematics agree,
+        0 = RF or kinematics disagree. Not yet verified (fewer than 3 RF samples) -> left out, never vouched for."""
         now = self.clock()
         out = {}
         for tid, tr in sorted(self.tracks.items(), key=lambda kv: -kv[1].last_rx):
             if not tr.states or now - tr.states[-1][2] > 3.0:
                 continue
             rf_ok, _ = self._rf_verdict(tr)
-            out[tid] = 0 if (rf_ok is False or self._active_flags(tr)) else 1
+            if rf_ok is False or self._active_flags(tr):
+                out[tid] = 0
+            elif rf_ok is True:
+                out[tid] = 1
         return out
 
     def _corroboration(self, tid: str, tr: _Track) -> tuple[int, list[str], list[str]]:
@@ -193,7 +200,7 @@ class TrustEvidence:
             elif nb.get(tid) == 0:
                 refuters.append(pid)
             elif (rf.horiz_range_m(tpos, ppos) < CORROB_RANGE_M and now - tr.states[-1][2] < 3.0
-                  and now - ptr.states[-1][2] < 3.0):
+                  and now - ptr.states[-1][2] < 3.0 and now - tr.first_rx > 4.0):
                 silent.append(pid)                     # only judge silence on fresh positions for both
         clusters: list[float] = []
         for b in sorted(bearings):
