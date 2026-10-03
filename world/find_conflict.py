@@ -53,8 +53,8 @@ def apply(raw: dict, combo: dict) -> dict:
     return scn
 
 def fly(scn: dict, pair: list[str], horizon: float, dt: float, window: tuple[float, float],
-        legs: set | None, min_agl: float, min_start_sep: float = 0.0) -> dict:
-    w = World(scn)
+        legs: set | None, min_agl: float, min_start_sep: float = 0.0, weather: str | None = None) -> dict:
+    w = World(scn, weather=weather)
     fleet = {i: w.fleet[i] for i in pair}          # no nodes, no avoidance: others can't interact
     best = {p: (float("inf"), float("inf"), None, None) for p in itertools.combinations(pair, 2)}
     if any(separation_ft(fleet[p[0]], fleet[p[1]])[0] < min_start_sep for p in best):
@@ -104,6 +104,7 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--name")
     ap.add_argument("--only", action="store_true")
+    ap.add_argument("--weather", default=None, help="world/weather.py preset (default: scenario's, else metar)")
     a = ap.parse_args()
 
     raw = json.load(open(a.scenario))
@@ -122,7 +123,7 @@ def main():
     results = []
     for vals in grid:
         combo = dict(zip(keys, vals))
-        res = fly(apply(raw, combo), a.pair, horizon, a.dt, win, legs, a.min_agl, a.min_start_sep)
+        res = fly(apply(raw, combo), a.pair, horizon, a.dt, win, legs, a.min_agl, a.min_start_sep, a.weather)
         results.append((res["score"], combo, res))
     results.sort(key=lambda r: r[0])
     print(f"{len(grid)} runs in {time.time() - t0:.1f} s | window {win[0]:.0f}-{win[1]:.0f} s"

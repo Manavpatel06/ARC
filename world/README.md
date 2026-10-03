@@ -8,10 +8,24 @@ Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_mod
   `WORLD_EVENT` TOUCHDOWN (`vs_fpm`, `hard` < -800 fpm) / LIFTOFF / AP_DISCONNECT.
 - Scenario start `{"leg":"RUNWAY","runway":"25L","offset_s":2}` (Lane A, proposed for v1.2): stopped on the centreline;
   AI aircraft depart at once, human aircraft wait for power or AP.
+- `weather.py` — world weather acting on every aircraft (truth side; nodes still only know the METAR): wind that
+  strengthens/veers with height, low-level shear, gusts, turbulence (none/light/moderate/severe), drifting thermals,
+  visibility / cloud base (cockpit view only), QNH. Aircraft hold INDICATED altitude with their own altimeter
+  setting, so a pressure drop they haven't dialled in puts them low; transponder pressure altitude stays true.
+  Presets: `metar` (default, steady wind), `calm_morning`, `hot_gusty_afternoon`, `haboob`, `low_ceiling`,
+  `pressure_drop`. Start with `--weather <preset>` or scenario key `"weather_preset"`; change live from the god view
+  (`SET_WX` {preset | field: value | update_altimeters}). World sends `WX` (god full, cockpits pilot-level) and
+  `WX_FIELD` (thermal positions, god only, every 2 s).
+- `taws.py` — GPWS-style terrain alerts for judge aircraft from own data only (AGL, smoothed sink, position vs
+  runways): PULL UP, SINK RATE, TERRAIN, TOO LOW TERRAIN; quiet in runway approach / climb-out corridors and
+  (terrain modes) within 1.5 NM of the field. Touchdowns classified RUNWAY / OFF_RUNWAY / TERRAIN_IMPACT.
+  World sends `WORLD_EVENT` TAWS {alert} on change; cockpit frame carries `taws`.
+- Turbulence is smooth swell + occasional (1 - cos) jolts, not per-frame noise; the roll it causes sits on top of
+  the bank the pilot / autopilot holds; the VSI lags ~1 s. AI finals aim ~200 m past the threshold.
 - `find_conflict.py` — offline scenario tuner: sweeps `offset_s` / `agl_ft` of chosen aircraft, flies the same physics without nodes, keeps the tightest encounter, writes the scenario.
 
 ```
-python world/find_conflict.py --scenario harness/scenarios/base_cutoff.json --pair N101 N399 \
+python world/find_conflict.py --scenario harness/scenarios/base_cutoff.json --pair N101 N399 [--weather metar] \
     --vary N101.offset_s=0:120:2 --window 60:150 --legs BASE,FINAL,STRAIGHT_IN \
     --out harness/scenarios/base_vs_straight_in.json --name base_vs_straight_in
 ```
