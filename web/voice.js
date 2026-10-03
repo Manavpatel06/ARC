@@ -25,4 +25,13 @@ export function sayAdvisory(adv) {
   speechSynthesis.speak(u);
 }
 
+// Urgent callout (terrain): always spoken, interrupts anything else, no de-duplication.
+export function sayNow(text) {
+  if (!unlocked || !text) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.2;
+  speechSynthesis.speak(u);
+}
+
 export const voiceReady = () => unlocked;

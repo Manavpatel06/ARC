@@ -144,8 +144,13 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "TAWS") {
+    if (m.alert) pushEvent(s, m.t, m.a, m.alert === "PULL UP" || m.alert === "TERRAIN" ? "NMAC" : "TRAFFIC",
+                           `TAWS ${m.alert} · ${m.agl_ft} ft AGL, ${m.vs_fpm} fpm`);
+    return;
   } else if (m.event === "TOUCHDOWN" || m.event === "LIFTOFF" || m.event === "AP_DISCONNECT") {
-    const txt = m.event === "TOUCHDOWN" ? `${m.hard ? "HARD LANDING" : "touchdown"} ${m.vs_fpm} fpm`
+    const where = m.surface && m.surface !== "RUNWAY" ? ` ${m.surface.replace("_", " ").toLowerCase()}` : "";
+    const txt = m.event === "TOUCHDOWN" ? `${m.surface === "TERRAIN_IMPACT" ? "TERRAIN IMPACT" : m.hard ? "HARD LANDING" : "touchdown"}${where && m.surface !== "TERRAIN_IMPACT" ? where : ""} ${m.vs_fpm} fpm`
       : m.event === "LIFTOFF" ? `liftoff ${m.ias_kt} kt` : "autopilot disconnect (stick)";
     pushEvent(s, m.t, m.a, m.hard ? "NMAC" : "CLEAR", txt);
     return;

@@ -143,6 +143,10 @@ class Aircraft:
     baro_set_inhg: float = 29.92          # altimeter setting dialled in (stale if QNH changes)
     qnh_inhg: float = 29.92               # actual QNH last seen by the physics
     vs_air_fpm: float = 0.0               # vertical air motion (turbulence + thermals)
+    vsi_fpm: float = 0.0                  # vertical speed indicator: lags ~1 s like a real VSI
+    bank_ctl_deg: float = 0.0             # bank the pilot / autopilot is holding; bank_deg = this + turbulence roll
+    _bank_upset: float = 0.0
+    taws_alert: Optional[str] = None      # set by the world (world/taws.py) for judge aircraft
     turb_now: float = 0.0                 # 0..1 how rough it is right now (cockpit rumble)
     _turb: Optional[Turbulence] = field(default=None, repr=False)
     _prev_tail_ms: Optional[float] = None
@@ -153,6 +157,7 @@ class Aircraft:
             self.alt_err_ft = (zlib.crc32(self.id.encode()) % 101) - 50.0
         self.gs_kt, self.track_deg = self.ias_kt, self.hdg_deg
         self._turb = Turbulence(self.id)
+        self.bank_ctl_deg = self.bank_deg
 
     @property
     def indicated_ft(self) -> float:
@@ -244,7 +249,7 @@ class Aircraft:
         if wx is not None:
             we, wn = wx.wind_vec(self.agl_ft)
             if not was_on_ground:
-                tb, tw, tu, gust = self._turb.step(wx, dt, now, self.agl_ft)
+                tb, tw, tu, gust, rough = self._turb.step(wx, dt, now, self.agl_ft)
                 wmag = math.hypot(we, wn)
                 if gust and wmag > 0.1:                              # gusts along the mean wind
                     we, wn = we * (1 + gust * KT / wmag), wn * (1 + gust * KT / wmag)
@@ -253,13 +258,12 @@ class Aircraft:
                 w_air = tw + wx.thermal_fpm(e, n, self.agl_ft, now)
                 # upsets: apply the change in the noise so the pilot / autopilot can correct it
                 pb, pu = self._prev_upset
-                self.bank_deg += tb - pb
+                self._bank_upset = tb               # rolls the aircraft on top of what the pilot holds
                 self.ias_kt = max(VS1_KT - 4.0, self.ias_kt + tu - pu)     # no stall model: floor just below Vs1
                 self._prev_upset = (tb, tu)
-                sb = max(1e-6, (1.5, 4.0, 8.0)[max(0, wx.turbulence - 1)]) if wx.turbulence else 1.0
-                self.turb_now = min(1.0, (abs(tb) / sb * 0.5 + abs(tw) / 900.0)) if wx.turbulence or abs(tw) > 1 else 0.0
+                self.turb_now = rough
             else:
-                self._prev_upset, self.turb_now = (0.0, 0.0), 0.0
+                self._prev_upset, self.turb_now, self._bank_upset = (0.0, 0.0), 0.0, 0.0
         else:
             we, wn = env.wind_e_ms, env.wind_n_ms
         # inertia: a sudden headwind loss / tailwind gain costs airspeed until the engine recovers it
@@ -271,7 +275,8 @@ class Aircraft:
 
         if was_on_ground:
             # wheels on the runway: wings level, bank target = nosewheel steering, brakes to 0 kt
-            self.bank_deg += clamp(-self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_ctl_deg += clamp(-self.bank_ctl_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_deg = self.bank_ctl_deg
             steer = clamp(bank_t / 30.0, -1.0, 1.0) * STEER_DPS * clamp(self.ias_kt / 15.0, 0.0, 1.0)
             self.hdg_deg = (self.hdg_deg + steer * dt) % 360.0
             ias_t = clamp(ias_t, 0.0, VMAX_KT)
@@ -284,7 +289,8 @@ class Aircraft:
             self.gs_kt, self.track_deg = g / KT, self.hdg_deg
         else:
             # bank: rate limited
-            self.bank_deg += clamp(bank_t - self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_ctl_deg += clamp(bank_t - self.bank_ctl_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_deg = self.bank_ctl_deg + self._bank_upset
             # speed envelope (airborne)
             ias_t = clamp(ias_t, VS1_KT, VMAX_KT)
             self.ias_kt += clamp(ias_t - self.ias_kt, -ACCEL_KT_S * dt, ACCEL_KT_S * dt)
@@ -318,6 +324,7 @@ class Aircraft:
             self.events.append(("LIFTOFF", round(self.ias_kt)))
         if not self.on_ground:
             self._last_air_vs = self.vs_fpm + w_air
+        self.vsi_fpm += (self.vs_fpm + w_air - self.vsi_fpm) * min(1.0, dt / 1.0)
 
     @property
     def ap_phase(self) -> Optional[str]:
@@ -336,7 +343,7 @@ class Aircraft:
                 "agl_ft": round(self.agl_ft, 1),
                 "gs_kt": round(self.gs_kt, 1), "track_deg": round(self.track_deg, 1),
                 "hdg_deg": round(self.hdg_deg, 1), "bank_deg": round(self.bank_deg, 1),
-                "vs_fpm": round(self.vs_fpm + self.vs_air_fpm), "ias_kt": round(self.ias_kt, 1),
+                "vs_fpm": round(self.vsi_fpm), "ias_kt": round(self.ias_kt, 1),
                 "ap_equipped": self.ap_equipped, "stick_active": self.stick_active, "flaps": self.flaps}
 
     def truth(self, now: float) -> dict:

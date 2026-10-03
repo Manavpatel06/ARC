@@ -29,5 +29,5 @@
  "weather": "cached",
  "spoofer": false,
  "camera_target": false,
- "note": "tuned by world/find_conflict.py from base_vs_straight_in.json: N101-N399: 255 ft / 61 ft at t=125 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-150 s)"
+ "note": "tuned by world/find_conflict.py from base_vs_straight_in.json: N101-N399: 225 ft / 63 ft at t=130 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-150 s)"
 }

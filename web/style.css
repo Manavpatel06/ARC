@@ -84,6 +84,12 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .ck-view { position: relative; min-height: 0; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--panel); }
 .ck-3d, .ck-pfd { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .ck-3d .cesium-viewer-bottom { display: none; }   /* credits shown in .ck-3d-note instead */
+.ck-taws { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); pointer-events: none;
+           font: 900 clamp(28px, 5vw, 64px)/1 var(--sans); letter-spacing: .06em; padding: 8px 22px; border-radius: 10px;
+           color: var(--c); border: 4px solid var(--c); background: rgba(0, 0, 0, .55); --c: var(--lvl-resolve); }
+.ck-taws[data-level="caution"] { --c: var(--lvl-traffic); }
+.ck-taws[data-level="warning"] { animation: tawsflash .5s steps(2) infinite; }
+@keyframes tawsflash { 50% { color: #fff; border-color: #fff; } }
 .ck-haze { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s, background-color .6s; }
 .ck-3d-note { position: absolute; left: 8px; bottom: 6px; font: 11px var(--mono); color: var(--text-2); text-shadow: 0 1px 2px #000; pointer-events: none; }
 .ck-side { display: grid; grid-template-rows: 1fr auto auto; gap: 8px; min-height: 0; }
