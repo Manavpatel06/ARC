@@ -19,8 +19,9 @@ Cockpit URL options:
 Cockpit controls:
 - Gamepad: left stick = bank / pitch, R2 / L2 = throttle, **Triangle / Y** = chase cam, **Cross / A** = autopilot on/off.
 - Keyboard: arrows = bank / pitch, W / S = throttle, **C** = chase cam, **A** = autopilot on/off. On-screen **AP** button too.
-- Right panel = moving map: runways, pattern legs (the leg AP is flying in green), a 60 s "where am I headed"
-  path that curves with your bank (30 s / 60 s marks), and FLOCK traffic from your node. Range 1.5 / 3 / 6 / 12 NM:
+- Right panel = moving map over a dark street map (Leaflet 1.9.4 + OpenStreetMap tiles darkened in CSS, needs internet;
+  `&basemap=0` turns it off): runways, pattern legs (the leg AP is flying in green), a 60 s "where am I headed"
+  path that curves with your bank (30 s / 60 s marks), and FLOCK traffic from your node. Range 0.75 / 1.5 (default) / 3 / 6 / 12 NM:
   click the map, **Z**, or D-pad up/down; heading-up / north-up: **N** or D-pad left/right.
 - Reset your aircraft to its scenario start: hold **L2 + R2** together for 5 s (keyboard: hold **R**; or hold the
   on-screen **RESET** button). A countdown shows while you hold; letting go cancels.
