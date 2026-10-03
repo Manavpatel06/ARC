@@ -42,6 +42,8 @@ PEER_TIMEOUT_S = 30.0          # a silent peer stays on the table (sigma growing
 LATENCY_EST_S = 0.3
 PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
+PILOT_MAX_BANK = 45.0
+PILOT_HOLD_S = 15.0
 ESC_GRID = np.arange(0.0, escape.HORIZON_S + 1e-9, escape.DT)
 RELEVANT_RADIUS_M = 6000.0
 STICK_INHIBIT_S = 5.0
@@ -491,15 +493,24 @@ class Node:
                 if not v.ok:
                     blocked[cand.name] = f"bounds: {v.rejected}"
 
+        # FLOCK flies at most 30 deg for 10 s on its own authority; a pilot can be advised up to 45 deg for 15 s
+        pilot_mode = not (ctx["ap_equipped"] and not ctx["stick_active"])
+        hold_s = PILOT_HOLD_S if pilot_mode else 10.0
+
         def evaluate(peer_commit):
             pp = dict(peers)
+            alt = None
             if peer_commit and not tr.ap_equipped:
-                peer_commit = None      # a pilot may or may not follow its advisory: solve it ourselves, assume it holds
+                # a pilot may or may not follow its advisory: the main case assumes it holds, and the candidate must
+                # also stay safe if it does fly it (two aircraft turning the same way can cancel each other out)
+                alt = {pid: escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])}
+                peer_commit = None
             if peer_commit:
                 pp[pid] = escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
-            return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=10.0,
-                                   require_maneuver=comp, blocked=blocked)
+            return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=hold_s,
+                                   require_maneuver=comp, blocked=blocked, peers_alt=alt,
+                                   max_bank=PILOT_MAX_BANK if pilot_mode else 30.0)
 
         def expected_peer():
             po = escape.OwnState(tr.x, tr.y, peer_state["z"], tr.track, tr.gs, 0.0, tr.vs, tr.gs / KT, 300.0, self.da_ft,
@@ -512,7 +523,7 @@ class Node:
             return None if ch is None else {"sense": ch.cand.sense, "bank_deg": abs(ch.cand.bank), "start_t": now,
                                             "hold_s": 10.0, "vs_fpm": ch.cand.vs_fpm}
 
-        dec = self.negotiator.decide(now, pid, evaluate, expected_peer)
+        dec = self.negotiator.decide(now, pid, evaluate, expected_peer, hold_s=hold_s)
         if dec is None:
             self._no_solution(now, pid, c, evaluate(None))
             return
@@ -522,7 +533,7 @@ class Node:
         if dec.result is not None:
             self._esc_cache[pid] = (now, dec.result)
         ttc = c.ttc_s
-        why = dict(res.reason(ttc) if res else {"chosen": dec.cand}, basis=dec.basis, peer_sense=dec.peer_sense,
+        why = dict(res.reason(ttc) if res else {"chosen": dec.cand}, basis=dec.basis, peer_sense=dec.peer_sense, hold_s=hold_s,
                    method=c.method, predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2))
         eligible = (level == "TAKEOVER" and ctx["ap_equipped"] and not ctx["stick_active"]
                     and now >= self._no_takeover_until and self.trust.may_negotiate(pid) and not self.auth.engaged)

@@ -274,7 +274,7 @@ class Sim:
             vs = -500.0
         else:
             return
-        a.pending = (self.t + a.react_s, Maneuver(max(-30.0, min(30.0, bank)), vs, 0.0, "pilot"))
+        a.pending = (self.t + a.react_s, Maneuver(max(-45.0, min(45.0, bank)), vs, float(adv.get("reason", {}).get("hold_s", 10.0)), "pilot"))
 
     # --- main loop
     def run(self, duration: float) -> Result:
@@ -287,7 +287,7 @@ class Sim:
             for a in self.aircraft.values():
                 if a.pending is not None and self.t >= a.pending[0]:
                     m = a.pending[1]
-                    m.until = self.t + 10.0
+                    m.until = self.t + m.until            # until was the maneuver duration while pending
                     a.pending = None
                     a.start_maneuver(m)
                     self._note_bank(a.id, m.bank)

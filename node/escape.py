@@ -237,7 +237,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
              exclude: tuple = (), require_maneuver: bool = False,
-             blocked: Optional[dict] = None) -> EscapeResult:
+             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
@@ -253,6 +253,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
             path = simulate_maneuver(own.x, own.y, own.z, own.hdg, own.gs, own.bank, own.vs,
                                      c.bank, c.vs_fpm, hold_s)
         margin, mh, mv = _margin(path, peers, sigmas)
+        if peers_alt:                          # also safe if a pilot-only peer flies its own advised maneuver
+            margin = min(margin, _margin(path, {**peers, **peers_alt}, sigmas)[0])
         reason = None
         if c.kind == "turn" and abs(c.bank) > max_bank:
             reason = f"exceeds {max_bank:.0f} deg authority bound"
