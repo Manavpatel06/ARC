@@ -99,7 +99,7 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 ## Pull Queue — unowned tasks; take one if your lane list is empty (write your name)
 | Task | Taken by | Status |
 |---|---|---|
-| `harness/scenarios/three_on_final.json` (three aircraft converging on 25L final) | | [ ] |
+| `harness/scenarios/three_on_final.json` (three aircraft converging on 25L final) | Manas | [x] tuned with world/find_conflict.py |
 | `harness/scenarios/straight_in_misclassified.json` (straight-in that looks like base) | | [ ] |
 | `harness/scenarios/spoof_on_final.json` (GHOST7 appears at 1 mi final) | | [ ] |
 | Airport diagram check: KDVT runway ends/headings/TPA (write result in CONTEXT.md) | Manav | [x] true hdg 086/266, 25R north, TPA 2,500 MSL |

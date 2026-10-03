@@ -11,6 +11,7 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    A = first human aircraft in the scenario, B = second.
   god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL
   log              LOG frames: decisions, radio (from channel), camera, world events
+                   (incl. WORLD_EVENT NMAC / COLLISION / NMAC_END from world/separation.py)
   channel          TRUTH at 10 Hz (radio emulator decides delivery from it)
   camera, data     accepted; frames mirrored to log
 Every client gets a HELLO frame on connect ({"type":"HELLO","role","ac_id",...}); god, log and
@@ -34,6 +35,7 @@ from websockets.exceptions import ConnectionClosed
 
 import schemas
 from world.scenario import World
+from world.separation import SeparationMonitor
 
 PHYS_HZ = 20
 VALIDATE = {"ADVISORY": schemas.Advisory, "COMMAND": schemas.Command, "TRUST": schemas.Trust,
@@ -50,6 +52,7 @@ class Hub:
         self.t0 = time.time()
         self.sim_s = 0.0
         self.stats = {"ticks": 0, "busy_s": 0.0}
+        self.sep = SeparationMonitor()                     # truth NMAC / collision events
 
     # ---------- clock / io ----------
     def now(self) -> float:
@@ -223,6 +226,15 @@ class Hub:
                                    "aircraft": [ac.truth(now) for ac in self.w.fleet.values()]})
                     self.send("god", truth)
                     self.send("channel", truth)
+                # ground-truth separation: god + log only (never nodes; they must not see truth)
+                for ev in self.sep.check(self.w.fleet, now):
+                    self.send("god", ev)
+                    self.log("world", "world", ev)
+                    if ev["event"] != "NMAC_END":
+                        print(f"[world] {ev['event']} {ev['a']}-{ev['b']} {ev['h_ft']} ft / {ev['v_ft']} ft ({ev['legs'][0]}/{ev['legs'][1]})")
+                    else:
+                        print(f"[world] NMAC_END {ev['a']}-{ev['b']} min {ev['min_h_ft']} ft / {ev['min_v_ft']} ft"
+                              + (" COLLIDED" if ev["collided"] else ""))
             self.stats["ticks"] += 1
             self.stats["busy_s"] += time.perf_counter() - t_start
             if time.perf_counter() - last_report > 30:
