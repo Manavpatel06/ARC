@@ -11,6 +11,7 @@ Cockpit URL options:
 - `&view=3d` — force 3D even without GPU acceleration (lite mode: half resolution, no fog/atmosphere/buildings).
 - `&cam=chase` — start in chase view; key **C** or gamepad **Triangle / Y** toggles first-person / chase.
 - `&ion=<Cesium ion token>` — once per laptop (kept in localStorage): Cesium World Terrain + imagery + OSM Buildings. Without it: OpenStreetMap imagery on flat ground (heights drawn AGL).
+- `&haptics=0` — no controller rumble.
 - `&invert=1` — flip gamepad pitch. `&world=ws://<ip>:8765` — world on a different host.
 
 3D needs internet for Cesium (jsDelivr, pinned 1.121.0) and map tiles.
@@ -23,3 +24,7 @@ Cockpit controls:
   runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.
 - On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off; throttle to
   idle brakes. Only one cockpit page per aircraft — two pages fight over the controls.
+- Rumble (Chrome, Xbox / DualShock 4; DualSense varies) follows this aircraft's node only: soft tick on SEQUENCE,
+  light pulse every 2 s on TRAFFIC, double pulse every 1 s on RESOLVE, continuous shake while FLOCK has control,
+  faster/stronger pulses as a TRUSTED target closes inside 1 NM, one knock when control is handed back.
+  FAKE / SUSPICIOUS targets never rumble. Footer shows "rumble ✓" when the pad supports it.

@@ -5,6 +5,7 @@
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
 import { sayAdvisory } from "./voice.js";
+import { startHaptics } from "./haptics.js";
 import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
@@ -31,7 +32,7 @@ export function startCockpit(role) {
         break;
       case "TRUST": s.trust = m; break;
       case "COMMAND": s.cmd = m; break;
-      case "STICK": s.stickT = performance.now(); break;
+      case "STICK": s.stickT = performance.now(); hap.bump(); break;
       case "AP_STATUS":
         if (!m.ok) toast(`AP: ${m.reason}`, "warn");
         else if (m.engaged) { toast(`AUTOPILOT ON · ${m.phase || ""}`, "ap"); say("autopilot engaged"); }
@@ -41,7 +42,7 @@ export function startCockpit(role) {
         if (m.a !== s.acId) break;
         if (m.event === "TOUCHDOWN") toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
         else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
-        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); }
+        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); hap.bump(); }
         break;
     }
   }, (status, detail) => {
@@ -52,6 +53,16 @@ export function startCockpit(role) {
   });
 
   const inp = startInput((v) => s.acId && link.send({ type: "INPUT", ac_id: s.acId, ...v }));
+
+  // controller rumble from node data only (advisory level, takeover, TRUSTED target range)
+  const hap = startHaptics(() => {
+    let nearest = null;
+    for (const t of (s.trust && s.trust.targets) || []) {
+      if (t.state === "TRUSTED" && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
+    }
+    return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest };
+  });
+  s.hap = hap;
 
   // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
   const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
@@ -232,6 +243,8 @@ function renderStatus(s, inp) {
   $("ck-mode").textContent = o ? (o.ap && o.mode === "AUTOPILOT" ? `AP · ${o.ap_phase || ""}` : o.mode || "") : "--";
   $("ck-mode").dataset.mode = o ? o.mode : "";
   $("ck-ap").dataset.on = o && o.ap ? "1" : "";
+  const hs = s.hap && s.hap.status;
+  $("ck-haptics").textContent = !hs || !hs.enabled ? "rumble off" : hs.supported ? "rumble ✓" : hs.pad ? "no rumble on this pad" : "";
   $("ck-input").textContent = inp.engaged ? `${inp.source} · thr ${Math.round(inp.throttle * 100)}%` : inp.pad ? "gamepad ready - move a stick" : "keys: arrows + W/S";
   $("ck-thr").style.setProperty("--v", inp.throttle);
 }
