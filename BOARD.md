@@ -12,7 +12,8 @@ Every lane develops against `stubs/` until the real module exists, then swaps in
 | A world sending OWNSHIP / applying COMMAND / mirroring LOG | `python stubs/fake_world.py` | `world/world_server.py` (Manas) |
 | A node emitting ADVISORY / COMMAND / TRUST / PREDICTION | `python stubs/fake_node.py --id N101 --speed 4` | `node/node.py` (Reya) |
 | A radio client with `send()` / `on_message()` | `from stubs.loopback_radio import RadioClient` | `radio/client.py` same API (Mansi) |
-| A log view | `python stubs/tail_log.py` | `web/log.html` (Manav) |
+| A log view | `web/log.html` — real, use it (or `python stubs/tail_log.py` in a terminal) | `web/log.html` (Manav) [x] |
+| Radio traffic in the log / god view | `python stubs/fake_channel.py [--spoof]` | `radio/channel.py` (Mansi) |
 | Terrain / METAR / runways files | `data.runways.load()` (real), `data.metar.load()` (sample DA 4,083 ft, wind 250/8), `data.terrain.elev_at_ft()` (flat) | live METAR + terrain grid (Manav) |
 | Pattern geometry (spawn, legs, classifier) | `pattern.py` — real, shared, use directly | — |
 
@@ -84,10 +85,10 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 |---|---|---|---|
 | D1 | `data/runways.py` (surveyed ends, `load()`) + `/pattern.py` shared geometry + `data/metar.py` (`load`, `climb_fpm`, `wind_vector_ms`). | 12:30 | [x] |
 | D1b | Run `python data/metar.py` on the hotspot to confirm the live fetch works (blocked from the build sandbox). | 1:00 PM | [ ] |
-| D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [ ] |
-| D3 | Hotspot test: four laptops reach the world server; write the IP in team chat. | 12:00 | [ ] |
+| D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [x] tested against Manas's world_server |
+| D3 | Hotspot test: four laptops reach the world server (`python stubs/ping_world.py --world ws://<ip>:8765`); write the IP in team chat. | 12:00 | [~] |
 | D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
-| D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [ ] |
+| D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [x] done early |
 | D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. | 6:00 | [ ] |
 | D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [ ] |
 | D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [ ] |
