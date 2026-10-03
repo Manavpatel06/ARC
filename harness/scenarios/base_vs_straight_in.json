@@ -6,7 +6,7 @@
    "start": {
     "leg": "DOWNWIND",
     "runway": "25L",
-    "offset_s": 31.0
+    "offset_s": 29.0
    },
    "ap": true,
    "human": false
@@ -29,5 +29,5 @@
  "weather": "cached",
  "spoofer": false,
  "camera_target": false,
- "note": "tuned by world/find_conflict.py from base_cutoff.json: N101-N399: 271 ft / 60 ft at t=124 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-150 s)"
+ "note": "tuned by world/find_conflict.py from base_vs_straight_in.json: N101-N399: 225 ft / 63 ft at t=130 s (FINAL/STRAIGHT_IN) NMAC (no avoidance; window 60-150 s)"
 }

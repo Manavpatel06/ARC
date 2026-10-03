@@ -16,6 +16,12 @@ Ground: below 0.5 ft AGL the aircraft is on its wheels: wings level, the bank ta
 nosewheel, IAS may fall to 0 (brakes), wind only adds along the heading, and it can only lift off
 at or above ROTATE_KT. Touchdown / liftoff are queued in `events` for the world to publish.
 
+Weather (world/weather.py, env.wx): wind varies with height + low-level shear, gusts, turbulence and
+thermals. A change in the along-heading wind changes IAS at once (inertia) and the pilot/autopilot
+then recovers it; turbulence adds bank / airspeed upsets and vertical air motion; thermals lift.
+Altimeter: pilots and the autopilot hold INDICATED altitude with their own setting (baro_set_inhg);
+alt_press_ft (transponder) uses the 29.92 datum, so it shows true separation regardless.
+
 Autopilot button (cockpit AP message): engage_ap() hands a human aircraft back to its pattern
 autopilot (world/traffic.py), which levels, joins the circuit and lands to a full stop; engaging
 again on the ground takes off. Any stick movement disconnects it (pilot always wins).
@@ -26,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional, Protocol
 
 from data.metar import climb_fpm
+from world.weather import Turbulence, Weather
 
 G = 9.80665
 KT = 0.514444            # m/s per knot
@@ -48,7 +55,8 @@ GROUND_ACCEL_KT_S = 3.0    # full-power takeoff roll
 BRAKE_KT_S = 5.0           # braking / rollout
 STEER_DPS = 12.0           # nosewheel steering at full deflection (taxi speed and above)
 HARD_LANDING_FPM = 800.0
-AP_REQUIRES_EQUIPMENT = True   # the AP button only works on ap_equipped aircraft (same rule as FLOCK takeover)
+AP_REQUIRES_EQUIPMENT = True   # AI aircraft need ap_equipped for the AP button; judge (human) aircraft always get it
+                               # as a sim convenience. FLOCK takeover (apply_command) still requires ap_equipped.
 
 def climb_capability_fpm(da_ft: float) -> float:
     """Max sustained climb (fpm) vs density altitude — Lane D's table, one source for everyone."""
@@ -77,6 +85,13 @@ class Env:
     wind_e_ms: float = 0.0                # wind velocity (blowing TOWARD), data.metar.wind_vector_ms
     wind_n_ms: float = 0.0
     terrain_ft: Callable[[float, float], float] = lambda lat, lon: 1_478.0
+    wx: Optional[Weather] = None          # full weather model; None = steady wind_e/n_ms only
+    ref_lat: float = 33.688301            # local frame origin for thermals
+    ref_lon: float = -112.083
+
+    @property
+    def qnh_inhg(self) -> float:
+        return self.wx.qnh_inhg if self.wx else 29.92
 
     def da_at(self, alt_msl_ft: float) -> float:
         # DA rises ~1:1 with altitude above the field (standard lapse assumed above the field)
@@ -124,11 +139,30 @@ class Aircraft:
     cmd_until: float = 0.0
     # per-aircraft altimeter-setting error (deterministic from the id), +-50 ft
     alt_err_ft: float = field(default=0.0)
+    # weather state
+    baro_set_inhg: float = 29.92          # altimeter setting dialled in (stale if QNH changes)
+    qnh_inhg: float = 29.92               # actual QNH last seen by the physics
+    vs_air_fpm: float = 0.0               # vertical air motion (turbulence + thermals)
+    vsi_fpm: float = 0.0                  # vertical speed indicator: lags ~1 s like a real VSI
+    bank_ctl_deg: float = 0.0             # bank the pilot / autopilot is holding; bank_deg = this + turbulence roll
+    _bank_upset: float = 0.0
+    taws_alert: Optional[str] = None      # set by the world (world/taws.py) for judge aircraft
+    turb_now: float = 0.0                 # 0..1 how rough it is right now (cockpit rumble)
+    _turb: Optional[Turbulence] = field(default=None, repr=False)
+    _prev_tail_ms: Optional[float] = None
+    _prev_upset: tuple = (0.0, 0.0)
 
     def __post_init__(self):
         if self.alt_err_ft == 0.0:
             self.alt_err_ft = (zlib.crc32(self.id.encode()) % 101) - 50.0
         self.gs_kt, self.track_deg = self.ias_kt, self.hdg_deg
+        self._turb = Turbulence(self.id)
+        self.bank_ctl_deg = self.bank_deg
+
+    @property
+    def indicated_ft(self) -> float:
+        """What this aircraft's altimeter shows (pilot / autopilot hold this)."""
+        return self.alt_msl_ft + (self.baro_set_inhg - self.qnh_inhg) * 1000.0
 
     # ---------- inputs ----------
     def apply_input(self, roll: float, pitch: float, throttle: float, now: float) -> bool:
@@ -152,7 +186,7 @@ class Aircraft:
             return True, "disconnected" if was else "already off"
         if self.autopilot is None or not hasattr(self.autopilot, "engage"):
             return False, "no autopilot for this aircraft"
-        if AP_REQUIRES_EQUIPMENT and not self.ap_equipped:
+        if AP_REQUIRES_EQUIPMENT and not self.ap_equipped and not self.human:
             return False, "no autopilot installed (ap_equipped=false)"
         self.has_pilot = True
         self.ap_engaged = True
@@ -209,10 +243,40 @@ class Aircraft:
         was_on_ground = self.agl_ft <= 0.5 and self.vs_fpm <= 0.0   # wheels carry the aircraft this step
         da = env.da_at(self.alt_msl_ft)
         hu, hn = math.sin(math.radians(self.hdg_deg)), math.cos(math.radians(self.hdg_deg))
+        wx = env.wx
+        self.qnh_inhg = env.qnh_inhg
+        w_air = 0.0
+        if wx is not None:
+            we, wn = wx.wind_vec(self.agl_ft)
+            if not was_on_ground:
+                tb, tw, tu, gust, rough = self._turb.step(wx, dt, now, self.agl_ft)
+                wmag = math.hypot(we, wn)
+                if gust and wmag > 0.1:                              # gusts along the mean wind
+                    we, wn = we * (1 + gust * KT / wmag), wn * (1 + gust * KT / wmag)
+                e = (self.lon - env.ref_lon) * M_PER_DEG_LAT * math.cos(math.radians(env.ref_lat))
+                n = (self.lat - env.ref_lat) * M_PER_DEG_LAT
+                w_air = tw + wx.thermal_fpm(e, n, self.agl_ft, now)
+                # upsets: apply the change in the noise so the pilot / autopilot can correct it
+                pb, pu = self._prev_upset
+                self._bank_upset = tb               # rolls the aircraft on top of what the pilot holds
+                self.ias_kt = max(VS1_KT - 4.0, self.ias_kt + tu - pu)     # no stall model: floor just below Vs1
+                self._prev_upset = (tb, tu)
+                self.turb_now = rough
+            else:
+                self._prev_upset, self.turb_now, self._bank_upset = (0.0, 0.0), 0.0, 0.0
+        else:
+            we, wn = env.wind_e_ms, env.wind_n_ms
+        # inertia: a sudden headwind loss / tailwind gain costs airspeed until the engine recovers it
+        tail = we * hu + wn * hn
+        if not was_on_ground and self._prev_tail_ms is not None:
+            self.ias_kt = max(VS1_KT - 4.0, self.ias_kt - (tail - self._prev_tail_ms) / KT)
+        self._prev_tail_ms = tail
+        self.vs_air_fpm = w_air
 
         if was_on_ground:
             # wheels on the runway: wings level, bank target = nosewheel steering, brakes to 0 kt
-            self.bank_deg += clamp(-self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_ctl_deg += clamp(-self.bank_ctl_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_deg = self.bank_ctl_deg
             steer = clamp(bank_t / 30.0, -1.0, 1.0) * STEER_DPS * clamp(self.ias_kt / 15.0, 0.0, 1.0)
             self.hdg_deg = (self.hdg_deg + steer * dt) % 360.0
             ias_t = clamp(ias_t, 0.0, VMAX_KT)
@@ -220,12 +284,13 @@ class Aircraft:
             vs_t = clamp(vs_t, 0.0, climb_capability_fpm(da)) if self.ias_kt >= ROTATE_KT else 0.0
             self.vs_fpm = max(0.0, self.vs_fpm + clamp(vs_t - self.vs_fpm, -VS_RATE_FPM_S * dt, VS_RATE_FPM_S * dt))
             # rolling along the heading; wind only adds its along-heading component
-            g = max(0.0, tas_kt(self.ias_kt, da) * KT + env.wind_e_ms * hu + env.wind_n_ms * hn)
+            g = max(0.0, tas_kt(self.ias_kt, da) * KT + we * hu + wn * hn)
             ge, gn = g * hu, g * hn
             self.gs_kt, self.track_deg = g / KT, self.hdg_deg
         else:
             # bank: rate limited
-            self.bank_deg += clamp(bank_t - self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_ctl_deg += clamp(bank_t - self.bank_ctl_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            self.bank_deg = self.bank_ctl_deg + self._bank_upset
             # speed envelope (airborne)
             ias_t = clamp(ias_t, VS1_KT, VMAX_KT)
             self.ias_kt += clamp(ias_t - self.ias_kt, -ACCEL_KT_S * dt, ACCEL_KT_S * dt)
@@ -240,14 +305,14 @@ class Aircraft:
 
             # ground velocity = air velocity + wind vector
             ae, an = v * math.sin(math.radians(self.hdg_deg)), v * math.cos(math.radians(self.hdg_deg))
-            ge, gn = ae + env.wind_e_ms, an + env.wind_n_ms
+            ge, gn = ae + we, an + wn
             self.gs_kt = math.hypot(ge, gn) / KT
             self.track_deg = math.degrees(math.atan2(ge, gn)) % 360.0
         self.lat, self.lon = move(self.lat, self.lon, ge * dt, gn * dt)
 
-        self.alt_msl_ft += self.vs_fpm * dt / 60.0
+        self.alt_msl_ft += (self.vs_fpm + w_air) * dt / 60.0
         ground = env.terrain_ft(self.lat, self.lon)
-        sink_fpm = self.vs_fpm
+        sink_fpm = self.vs_fpm + w_air
         if self.alt_msl_ft <= ground:         # no sinking into terrain
             self.alt_msl_ft = ground
             self.vs_fpm = max(0.0, self.vs_fpm)
@@ -258,7 +323,8 @@ class Aircraft:
         elif prev_on_ground and not self.on_ground:
             self.events.append(("LIFTOFF", round(self.ias_kt)))
         if not self.on_ground:
-            self._last_air_vs = self.vs_fpm
+            self._last_air_vs = self.vs_fpm + w_air
+        self.vsi_fpm += (self.vs_fpm + w_air - self.vsi_fpm) * min(1.0, dt / 1.0)
 
     @property
     def ap_phase(self) -> Optional[str]:
@@ -273,11 +339,11 @@ class Aircraft:
         return {"type": "OWNSHIP", "ac_id": self.id, "t": round(now, 3),
                 "lat": round(self.lat, 6), "lon": round(self.lon, 6),
                 "alt_msl_ft": round(self.alt_msl_ft, 1),
-                "alt_press_ft": round(self.alt_msl_ft + self.alt_err_ft, 1),
+                "alt_press_ft": round(self.alt_msl_ft + (29.92 - self.qnh_inhg) * 1000.0 + self.alt_err_ft, 1),
                 "agl_ft": round(self.agl_ft, 1),
                 "gs_kt": round(self.gs_kt, 1), "track_deg": round(self.track_deg, 1),
                 "hdg_deg": round(self.hdg_deg, 1), "bank_deg": round(self.bank_deg, 1),
-                "vs_fpm": round(self.vs_fpm), "ias_kt": round(self.ias_kt, 1),
+                "vs_fpm": round(self.vsi_fpm), "ias_kt": round(self.ias_kt, 1),
                 "ap_equipped": self.ap_equipped, "stick_active": self.stick_active, "flaps": self.flaps}
 
     def truth(self, now: float) -> dict:
