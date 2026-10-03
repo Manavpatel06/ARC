@@ -164,8 +164,13 @@ class Hub:
         q = parse_qs(urlparse(ws.request.path).query)
         role, ac_id = self.resolve(q.get("role", ["god"])[0])
         self.clients[ws] = role
-        await self.send(ws, {"type": "HELLO", "role": role, "ac_id": ac_id, "scenario": self.scenario,
-                             "aircraft": [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "flock": a.flock} for a in self.fleet.values()]})
+        hello = {"type": "HELLO", "role": role, "ac_id": ac_id, "scenario": self.scenario,
+                 "aircraft": [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "flock": a.flock} for a in self.fleet.values()]}
+        if role in ("god", "log") or role.startswith("cockpit:"):
+            hello["static"] = {"metar": self.wx, "da_field_ft": self.da_ft, "scenario": self.scenario}
+        if role == "log":     # same as world/world_server.py: log consumers only get LOG frames
+            hello = {"type": "LOG", "src": "world", "kind": "world", "t": self.now(), "payload": hello}
+        await self.send(ws, hello)
         print(f"[world] + {role}")
         try:
             async for raw in ws:
