@@ -33,7 +33,7 @@ Stubs to run while building: `stubs/fake_node.py` (gives views real ADVISORY/TRU
 | A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [x] Cesium (2D fallback) |
 | A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [x] |
 | A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [x] |
-| A9 | God view: predicted paths from PREDICTION frames, conflict markers, layer rings, METAR text, DA slider → `SET_DA`. | 5:30 | [ ] |
+| A9 | God view: predicted paths from PREDICTION frames, conflict markers, layer rings, METAR text, DA slider → `SET_DA`. | 5:30 | [x] |
 | A10 | `world/scenario.py`: load `harness/scenarios/*.json`, `time_scale`, `density_altitude_override`. | 6:00 | [x] |
 | A11 | Three views stable on three laptops over the hotspot. | 7:00 PM ✔ status | [ ] |
 | A12 | *Phase 2:* god-view overlay for trust state (FAKE drawn hollow red, CAMERA_ONLY as bearing wedge, not a dot). | 9:00 PM | [ ] |
