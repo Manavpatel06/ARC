@@ -14,3 +14,12 @@ Cockpit URL options:
 - `&invert=1` — flip gamepad pitch. `&world=ws://<ip>:8765` — world on a different host.
 
 3D needs internet for Cesium (jsDelivr, pinned 1.121.0) and map tiles.
+
+Cockpit controls:
+- Gamepad: left stick = bank / pitch, R2 / L2 = throttle, **Triangle / Y** = chase cam, **Cross / A** = autopilot on/off.
+- Keyboard: arrows = bank / pitch, W / S = throttle, **C** = chase cam, **A** = autopilot on/off. On-screen **AP** button too.
+- Autopilot (ap_equipped aircraft only): in the air it levels, joins the pattern (the leg it is lined up with, else a
+  downwind entry at pattern altitude), flies the circuit and lands to a full stop. Pressed again while stopped on the
+  runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.
+- On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off; throttle to
+  idle brakes. Only one cockpit page per aircraft — two pages fight over the controls.

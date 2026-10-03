@@ -88,6 +88,9 @@ export function startGod() {
         pushEvent(s, m.t, m.ac_id, "RELEASE", "STICK - pilot took control");
         break;
       case "WORLD_EVENT": onWorldEvent(s, m); break;
+      case "AP_STATUS":
+        pushEvent(s, m.t, m.ac_id, m.engaged ? "RELEASE" : "CLEAR", m.ok ? `autopilot ${m.engaged ? `ON · ${m.phase}` : "OFF"}` : `AP refused: ${m.reason}`);
+        break;
       case "TRUST": s.trust.set(m.ac_id, m); break;
       case "CRYSTAL": s.crystal.set(m.ac_id, m); break;
       case "ENV": s.da = m.da_field_ft; renderDA(s); break;
@@ -126,6 +129,11 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "TOUCHDOWN" || m.event === "LIFTOFF" || m.event === "AP_DISCONNECT") {
+    const txt = m.event === "TOUCHDOWN" ? `${m.hard ? "HARD LANDING" : "touchdown"} ${m.vs_fpm} fpm`
+      : m.event === "LIFTOFF" ? `liftoff ${m.ias_kt} kt` : "autopilot disconnect (stick)";
+    pushEvent(s, m.t, m.a, m.hard ? "NMAC" : "CLEAR", txt);
+    return;
   } else if (m.event === "NMAC_END") {
     s.nmacOpen.delete(key);
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.collided ? "COLLISION" : "NMAC",
@@ -195,7 +203,8 @@ function renderTable(s) {
     const kind = a.human ? "human" : a.flock ? "ai" : "noflock";
     const vs = Math.round(a.vs_fpm / 50) * 50;
     return `<tr data-kind="${kind}" data-mode="${a.mode}"><td>${a.ac_id}</td><td>${a.leg ?? ""}</td>`
-      + `<td>${Math.round(a.alt_msl_ft)}</td><td>${vs > 0 ? "+" : ""}${vs}</td><td>${Math.round(a.ias_kt)}</td><td>${a.mode}</td>`
+      + `<td>${Math.round(a.alt_msl_ft)}</td><td>${vs > 0 ? "+" : ""}${vs}</td><td>${Math.round(a.ias_kt)}</td>`
+      + `<td>${a.ap_phase ? `AP ${a.ap_phase.toLowerCase()}` : a.mode}</td>`
       + `<td data-level="${lvl}">${lvl}</td></tr>`;
   }).join("");
   if (rows !== lastTable) { $("god-table").innerHTML = rows; lastTable = rows; }

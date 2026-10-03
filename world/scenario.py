@@ -2,11 +2,14 @@
 world/scenario.py — Lane A. Load harness/scenarios/*.json and spawn the fleet.
 
 Aircraft start = {"leg", "runway", "offset_s", optional "agl_ft"} -> pattern.place() (shared with
-Lane B). Optional top-level keys beyond schemas.Scenario: "time_scale" (1 for judges, 10 for A/B
+Lane B). Lane A extension (proposed for INTERFACE v1.2): {"leg": "RUNWAY", "runway": "25L",
+"offset_s": s} starts the aircraft stopped on the centreline, s seconds of 60 kt roll past the
+threshold (default 2 s, ~60 m). AI aircraft take off at once; human aircraft hold until the pilot
+adds power or presses AP. Optional top-level keys beyond schemas.Scenario: "time_scale" (1 for judges, 10 for A/B
 runs) and "density_altitude_override" (ft); CLI flags override both. Weather from data.metar.load().
 """
 from __future__ import annotations
-import json
+import json, math
 
 import pattern as P
 from data.metar import load as load_metar, wind_vector_ms
@@ -55,15 +58,29 @@ class World:
             if rwy not in self.patterns:
                 self.patterns[rwy] = Pattern(rwy)
             leg0 = st.get("leg", "DOWNWIND").upper()
-            ias0 = LEG_IAS.get(leg0, 90)
-            pos = P.place(leg0, rwy, float(st.get("offset_s", 0)), ias0, st.get("agl_ft"))
+            if leg0 == "RUNWAY":
+                pos = self._runway_start(self.patterns[rwy], float(st.get("offset_s", 2.0)))
+            else:
+                ias0 = LEG_IAS.get(leg0, 90)
+                pos = P.place(leg0, rwy, float(st.get("offset_s", 0)), ias0, st.get("agl_ft"))
             pilot = PatternPilot(self.patterns[rwy], pos["leg"], spec.id)
-            ac = Aircraft(spec.id, pos["lat"], pos["lon"], pos["alt_msl_ft"], LEG_IAS[pos["leg"]] + pilot.ias_bias,
+            ias = 0.0 if pos["leg"] == "RUNWAY" else LEG_IAS[pos["leg"]] + pilot.ias_bias
+            ac = Aircraft(spec.id, pos["lat"], pos["lon"], pos["alt_msl_ft"], ias,
                           pos["hdg_deg"], ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
                           flock=spec.flock, autopilot=pilot)
+            if pos["leg"] == "RUNWAY" and not spec.human:
+                pilot.phase = "TAKEOFF"                        # AI departs straight away
             ac.agl_ft = ac.alt_msl_ft - self.env.terrain_ft(ac.lat, ac.lon)
+            ac.on_ground = ac.agl_ft <= 0.5
             self.fleet[spec.id] = ac
         self.humans = [a.id for a in self.fleet.values() if a.human]
+
+    def _runway_start(self, pat: Pattern, offset_s: float) -> dict:
+        L = pat.legs["RUNWAY"]
+        d = max(0.0, offset_s) * 60 * 0.514444
+        ue, un = math.sin(math.radians(L.brg)), math.cos(math.radians(L.brg))
+        lat, lon = P.from_enu(L.a[0] + ue * d, L.a[1] + un * d)
+        return {"lat": lat, "lon": lon, "alt_msl_ft": self.env.terrain_ft(lat, lon), "hdg_deg": L.brg, "leg": "RUNWAY"}
 
     def cockpit_id(self, slot: str) -> str | None:
         """'A' -> first human aircraft, 'B' -> second; or an explicit aircraft id (INTERFACE v1.1)."""

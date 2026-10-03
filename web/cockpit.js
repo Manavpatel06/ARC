@@ -32,6 +32,17 @@ export function startCockpit(role) {
       case "TRUST": s.trust = m; break;
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); break;
+      case "AP_STATUS":
+        if (!m.ok) toast(`AP: ${m.reason}`, "warn");
+        else if (m.engaged) { toast(`AUTOPILOT ON · ${m.phase || ""}`, "ap"); say("autopilot engaged"); }
+        else toast("AUTOPILOT OFF", "info");
+        break;
+      case "WORLD_EVENT":
+        if (m.a !== s.acId) break;
+        if (m.event === "TOUCHDOWN") toast(m.hard ? `HARD LANDING ${m.vs_fpm} fpm` : `TOUCHDOWN ${m.vs_fpm} fpm`, m.hard ? "warn" : "info");
+        else if (m.event === "LIFTOFF") toast(`LIFTOFF ${m.ias_kt} kt`, "info");
+        else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); }
+        break;
     }
   }, (status, detail) => {
     s.link = status;
@@ -41,6 +52,12 @@ export function startCockpit(role) {
   });
 
   const inp = startInput((v) => s.acId && link.send({ type: "INPUT", ac_id: s.acId, ...v }));
+
+  // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
+  const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
+  $("ck-ap").addEventListener("click", toggleAP);
+  addEventListener("flock:ap", toggleAP);
+  addEventListener("keydown", (e) => { if (e.code === "KeyA" && !e.repeat) toggleAP(); });
 
   // 3D unless ?view=2d. Without GPU acceleration 3D stutters (hundreds of ms per frame), so the
   // page stays 2D and says why; ?view=3d forces it anyway in lite mode.
@@ -144,6 +161,16 @@ function update3D(s) {
   for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
 }
 
+// ---------- short notices (AP, touchdown, liftoff) ----------
+let toastTimer = 0;
+function toast(text, kind = "info") {
+  const el = $("ck-toast");
+  el.textContent = text; el.dataset.kind = kind; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+}
+function say(text) { sayAdvisory({ level: "INFO", layer: 0, speak: text }); }
+
 function fit(cv) {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
@@ -202,8 +229,9 @@ function renderTrust(s) {
 
 function renderStatus(s, inp) {
   const o = s.own;
-  $("ck-mode").textContent = o ? o.mode || "" : "--";
+  $("ck-mode").textContent = o ? (o.ap && o.mode === "AUTOPILOT" ? `AP · ${o.ap_phase || ""}` : o.mode || "") : "--";
   $("ck-mode").dataset.mode = o ? o.mode : "";
+  $("ck-ap").dataset.on = o && o.ap ? "1" : "";
   $("ck-input").textContent = inp.engaged ? `${inp.source} · thr ${Math.round(inp.throttle * 100)}%` : inp.pad ? "gamepad ready - move a stick" : "keys: arrows + W/S";
   $("ck-thr").style.setProperty("--v", inp.throttle);
 }

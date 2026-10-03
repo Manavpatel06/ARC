@@ -6,9 +6,11 @@ world/world_server.py — Lane A. Authoritative simulation world + WebSocket hub
 
 Clients connect to ws://<host>:8765/?role=<role>:
   node:<id>        OWNSHIP at 10 Hz for its own aircraft only; STICK during a takeover
-  cockpit:<id>     own OWNSHIP at 20 Hz (+ mode / active command) and the ADVISORY / TRUST /
+  cockpit:<id>     own OWNSHIP at 20 Hz (+ mode / active command / AP state) and the ADVISORY / TRUST /
   cockpitA|B       COMMAND / STICK of its own node. Nothing about other aircraft.
                    A = first human aircraft in the scenario, B = second.
+                   Cockpit -> world: INPUT, and (Lane A, proposed for v1.2) the AP button
+                   {"type":"AP","ac_id","engage":true|false|null(toggle)} -> reply AP_STATUS.
   god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL
   log              LOG frames: decisions, radio (from channel), camera, world events
                    (incl. WORLD_EVENT NMAC / COLLISION / NMAC_END from world/separation.py)
@@ -35,6 +37,7 @@ from websockets.exceptions import ConnectionClosed
 
 import schemas
 from world.scenario import World
+from world.flight_model import HARD_LANDING_FPM
 from world.separation import SeparationMonitor
 
 PHYS_HZ = 20
@@ -172,6 +175,17 @@ class Hub:
                     self.send("god", stick)
                     self.log(own_id, "world", stick)
                     print(f"[world] STICK {own_id} - pilot took it back")
+            elif t == "AP":
+                ac = self.w.fleet[own_id]
+                want = m.get("engage")
+                want = (not ac.ap_engaged) if want is None else bool(want)
+                ok, why = ac.engage_ap(want)
+                st = {"type": "AP_STATUS", "ac_id": own_id, "t": round(self.now(), 3), "ok": ok,
+                      "engaged": ac.ap_engaged, "phase": ac.ap_phase, "reason": why}
+                self.send(f"cockpit:{own_id}", st)
+                self.send("god", st)
+                self.log(own_id, "world", st)
+                print(f"[world] AP {own_id} {'ON' if ac.ap_engaged else 'OFF'} ({why})")
             return
 
         if role == "god":
@@ -193,10 +207,34 @@ class Hub:
     def cockpit_frame(self, ac, now: float) -> str:
         d = ac.ownship(now)
         d["mode"] = ac.mode
+        d["ap"] = ac.ap_engaged
+        d["ap_phase"] = ac.ap_phase
+        d["on_ground"] = ac.on_ground
         if ac.cmd is not None:
             d["cmd"] = {"bank_cmd_deg": ac.cmd.get("bank_cmd_deg"), "vs_cmd_fpm": ac.cmd.get("vs_cmd_fpm"),
                         "bounds": ac.cmd.get("bounds"), "left_s": round(ac.cmd_until - now, 1)}
         return dumps(d)
+
+    def publish_aircraft_events(self, now: float) -> None:
+        """TOUCHDOWN / LIFTOFF / AP_DISCONNECT from the flight model: log always; own cockpit;
+        god for judge aircraft and hard landings (AI touch-and-goes would flood the ticker)."""
+        for ac in self.w.fleet.values():
+            while ac.events:
+                kind, val = ac.events.pop(0)
+                ev = {"type": "WORLD_EVENT", "event": kind, "a": ac.id, "t": round(now, 3),
+                      "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft)}
+                if kind == "TOUCHDOWN":
+                    ev.update(vs_fpm=val, hard=val < -HARD_LANDING_FPM)
+                elif kind == "LIFTOFF":
+                    ev.update(ias_kt=val)
+                else:
+                    ev.update(reason=val)
+                self.log(ac.id, "world", ev)
+                self.send(f"cockpit:{ac.id}", ev)
+                if ac.human or ev.get("hard"):
+                    self.send("god", ev)
+                if ac.human or ev.get("hard") or kind == "AP_DISCONNECT":
+                    print(f"[world] {kind} {ac.id} {val}" + (" HARD" if ev.get("hard") else ""))
 
     async def loop(self):
         period = 1.0 / PHYS_HZ
@@ -227,6 +265,7 @@ class Hub:
                     self.send("god", truth)
                     self.send("channel", truth)
                 # ground-truth separation: god + log only (never nodes; they must not see truth)
+                self.publish_aircraft_events(now)
                 for ev in self.sep.check(self.w.fleet, now):
                     self.send("god", ev)
                     self.log("world", "world", ev)

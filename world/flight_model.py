@@ -11,6 +11,14 @@ the targets (bank, vs, ias) differs:
 Limits applied to every source: bank rate 15 deg/s, speed envelope 48-140 kt,
 climb capability from density altitude (data.metar.climb_fpm: 730 / 500 / 300 fpm at 0 / 5,000 / 8,000 ft).
 INPUT meaning is pinned in INTERFACE.md v1.1 (target bank = roll x 45 deg, target vs, target IAS 60-120 kt).
+
+Ground: below 0.5 ft AGL the aircraft is on its wheels: wings level, the bank target steers the
+nosewheel, IAS may fall to 0 (brakes), wind only adds along the heading, and it can only lift off
+at or above ROTATE_KT. Touchdown / liftoff are queued in `events` for the world to publish.
+
+Autopilot button (cockpit AP message): engage_ap() hands a human aircraft back to its pattern
+autopilot (world/traffic.py), which levels, joins the circuit and lands to a full stop; engaging
+again on the ground takes off. Any stick movement disconnects it (pilot always wins).
 """
 from __future__ import annotations
 import math, zlib
@@ -35,6 +43,12 @@ VS_RATE_FPM_S = 600.0     # how fast VS follows its target
 STICK_DEADZONE = 0.1       # |roll| or |pitch| above this = pilot on the stick (INTERFACE v1.1)
 THROTTLE_IAS = (60.0, 120.0)
 STICK_TIMEOUT_S = 1.0
+ROTATE_KT = 55.0           # no liftoff below this
+GROUND_ACCEL_KT_S = 3.0    # full-power takeoff roll
+BRAKE_KT_S = 5.0           # braking / rollout
+STEER_DPS = 12.0           # nosewheel steering at full deflection (taxi speed and above)
+HARD_LANDING_FPM = 800.0
+AP_REQUIRES_EQUIPMENT = True   # the AP button only works on ap_equipped aircraft (same rule as FLOCK takeover)
 
 def climb_capability_fpm(da_ft: float) -> float:
     """Max sustained climb (fpm) vs density altitude — Lane D's table, one source for everyone."""
@@ -100,6 +114,11 @@ class Aircraft:
     inp_roll: float = 0.0
     inp_pitch: float = 0.0
     inp_throttle: float = 0.5
+    # autopilot button + ground state
+    ap_engaged: bool = False
+    on_ground: bool = False
+    events: list = field(default_factory=list)     # ("TOUCHDOWN", vs_fpm) / ("LIFTOFF", ias) / ("AP_DISCONNECT", why)
+    _last_air_vs: float = 0.0                      # sink rate just before touchdown
     # takeover
     cmd: Optional[dict] = None
     cmd_until: float = 0.0
@@ -120,7 +139,25 @@ class Aircraft:
         if moving:
             self.last_stick_t = now
             self.stick_active = True
+            if self.ap_engaged:                      # like a real autopilot: stick input disconnects
+                self.ap_engaged = False
+                self.events.append(("AP_DISCONNECT", "stick"))
         return moving
+
+    def engage_ap(self, on: bool) -> tuple[bool, str]:
+        """Cockpit AP button. Returns (ok, reason)."""
+        if not on:
+            was = self.ap_engaged
+            self.ap_engaged = False
+            return True, "disconnected" if was else "already off"
+        if self.autopilot is None or not hasattr(self.autopilot, "engage"):
+            return False, "no autopilot for this aircraft"
+        if AP_REQUIRES_EQUIPMENT and not self.ap_equipped:
+            return False, "no autopilot installed (ap_equipped=false)"
+        self.has_pilot = True
+        self.ap_engaged = True
+        self.stick_active = False
+        return True, self.autopilot.engage(self)
 
     def apply_command(self, cmd: dict, now: float) -> bool:
         """TAKEOVER is applied only if ap_equipped and no stick. Returns applied."""
@@ -139,7 +176,7 @@ class Aircraft:
     def mode(self) -> str:
         if self.cmd is not None:
             return "COMMAND"
-        if self.human and self.has_pilot:
+        if self.human and self.has_pilot and not self.ap_engaged:
             return "HUMAN"
         return "AUTOPILOT" if self.autopilot else "HOLD"
 
@@ -152,7 +189,7 @@ class Aircraft:
             bank = clamp(float(self.cmd.get("bank_cmd_deg", 0.0)), -max_bank, max_bank)
             vs = float(self.cmd.get("vs_cmd_fpm", 0.0))
             return bank, vs, max(self.ias_kt, min_ias)
-        if self.human and self.has_pilot:
+        if self.human and self.has_pilot and not self.ap_engaged:
             bank = self.inp_roll * HUMAN_MAX_BANK
             vs = self.inp_pitch * (climb_capability_fpm(env.da_at(self.alt_msl_ft)) if self.inp_pitch > 0 else 1_000.0)
             ias = THROTTLE_IAS[0] + self.inp_throttle * (THROTTLE_IAS[1] - THROTTLE_IAS[0])   # 0.5 -> 90 kt
@@ -168,36 +205,67 @@ class Aircraft:
             self.stick_active = False
 
         bank_t, vs_t, ias_t = self._targets(env, now)
-
-        # bank: rate limited
-        db = clamp(bank_t - self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
-        self.bank_deg += db
-        # speed envelope
-        ias_t = clamp(ias_t, VS1_KT, VMAX_KT)
-        self.ias_kt += clamp(ias_t - self.ias_kt, -ACCEL_KT_S * dt, ACCEL_KT_S * dt)
-        # vertical speed limited by climb capability at current density altitude
+        prev_on_ground = self.on_ground                        # for TOUCHDOWN / LIFTOFF transitions
+        was_on_ground = self.agl_ft <= 0.5 and self.vs_fpm <= 0.0   # wheels carry the aircraft this step
         da = env.da_at(self.alt_msl_ft)
-        vs_t = clamp(vs_t, -MAX_DESCENT_FPM, climb_capability_fpm(da))
-        self.vs_fpm += clamp(vs_t - self.vs_fpm, -VS_RATE_FPM_S * dt, VS_RATE_FPM_S * dt)
+        hu, hn = math.sin(math.radians(self.hdg_deg)), math.cos(math.radians(self.hdg_deg))
 
-        # turn: rate = g * tan(bank) / V (true airspeed)
-        v = tas_kt(self.ias_kt, da) * KT
-        turn_rate = math.degrees(G * math.tan(math.radians(self.bank_deg)) / v) if v > 1 else 0.0
-        self.hdg_deg = (self.hdg_deg + turn_rate * dt) % 360.0
+        if was_on_ground:
+            # wheels on the runway: wings level, bank target = nosewheel steering, brakes to 0 kt
+            self.bank_deg += clamp(-self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            steer = clamp(bank_t / 30.0, -1.0, 1.0) * STEER_DPS * clamp(self.ias_kt / 15.0, 0.0, 1.0)
+            self.hdg_deg = (self.hdg_deg + steer * dt) % 360.0
+            ias_t = clamp(ias_t, 0.0, VMAX_KT)
+            self.ias_kt = max(0.0, self.ias_kt + clamp(ias_t - self.ias_kt, -BRAKE_KT_S * dt, GROUND_ACCEL_KT_S * dt))
+            vs_t = clamp(vs_t, 0.0, climb_capability_fpm(da)) if self.ias_kt >= ROTATE_KT else 0.0
+            self.vs_fpm = max(0.0, self.vs_fpm + clamp(vs_t - self.vs_fpm, -VS_RATE_FPM_S * dt, VS_RATE_FPM_S * dt))
+            # rolling along the heading; wind only adds its along-heading component
+            g = max(0.0, tas_kt(self.ias_kt, da) * KT + env.wind_e_ms * hu + env.wind_n_ms * hn)
+            ge, gn = g * hu, g * hn
+            self.gs_kt, self.track_deg = g / KT, self.hdg_deg
+        else:
+            # bank: rate limited
+            self.bank_deg += clamp(bank_t - self.bank_deg, -BANK_RATE_DPS * dt, BANK_RATE_DPS * dt)
+            # speed envelope (airborne)
+            ias_t = clamp(ias_t, VS1_KT, VMAX_KT)
+            self.ias_kt += clamp(ias_t - self.ias_kt, -ACCEL_KT_S * dt, ACCEL_KT_S * dt)
+            # vertical speed limited by climb capability at current density altitude
+            vs_t = clamp(vs_t, -MAX_DESCENT_FPM, climb_capability_fpm(da))
+            self.vs_fpm += clamp(vs_t - self.vs_fpm, -VS_RATE_FPM_S * dt, VS_RATE_FPM_S * dt)
 
-        # ground velocity = air velocity + wind vector
-        ae, an = v * math.sin(math.radians(self.hdg_deg)), v * math.cos(math.radians(self.hdg_deg))
-        ge, gn = ae + env.wind_e_ms, an + env.wind_n_ms
-        self.gs_kt = math.hypot(ge, gn) / KT
-        self.track_deg = math.degrees(math.atan2(ge, gn)) % 360.0
+            # turn: rate = g * tan(bank) / V (true airspeed)
+            v = tas_kt(self.ias_kt, da) * KT
+            turn_rate = math.degrees(G * math.tan(math.radians(self.bank_deg)) / v) if v > 1 else 0.0
+            self.hdg_deg = (self.hdg_deg + turn_rate * dt) % 360.0
+
+            # ground velocity = air velocity + wind vector
+            ae, an = v * math.sin(math.radians(self.hdg_deg)), v * math.cos(math.radians(self.hdg_deg))
+            ge, gn = ae + env.wind_e_ms, an + env.wind_n_ms
+            self.gs_kt = math.hypot(ge, gn) / KT
+            self.track_deg = math.degrees(math.atan2(ge, gn)) % 360.0
         self.lat, self.lon = move(self.lat, self.lon, ge * dt, gn * dt)
 
         self.alt_msl_ft += self.vs_fpm * dt / 60.0
         ground = env.terrain_ft(self.lat, self.lon)
-        if self.alt_msl_ft < ground:          # on the ground / touch-and-go: no sinking into terrain
+        sink_fpm = self.vs_fpm
+        if self.alt_msl_ft <= ground:         # no sinking into terrain
             self.alt_msl_ft = ground
             self.vs_fpm = max(0.0, self.vs_fpm)
         self.agl_ft = self.alt_msl_ft - ground
+        self.on_ground = self.agl_ft <= 0.5
+        if self.on_ground and not prev_on_ground:
+            self.events.append(("TOUCHDOWN", round(min(sink_fpm, self._last_air_vs))))
+        elif prev_on_ground and not self.on_ground:
+            self.events.append(("LIFTOFF", round(self.ias_kt)))
+        if not self.on_ground:
+            self._last_air_vs = self.vs_fpm
+
+    @property
+    def ap_phase(self) -> Optional[str]:
+        """Autopilot phase while the AP button is engaged (LEVEL/JOIN/PATTERN/ROLLOUT/STOPPED/TAKEOFF)."""
+        if not self.ap_engaged or self.cmd is not None:
+            return None
+        return getattr(self.autopilot, "phase", None)
 
     # ---------- output ----------
     def ownship(self, now: float) -> dict:
@@ -217,5 +285,6 @@ class Aircraft:
         d = self.ownship(now)
         leg = getattr(self.autopilot, "leg", None)
         d.update({"human": self.human, "camera": self.camera, "flock": self.flock,
-                  "mode": self.mode, "leg": leg})
+                  "mode": self.mode, "leg": leg, "on_ground": self.on_ground,
+                  "ap_phase": self.ap_phase})
         return d
