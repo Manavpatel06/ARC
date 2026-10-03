@@ -9,12 +9,15 @@ the targets (bank, vs, ias) differs:
   3. autopilot          — the pattern pilot from world/traffic.py (AI aircraft, and human
                           aircraft until their pilot first touches the controller)
 Limits applied to every source: bank rate 15 deg/s, speed envelope 48-140 kt,
-climb capability from density altitude (730 / 500 / 300 fpm at 0 / 5,000 / 8,000 ft DA).
+climb capability from density altitude (data.metar.climb_fpm: 730 / 500 / 300 fpm at 0 / 5,000 / 8,000 ft).
+INPUT meaning is pinned in INTERFACE.md v1.1 (target bank = roll x 45 deg, target vs, target IAS 60-120 kt).
 """
 from __future__ import annotations
 import math, zlib
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Protocol
+
+from data.metar import climb_fpm
 
 G = 9.80665
 KT = 0.514444            # m/s per knot
@@ -29,20 +32,13 @@ CMD_MAX_HOLD_S = 10.0
 MAX_DESCENT_FPM = 1_500.0
 ACCEL_KT_S = 2.0          # how fast IAS follows its target
 VS_RATE_FPM_S = 600.0     # how fast VS follows its target
-STICK_DEADZONE = 0.15
+STICK_DEADZONE = 0.1       # |roll| or |pitch| above this = pilot on the stick (INTERFACE v1.1)
+THROTTLE_IAS = (60.0, 120.0)
 STICK_TIMEOUT_S = 1.0
 
 def climb_capability_fpm(da_ft: float) -> float:
-    """Max sustained climb (fpm) vs density altitude: 730 @ 0, 500 @ 5,000, 300 @ 8,000 ft (linear)."""
-    pts = [(0.0, 730.0), (5_000.0, 500.0), (8_000.0, 300.0)]
-    if da_ft <= pts[0][0]:
-        return pts[0][1]
-    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
-        if da_ft <= x1:
-            return y0 + (y1 - y0) * (da_ft - x0) / (x1 - x0)
-    # beyond 8,000 ft keep the last slope, never below 0
-    (x0, y0), (x1, y1) = pts[-2], pts[-1]
-    return max(0.0, y1 + (y1 - y0) * (da_ft - x1) / (x1 - x0))
+    """Max sustained climb (fpm) vs density altitude — Lane D's table, one source for everyone."""
+    return climb_fpm(da_ft)
 
 def tas_kt(ias_kt: float, da_ft: float) -> float:
     """Rule of thumb: TAS = IAS + 2 % per 1,000 ft of density altitude."""
@@ -63,9 +59,9 @@ def wrap180(a: float) -> float:
 class Env:
     """World conditions shared by all aircraft."""
     field_elev_ft: float = 1_478.0
-    da_field_ft: float = 4_980.0          # density altitude at field elevation
-    wind_from_deg: float = 250.0
-    wind_kt: float = 8.0
+    da_field_ft: float = 4_083.0          # density altitude at field elevation
+    wind_e_ms: float = 0.0                # wind velocity (blowing TOWARD), data.metar.wind_vector_ms
+    wind_n_ms: float = 0.0
     terrain_ft: Callable[[float, float], float] = lambda lat, lon: 1_478.0
 
     def da_at(self, alt_msl_ft: float) -> float:
@@ -159,7 +155,7 @@ class Aircraft:
         if self.human and self.has_pilot:
             bank = self.inp_roll * HUMAN_MAX_BANK
             vs = self.inp_pitch * (climb_capability_fpm(env.da_at(self.alt_msl_ft)) if self.inp_pitch > 0 else 1_000.0)
-            ias = VS1_KT + self.inp_throttle * (VMAX_KT - VS1_KT - 8)   # throttle 0.5 -> ~90 kt
+            ias = THROTTLE_IAS[0] + self.inp_throttle * (THROTTLE_IAS[1] - THROTTLE_IAS[0])   # 0.5 -> 90 kt
             return bank, vs, ias
         if self.autopilot is not None:
             return self.autopilot.targets(self, env, now)
@@ -189,11 +185,9 @@ class Aircraft:
         turn_rate = math.degrees(G * math.tan(math.radians(self.bank_deg)) / v) if v > 1 else 0.0
         self.hdg_deg = (self.hdg_deg + turn_rate * dt) % 360.0
 
-        # air vector + wind vector (wind blows FROM wind_from_deg)
+        # ground velocity = air velocity + wind vector
         ae, an = v * math.sin(math.radians(self.hdg_deg)), v * math.cos(math.radians(self.hdg_deg))
-        w = env.wind_kt * KT
-        we, wn = -w * math.sin(math.radians(env.wind_from_deg)), -w * math.cos(math.radians(env.wind_from_deg))
-        ge, gn = ae + we, an + wn
+        ge, gn = ae + env.wind_e_ms, an + env.wind_n_ms
         self.gs_kt = math.hypot(ge, gn) / KT
         self.track_deg = math.degrees(math.atan2(ge, gn)) % 360.0
         self.lat, self.lon = move(self.lat, self.lon, ge * dt, gn * dt)

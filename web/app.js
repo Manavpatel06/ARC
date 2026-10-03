@@ -5,10 +5,14 @@ import { startCockpit } from "./cockpit.js";
 import { startGod } from "./god.js";
 import { unlock } from "./voice.js";
 
-const role = new URLSearchParams(location.search).get("role") || "god";
+// INTERFACE v1.1: ?role=cockpitA -> cockpit:A (world resolves A/B to 1st/2nd human aircraft);
+// &ac=N102 overrides -> cockpit:N102.
+const q = new URLSearchParams(location.search);
+let role = q.get("role") || "god";
+if (role.startsWith("cockpit")) role = `cockpit:${q.get("ac") || role.replace(/^cockpit:?/, "") || "A"}`;
 const $ = (id) => document.getElementById(id);
 
-$("start-role").textContent = role.startsWith("cockpit") ? `Cockpit ${role.replace(/^cockpit:?/, "")}` : role;
+$("start-role").textContent = role.startsWith("cockpit:") ? `Cockpit ${role.slice(8)}` : role;
 
 let started = false;
 function start() {
