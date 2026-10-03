@@ -82,9 +82,10 @@ async function start3D(s, lite = false) {
              own: null, targets: new Map() };
     window.__flock3d = s.v3;                                         // console debugging
     note.textContent = (lite ? "3D lite (no GPU acceleration) · " : "")
-      + (terrain ? "3D: Cesium World Terrain · © Cesium ion · C = chase cam"
-                 : "3D: flat · © OpenStreetMap contributors · C = chase cam · add ?ion=<token> for terrain");
+      + (terrain ? "3D: Cesium World Terrain · © Cesium ion · C / Triangle / Y = chase cam"
+                 : "3D: flat · © OpenStreetMap contributors · C / Triangle / Y = chase cam · add ?ion=<token> for terrain");
     addEventListener("keydown", (e) => { if (e.code === "KeyC" && s.v3) s.v3.chase = !s.v3.chase; });
+    addEventListener("flock:chase", () => { if (s.v3) s.v3.chase = !s.v3.chase; });   // gamepad Triangle / Y
   } catch (e) {
     console.warn("[3d]", e);
     note.textContent = `2D only: ${e.message}`;
