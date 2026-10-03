@@ -10,7 +10,8 @@ Clients connect to ws://<host>:8765/?role=<role>:
   cockpitA|B       COMMAND / STICK of its own node. Nothing about other aircraft.
                    A = first human aircraft in the scenario, B = second.
                    Cockpit -> world: INPUT, and (Lane A, proposed for v1.2) the AP button
-                   {"type":"AP","ac_id","engage":true|false|null(toggle)} -> reply AP_STATUS.
+                   {"type":"AP","ac_id","engage":true|false|null(toggle)} -> reply AP_STATUS, and
+                   {"type":"RESET","ac_id"} -> aircraft back to its scenario start (WORLD_EVENT RESET).
   god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL,
                    WX (weather state) on change + WX_FIELD (thermal positions) every 2 s.
                    God -> world: SET_DA, and (Lane A) SET_WX {"preset"?, field: value...} /
@@ -181,6 +182,20 @@ class Hub:
                     self.send("god", stick)
                     self.log(own_id, "world", stick)
                     print(f"[world] STICK {own_id} - pilot took it back")
+            elif t == "RESET":
+                old = self.w.fleet[own_id]
+                was = f"{old.mode} {old.agl_ft:.0f} ft AGL"
+                ac = self.w.reset_aircraft(own_id)
+                self.sep.forget(own_id)
+                self.taws.forget(own_id)
+                self.taws_state.pop(own_id, None)
+                ev = {"type": "WORLD_EVENT", "event": "RESET", "a": own_id, "t": round(self.now(), 3),
+                      "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft),
+                      "leg": ac.autopilot.leg, "was": was}
+                self.send(f"cockpit:{own_id}", ev)
+                self.send("god", ev)
+                self.log(own_id, "world", ev)
+                print(f"[world] RESET {own_id} -> scenario start ({ac.autopilot.leg}); was {was}")
             elif t == "AP":
                 ac = self.w.fleet[own_id]
                 want = m.get("engage")

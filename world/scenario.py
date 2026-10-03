@@ -62,31 +62,43 @@ class World:
         self.set_preset(weather or raw.get("weather_preset", "metar"))
         self.patterns: dict[str, Pattern] = {}
         self.fleet: dict[str, Aircraft] = {}
+        self.specs = {spec.id: spec for spec in self.scenario.aircraft}
         for spec in self.scenario.aircraft:
-            st = spec.start
-            rwy = st.get("runway", "25L")
-            if rwy not in self.patterns:
-                self.patterns[rwy] = Pattern(rwy)
-            leg0 = st.get("leg", "DOWNWIND").upper()
-            if leg0 == "RUNWAY":
-                pos = self._runway_start(self.patterns[rwy], float(st.get("offset_s", 2.0)))
-            else:
-                ias0 = LEG_IAS.get(leg0, 90)
-                pos = P.place(leg0, rwy, float(st.get("offset_s", 0)), ias0, st.get("agl_ft"))
-            pilot = PatternPilot(self.patterns[rwy], pos["leg"], spec.id)
-            ias = 0.0 if pos["leg"] == "RUNWAY" else LEG_IAS[pos["leg"]] + pilot.ias_bias
-            ac = Aircraft(spec.id, pos["lat"], pos["lon"], pos["alt_msl_ft"], ias,
-                          pos["hdg_deg"], ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
-                          flock=spec.flock, autopilot=pilot)
-            if pos["leg"] == "RUNWAY" and not spec.human:
-                pilot.phase = "TAKEOFF"                        # AI departs straight away
-            ac.agl_ft = ac.alt_msl_ft - self.env.terrain_ft(ac.lat, ac.lon)
-            ac.qnh_inhg = self.env.qnh_inhg
-            ac.baro_set_inhg = (float(self.metar.get("altimeter_inhg", 29.92) or 29.92)
-                                if self.env.wx.name in STALE_BARO_PRESETS else self.env.qnh_inhg)
-            ac.on_ground = ac.agl_ft <= 0.5
-            self.fleet[spec.id] = ac
+            self.fleet[spec.id] = self._spawn(spec, initial=True)
         self.humans = [a.id for a in self.fleet.values() if a.human]
+
+    def _spawn(self, spec, initial: bool = False) -> Aircraft:
+        """Build an aircraft at its scenario start (also used by reset_aircraft)."""
+        st = spec.start
+        rwy = st.get("runway", "25L")
+        if rwy not in self.patterns:
+            self.patterns[rwy] = Pattern(rwy)
+        leg0 = st.get("leg", "DOWNWIND").upper()
+        if leg0 == "RUNWAY":
+            pos = self._runway_start(self.patterns[rwy], float(st.get("offset_s", 2.0)))
+        else:
+            ias0 = LEG_IAS.get(leg0, 90)
+            pos = P.place(leg0, rwy, float(st.get("offset_s", 0)), ias0, st.get("agl_ft"))
+        pilot = PatternPilot(self.patterns[rwy], pos["leg"], spec.id)
+        ias = 0.0 if pos["leg"] == "RUNWAY" else LEG_IAS[pos["leg"]] + pilot.ias_bias
+        ac = Aircraft(spec.id, pos["lat"], pos["lon"], pos["alt_msl_ft"], ias,
+                      pos["hdg_deg"], ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
+                      flock=spec.flock, autopilot=pilot)
+        if pos["leg"] == "RUNWAY" and not spec.human:
+            pilot.phase = "TAKEOFF"                        # AI departs straight away
+        ac.agl_ft = ac.alt_msl_ft - self.env.terrain_ft(ac.lat, ac.lon)
+        ac.qnh_inhg = self.env.qnh_inhg
+        stale = initial and self.env.wx.name in STALE_BARO_PRESETS
+        ac.baro_set_inhg = float(self.metar.get("altimeter_inhg", 29.92) or 29.92) if stale else self.env.qnh_inhg
+        ac.on_ground = ac.agl_ft <= 0.5
+        return ac
+
+    def reset_aircraft(self, ac_id: str) -> Aircraft:
+        """Put one aircraft back at its scenario start: fresh autopilot, no AP / takeover / pilot input.
+        It flies the pattern on its autopilot until the pilot touches the controls again."""
+        ac = self._spawn(self.specs[ac_id])
+        self.fleet[ac_id] = ac
+        return ac
 
     def _runway_start(self, pat: Pattern, offset_s: float) -> dict:
         L = pat.legs["RUNWAY"]

@@ -85,6 +85,9 @@ class Taws:
                 return True
         return False
 
+    def forget(self, ac_id: str) -> None:
+        self._sink.pop(ac_id, None)
+
     def sink_fpm(self, ac, dt: float) -> float:
         """Smoothed sink rate (positive = descending); call once per tick per aircraft."""
         raw = -min(0.0, ac.vs_fpm + getattr(ac, "vs_air_fpm", 0.0))

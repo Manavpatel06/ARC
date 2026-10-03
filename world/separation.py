@@ -46,6 +46,11 @@ class SeparationMonitor:
         self.open: dict[tuple[str, str], Encounter] = {}
         self.counts = {"NMAC": 0, "COLLISION": 0}
 
+    def forget(self, ac_id: str) -> None:
+        """Drop open encounters involving an aircraft (it was reset / teleported)."""
+        for key in [k for k in self.open if ac_id in k]:
+            del self.open[key]
+
     def check(self, fleet: dict, now: float) -> list[dict]:
         """Run once per tick over {id: Aircraft}. Returns WORLD_EVENT frames to publish."""
         events = []
