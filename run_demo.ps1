@@ -38,6 +38,7 @@ $Py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } e
 $Ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -match "Wi-?Fi|WLAN" -and $_.IPAddress -notmatch "^169\." } | Select-Object -First 1).IPAddress
 if (-not $Ip) { $Ip = "localhost" }
 $World = "ws://localhost:8765"
+$Chan = "ws://localhost:8766"          # radio/channel.py WebSocket radio (Windows hotspots often block multicast)
 "" | Set-Content $PidFile
 
 function Start-Role([string]$Title, [string[]]$PyArgs) {
@@ -62,7 +63,7 @@ else { Start-Role "world(stub)" @("stubs/fake_world.py", "--scenario", $Scenario
 if (-not (Wait-Port 8765)) { Write-Host "World did not open port 8765 - check its window." -ForegroundColor Red; exit 1 }
 
 # 2. radio channel
-if ((Test-Path "radio\channel.py") -and -not $Stubs) { Start-Role "channel" @("radio/channel.py", "--world", $World, "--loss", $Loss, "--latency", $Latency) }
+if ((Test-Path "radio\channel.py") -and -not $Stubs) { Start-Role "channel" @("radio/channel.py", "--world", $World, "--loss", $Loss, "--latency", $Latency); Start-Sleep -Seconds 2 }
 else {
   $chArgs = @("stubs/fake_channel.py", "--world", $World, "--loss", $Loss)
   if ($Spoof) { $chArgs += "--spoof" }            # stub channel injects GHOST7 itself
@@ -73,7 +74,7 @@ else {
 $sc = Get-Content $Scenario -Raw | ConvertFrom-Json
 $flock = $sc.aircraft | Where-Object { $_.flock -ne $false } | ForEach-Object { $_.id }
 if ((Test-Path "node\node.py") -and -not $Stubs) {
-  foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World) }
+  foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
 } else {
   $first = ($sc.aircraft | Where-Object { $_.human -eq $true } | Select-Object -First 1).id
   if (-not $first) { $first = $flock[0] }
@@ -82,7 +83,7 @@ if ((Test-Path "node\node.py") -and -not $Stubs) {
 
 # 4. spoofer
 if ($Spoof) {
-  if (Test-Path "radio\spoofer.py") { Start-Role "spoofer" @("radio/spoofer.py", "--world", $World) }
+  if (Test-Path "radio\spoofer.py") { Start-Role "spoofer" @("radio/spoofer.py", "--mode", "unsigned", "--via-channel", $Chan) }
   elseif ((Test-Path "radio\channel.py") -and -not $Stubs) { Write-Host "  (no radio/spoofer.py yet - use .\run_demo.ps1 -Stubs -Spoof)" -ForegroundColor Yellow }
 }
 
@@ -93,4 +94,7 @@ Write-Host "  cockpit A  http://$($Ip):8080/index.html?role=cockpitA"
 Write-Host "  cockpit B  http://$($Ip):8080/index.html?role=cockpitB"
 Write-Host "  god view   http://$($Ip):8080/index.html?role=god"
 Write-Host "  comms log  http://$($Ip):8080/log.html"
+Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):8765 --via-channel ws://$($Ip):8766"
+Write-Host "  live sky:   python data/live_traffic.py --world ws://localhost:8765"
 Write-Host "Stop everything:  .\run_demo.ps1 -Stop"
+Write-Host "Firewall (once, admin PowerShell):  New-NetFirewallRule -DisplayName 'FLOCK demo' -Direction Inbound -Protocol TCP -LocalPort 8765,8766,8080 -Action Allow"
