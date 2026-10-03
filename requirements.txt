@@ -6,6 +6,5 @@ numpy>=1.26
 shapely>=2.0
 matplotlib>=3.8
 pynacl>=1.5
-opencv-contrib-python>=4.9
 requests>=2.32
 pytest>=8

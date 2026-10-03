@@ -60,12 +60,21 @@ def build() -> dict:
             "length_ft": L, "width_ft": W,
             "pattern": e["pattern"], "displaced_ft": e["displaced_ft"],
         }
+    # v1 layout kept for world/traffic.py (Lane A): runways[] with ends keyed by ident + pattern side
+    runways = []
+    for a, b, rid in (("07L", "25R", "07L/25R"), ("07R", "25L", "07R/25L")):
+        runways.append({"id": rid, "length_ft": _SIZE[a][0], "width_ft": _SIZE[a][1],
+                        "heading_true_deg": {a: ends[a]["hdg_true_deg"], b: ends[b]["hdg_true_deg"]},
+                        "pattern": {a: ends[a]["pattern"], b: ends[b]["pattern"]},
+                        "ends": {a: {"lat": ends[a]["lat"], "lon": ends[a]["lon"], "elev_ft": ends[a]["elev_ft"]},
+                                 b: {"lat": ends[b]["lat"], "lon": ends[b]["lon"], "elev_ft": ends[b]["elev_ft"]}}})
     return {
         "airport": "KDVT", "name": "Phoenix Deer Valley", "elev_ft": 1478.0,
         "lat": 33.688301, "lon": -112.083000, "mag_var_deg": 12.0,
         "tpa_msl_ft": 2500, "tpa_agl_ft": 1022, "tpa_turbine_msl_ft": 3000,
         "north_runway": "07L/25R", "south_runway": "07R/25L",
         "ends": ends,
+        "runways": runways,
         "source": "AirNav (FAA 5010) runway ends, read 2026-10-03",
     }
 
