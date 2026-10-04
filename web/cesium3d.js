@@ -133,6 +133,34 @@ export class Interp {
   }
 }
 
+// Another aircraft as the node reports it (TRUST rel, ~1 Hz): keep the last two absolute fixes and glide
+// between them one update late, so the 3D model flies smoothly instead of hopping once a second. Bank comes
+// from how fast its track is turning (rel has no bank), pitch from its climb rate.
+export class TrafficTrack {
+  constructor() { this.a = null; this.b = null; }
+  push(fix, tMs) {                       // fix: {lat, lon, alt_ft, trk_deg, vs_fpm}
+    if (this.b && tMs - this.b.t < 100) { this.b = { ...this.b, ...fix, t: this.b.t }; return; }
+    this.a = this.b; this.b = { ...fix, t: tMs };
+  }
+  sample(tMs) {
+    const { a, b } = this;
+    if (!b) return null;
+    const trk = b.trk_deg ?? (a && a.trk_deg) ?? 0;
+    if (!a) return { ...b, trk_deg: trk, bank_deg: 0, pitch_deg: pitchOf(b.vs_fpm) };
+    const dt = Math.max(100, b.t - a.t);
+    const f = Math.min(1.5, Math.max(0, (tMs - b.t) / dt));          // 1..1.5: brief extrapolation if late
+    const lerp = (x, y) => x + (y - x) * f;
+    const t0 = a.trk_deg ?? trk;
+    const dTrk = ((((trk - t0) % 360) + 540) % 360) - 180;
+    const rate = dTrk / (dt / 1000) * Math.PI / 180;                  // rad/s
+    const bank = Math.max(-35, Math.min(35, Math.atan(46 * rate / 9.81) * 180 / Math.PI));   // ~90 kt
+    return { lat: lerp(a.lat, b.lat), lon: lerp(a.lon, b.lon), alt_ft: lerp(a.alt_ft, b.alt_ft),
+             trk_deg: (t0 + dTrk * Math.min(1, f) + 360) % 360, vs_fpm: lerp(a.vs_fpm ?? 0, b.vs_fpm ?? 0),
+             bank_deg: bank, pitch_deg: pitchOf(lerp(a.vs_fpm ?? 0, b.vs_fpm ?? 0)) };
+  }
+}
+function pitchOf(vsFpm) { return Math.atan2(vsFpm || 0, 90 * 101.27) * 180 / Math.PI; }
+
 // Point at TRUE bearing/range from (lat, lon) — flat earth, fine inside 3 NM.
 export function offsetLL(lat, lon, brgDeg, rngM) {
   const r = brgDeg * Math.PI / 180;
