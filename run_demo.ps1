@@ -36,14 +36,53 @@ Set-Location $PSScriptRoot
 $env:PYTHONIOENCODING = "utf-8"        # data/metar.py prints arrows; the Windows console codepage can't
 $PidFile = Join-Path $PSScriptRoot $(if ($WorldPort -eq 8765) { ".demo_pids" } else { ".demo_pids_$WorldPort" })
 
+# Leftovers from an earlier run (closed windows, a crashed script, the old -Stop) keep ports 8765/8766/8080 bound
+# and the next start dies with WinError 10048. These two clean them up.
+function Stop-PortOwners([int[]]$Ports) {
+  foreach ($port in $Ports) {
+    Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.OwningProcess -gt 4) { cmd /c "taskkill /T /F /PID $($_.OwningProcess) >nul 2>&1" }
+    }
+  }
+}
+function Stop-StaleFlock {      # every python running a FLOCK role (nodes hold no port, so ports alone miss them)
+  Get-CimInstance Win32_Process -Filter "Name LIKE 'python%'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'world[\\/]world_server\.py|radio[\\/]channel\.py|node[\\/]node\.py|stubs[\\/]fake_|data[\\/]live_traffic\.py|radio[\\/]spoofer\.py' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+function Test-PortBusy([int]$Port) {
+  return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+}
+
 if ($Stop) {
   if (Test-Path $PidFile) {
     # /T: the whole tree - the role window, the venv python launcher AND the real python it starts
     Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" }
     Remove-Item $PidFile
   }
+  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  Stop-PortOwners @($WorldPort, $ChanPort, $HttpPort)
   Write-Host "FLOCK demo stopped."
   exit 0
+}
+
+# start clean: if an earlier run is still holding our ports, stop it first
+$busy = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
+if ($busy) {
+  Write-Host "Ports $($busy -join ', ') still in use from an earlier run - stopping it first." -ForegroundColor Yellow
+  if (Test-Path $PidFile) { Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" } }
+  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  Stop-PortOwners $busy
+  Start-Sleep -Seconds 2
+  $still = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
+  if ($still) {
+    foreach ($port in $still) {
+      $o = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+      $n = (Get-Process -Id $o.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+      Write-Host "Port $port is held by '$n' (PID $($o.OwningProcess)). Close it, or run as admin, then start again." -ForegroundColor Red
+    }
+    exit 1
+  }
 }
 
 $Py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
