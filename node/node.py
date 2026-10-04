@@ -33,6 +33,7 @@ from node import authority, conflict as conflict_mod, escape, layers
 from node.geometry import FT, KT, bearing_deg, build_patterns, hvec, load_metar, to_enu, to_latlon, wrap180
 from node.negotiate import Negotiator
 from node.predict import CONF_MIN, KState, Predictor, Prediction
+from node.airwitness import AirWitness, QUARANTINED, SUSPICIOUS, UNVERIFIED, VERIFIED
 from node.trust import TrustTable
 
 STATE_PERIOD_S = 1.0
@@ -44,6 +45,7 @@ LATENCY_EST_S = 0.3
 PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
 COMMIT_RESEND_S = 2.0
+AIRWITNESS_ON = os.environ.get("FLOCK_AIRWITNESS", "1") != "0"   # 0 = A/B comparison only
 SEQ_HOLD_S = 150.0
 SEQ_HOLD_RANGE_M = 6000.0
 PILOT_MAX_BANK = 45.0
@@ -95,6 +97,10 @@ class Node:
         self.verbose, self.record, self.latency_est = verbose, record, latency_est_s
 
         self.negotiator = Negotiator(ac_id)
+        # AirWitness: every radio message is a claim.  signed_radio=False on transports without signatures (sim/stub);
+        # run() switches it on with the real radio/client.py.
+        self.aw = AirWitness(ac_id, to_enu, signed_radio=False)
+        self._aw_t = -1e9
         self.auth = authority.AuthorityMonitor(ac_id)
         self.trackers: dict[str, layers.LayerTracker] = {}
         self.peers: dict[str, PeerTrack] = {}
@@ -173,6 +179,8 @@ class Node:
         if not peer or peer == self.id:
             return
         msg, body, now = env.get("msg"), env.get("body", {}), self.now
+        if not self.aw.on_message(env, now):          # replay / duplicate / stale: never applied to the track
+            return
         self.negotiator.note_rx(peer, now)
         tr = self.peers.get(peer)
         if msg == "STATE":
@@ -249,6 +257,9 @@ class Node:
             else:
                 self._seq_extend = None
         self.own_pred = self.predictor.predict(self.own_st, now, self.own_cls, horizon=OWN_HORIZON_S, extend_s=ext)
+        self.aw.on_ownship(own)
+        if self.aw.pnt.extra_sigma_m > 1.0:          # our own GNSS looks inconsistent: keep it, but trust it less
+            self.own_pred.pts[:, 4] += self.aw.pnt.extra_sigma_m
 
         self._periodic_radio(now)
         self._drop_stale(now)
@@ -278,9 +289,10 @@ class Node:
             self._emit_radio("INTENT", {"leg": leg, "intent": intent, "valid_for_s": 20.0})
         elif not nt or nt[1] > 25.0:
             self._last_intent_leg = None if not nt else self._last_intent_leg
-        if now - self._last["hb"] >= HEARTBEAT_PERIOD_S:
+        extra = self.aw.tick(now)                    # challenge nonces to send, nonces to echo (liveness)
+        if now - self._last["hb"] >= HEARTBEAT_PERIOD_S or extra:
             self._last["hb"] = now
-            self._emit_radio("HEARTBEAT", {"alive": True})
+            self._emit_radio("HEARTBEAT", dict({"alive": True}, **extra))
         if self.verbose and now - self._last["leglog"] >= 1.0:
             self._last["leglog"] = now
             print(f"[node {self.id}] t={now:.1f} leg={cls.leg} rwy={cls.runway} conf={cls.conf:.2f} "
@@ -330,7 +342,18 @@ class Node:
 
     def _peer_pred(self, tr: PeerTrack) -> Prediction:
         age = max(0.0, self.now - tr.rx_t)
-        key = (tr.seq, tr.intent_turn, int(age // 2))
+        aw_state = self.trust.aw_state(tr.id)
+        key = (tr.seq, tr.intent_turn, int(age // 2), aw_state)
+        if (tr.pred is None or tr.pred_key != key) and aw_state in (SUSPICIOUS, QUARANTINED):
+            # claims not believed: no leg, no intent, straight-line physical envelope with a wide tube
+            st = self._peer_state(tr)
+            t0 = tr.rx_t - self.latency_est
+            tr.pred = self.predictor.straight_line(st, t0, PEER_HORIZON_S, 1.0, 0.0, "UNKNOWN", None, max(0.0, age - 1.0))
+            scale = self.trust.sigma_scale(tr.id)
+            tr.pred.pts[:, 4] *= scale
+            tr.pred.sigma_v = tr.pred.sigma_v * scale
+            tr.pred_key = key
+            return tr.pred
         if tr.pred is None or tr.pred_key != key:
             st = self._peer_state(tr)
             t0 = tr.rx_t - self.latency_est
@@ -343,6 +366,10 @@ class Node:
                     intent = f"{tr.intent_turn[0]}_IN_{max(0.0, rel):.1f}S"
             tr.pred = self.predictor.predict(st, t0, cls, horizon=PEER_HORIZON_S, intent=intent,
                                              age_s=max(0.0, age - 1.0))        # >1 s silent: widen sigma
+            scale = self.trust.sigma_scale(tr.id)              # UNVERIFIED: conservative tube
+            if scale != 1.0:
+                tr.pred.pts[:, 4] *= scale
+                tr.pred.sigma_v = tr.pred.sigma_v * scale
             tr.pred_key = key
         return tr.pred
 
@@ -351,9 +378,13 @@ class Node:
         if self._on_ground(self.own_st.gs, self.own_st.z):          # rolling out / parked: nothing airborne to avoid
             return conflicts, {}
         own_xy = (self.own_st.x, self.own_st.y)
-        if self.trust.has_scorer:                        # Lane C evidence (signature, kinematics, RF, corroboration)
+        if self.trust.has_scorer:                        # a plain scorer (tests / legacy wiring)
             for pid in self.peers:
                 self.trust.refresh(pid, {})
+        if AIRWITNESS_ON and now - self._aw_t >= 0.5:    # AirWitness verdicts at 2 Hz
+            self._aw_t = now
+            for pid in self.peers:
+                self.trust.set_result(pid, self.aw.assess(pid, now))
         usable = {pid: (t.x, t.y) for pid, t in self.peers.items()
                   if self.trust.cap(pid) is not None and not self._on_ground(t.gs, t.alt_press_ft * FT + self.baro_offset_m)}
         near = conflict_mod.k_nearest(own_xy, usable)
@@ -440,9 +471,9 @@ class Node:
             dx, dy = tr.x - self.own_st.x, tr.y - self.own_st.y
             dz = tr.alt_press_ft * FT + self.baro_offset_m - self.own_st.z
             text, speak = layers.traffic_text(self.own["hdg_deg"], self.own_st.z, dx, dy, dz)
-            if self.trust.state(pid) != "TRUSTED":
-                text += f" ({self.trust.state(pid)})"
-            self._advise("TRAFFIC", text, speak, pid, ttc, reason)
+            if self.trust.aw_state(pid) != VERIFIED:
+                text += f" ({self.trust.aw_state(pid)})"
+            self._advise("TRAFFIC", text, speak, pid, ttc, self._with_trust(reason, pid))
         else:
             self._do_resolve(now, pid, tr, c, level, reason, paths, ctx)
         self._camera_only(now)
@@ -522,9 +553,33 @@ class Node:
                             self.own["ias_kt"], self.own["agl_ft"] * FT, self.da_ft, tpa)
         return o, hold, peers, sig
 
+    def _with_trust(self, reason: dict, pid: str) -> dict:
+        r = self.trust.result(pid)
+        if r is None:
+            return reason
+        return dict(reason, trust={"state": r.state, "score": r.score, "action": r.action, "reasons": r.reasons[:6]})
+
+    def _do_unverified_resolve(self, now, pid, c, reason, o, hold, peers, sig, ctx) -> None:
+        """Target is not VERIFIED: no MANEUVER_COMMIT to it, nothing it claims is relied on, no takeover.
+        We solve it alone (it holds course) and advise our own pilot."""
+        pilot_bank = 30.0 if (ctx["ap_equipped"] and not ctx["stick_active"]) else PILOT_MAX_BANK
+        res = escape.evaluate(o, hold, peers, self.terrain_fn, self.obstacle_fn, sig, hold_s=PILOT_HOLD_S,
+                              max_bank=pilot_bank, prefer_right=True,
+                              go_around=self.own_cls.leg in ("BASE", "FINAL", "STRAIGHT_IN"))
+        why = self._with_trust(dict(res.reason(c.ttc_s), basis="unilateral-unverified-target", method=c.method,
+                                    predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2)), pid)
+        if res.chosen is None:
+            self._no_solution(now, pid, c, res)
+            return
+        text, speak = layers.maneuver_text(res.chosen.cand.name, pid, None, urgent=c.ttc_s <= 8.0)
+        self._advise("RESOLVE", text, speak, pid, c.ttc_s, why)
+
     def _do_resolve(self, now, pid, tr, c, level, reason, paths, ctx) -> None:
         o, hold, peers, sig = self._escape_inputs(now, paths)
         if pid not in peers:
+            return
+        if not self.trust.may_negotiate(pid):
+            self._do_unverified_resolve(now, pid, c, reason, o, hold, peers, sig, ctx)
             return
         # the peer's last STATE is up to ~1.3 s old: simulate its committed maneuver from where it is now
         age = max(0.0, now - tr.rx_t + self.latency_est)
@@ -673,8 +728,9 @@ class Node:
     def _no_solution(self, now, pid, c, res) -> None:
         if now - self._no_solution_sent.get(pid, -1e9) > 2.0:
             self._no_solution_sent[pid] = now
-            self._emit_radio("MANEUVER_COMMIT", {"target": pid, "sense": "HOLD", "bank_deg": 0, "vs_fpm": 0,
-                                                 "start_t": now, "hold_s": 10.0})
+            if self.trust.may_negotiate(pid):      # never coordinate with an unverified / suspicious target
+                self._emit_radio("MANEUVER_COMMIT", {"target": pid, "sense": "HOLD", "bank_deg": 0, "vs_fpm": 0,
+                                                     "start_t": now, "hold_s": 10.0})
         text, speak = authority.NO_SOLUTION_TEXT
         why = {"rejected": dict(res.rejected) if res else {}, "ttc_s": round(c.ttc_s, 1), "predicted_miss_ft": round(c.miss_h_ft),
                "method": c.method, "chosen": None}
@@ -731,6 +787,9 @@ class Node:
         if not (force or changed_level or (text != a["text"] and self.now - a["t"] >= ADV_MIN_PERIOD_S)):
             return
         a.update(level=level, text=text, t=self.now, target=target)
+        if self.aw.pnt.state == "DEGRADED":
+            reason = dict(reason, ownship_pnt={"state": "DEGRADED", "extra_sigma_m": round(self.aw.pnt.extra_sigma_m),
+                                               "why": self.aw.pnt.reasons})
         self._emit_world({"type": "ADVISORY", "ac_id": self.id, "t": self.now, "layer": layers.LAYER_NUM[level],
                           "level": level, "text": text, "speak": speak, "target_id": target,
                           "ttc_s": None if ttc is None else round(ttc, 1), "reason": reason})
@@ -756,7 +815,8 @@ async def run(ac_id: str, world: str, via_channel: Optional[str] = None, verbose
     if hasattr(radio, "set_neighbor_report"):                       # the real radio: trust by evidence, not broadcast
         from radio.evidence import TrustEvidence
         evidence = TrustEvidence.attach(radio)
-        node.trust.set_scorer(evidence.scorer)
+        node.aw.signed_radio = True                                 # signatures exist: unsigned = unverified
+        node.aw.peer_evidence = evidence.assess                     # Lane C witnesses / RF / kinematics feed AirWitness
     radio.on_message(node.on_radio)
     await radio.start()
     url = f"{world}?role=node:{ac_id}"
