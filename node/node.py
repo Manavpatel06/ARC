@@ -65,6 +65,36 @@ ESC_GRID = np.arange(0.0, escape.HORIZON_S + 1e-9, escape.DT)
 RELEVANT_RADIUS_M = 6000.0
 STICK_INHIBIT_S = 5.0
 ADV_MIN_PERIOD_S = 3.0
+# (deg/s)^2 / (m/s)^2 a real turn rate / vertical speed can change per 1 s sample.  Monte Carlo (n=60, calm, light,
+# moderate, severe Dryden; docs/turbulence.md): 25 / 128 keeps every NMAC result at every level while cutting gust
+# nuisance alerts; heavier vertical smoothing (q 1-64) delayed a real climb in severe air and cost an NMAC.
+KF_Q_TURN = float(os.environ.get("ARC_KF_Q_TURN", "25.0"))
+KF_Q_VS = float(os.environ.get("ARC_KF_Q_VS", "128.0"))
+GROUND_ROLL_M = 6.0           # predicted points this close to field elevation are on the runway, not airborne
+
+
+class AdaptiveSmoother:
+    """Scalar steady-state Kalman filter for a random-walk signal with measured noise.
+    q = how much the true value can change between samples; r = sample noise variance, estimated online from
+    sample-to-sample jumps (EMA).  Calm air: r ~ 0 -> gain ~ 1 (raw value, no lag).  Gusty air: r >> q -> filtered."""
+
+    def __init__(self, q: float, alpha: float = 0.05):
+        self.q, self.alpha = q, alpha
+        self.r = 0.0
+        self.x: Optional[float] = None
+        self.prev_raw: Optional[float] = None
+
+    def update(self, raw: float) -> float:
+        if self.x is None:
+            self.x = self.prev_raw = raw
+            return raw
+        self.r += self.alpha * (0.5 * (raw - self.prev_raw) ** 2 - self.r)
+        self.prev_raw = raw
+        q, r = self.q, self.r
+        p = 0.5 * (-q + math.sqrt(q * q + 4.0 * q * r)) if r > 0 else 0.0     # steady-state prior variance
+        k = (p + q) / (p + q + r) if (p + q + r) > 0 else 1.0
+        self.x += k * (raw - self.x)
+        return self.x
 
 
 def trust_robust(h1, h2) -> dict:
@@ -105,6 +135,9 @@ class PeerTrack:
     pred: Optional[Prediction] = None
     pred_key: tuple = ()
     z: float = 0.0                               # metres MSL, set from baro offset at prediction time
+    vs_pred: float = 0.0                         # gust-smoothed vertical speed used only by the path prediction
+    kf_turn: AdaptiveSmoother = field(default_factory=lambda: AdaptiveSmoother(q=KF_Q_TURN))
+    kf_vs: AdaptiveSmoother = field(default_factory=lambda: AdaptiveSmoother(q=KF_Q_VS))
 
 
 class Node:
@@ -219,12 +252,18 @@ class Node:
                 if AIRWITNESS_ON:                        # a new target is a claim from its first packet, never TRUSTED by default
                     self.trust.set_result(peer, self.aw.assess(peer, now))
             x, y = to_enu(body["lat"], body["lon"])
+            vs_raw = body.get("vs_fpm", 0.0) * FT / 60.0
             if tr.prev_track is not None and now > tr.prev_rx:
-                tr.turn_rate = wrap180(body["track_deg"] - tr.prev_track) / max(now - tr.prev_rx, 0.2)
+                # Gusts make single samples of turn rate and vertical speed jumpy.  Adaptive (steady-state Kalman)
+                # smoothing: the noise of each peer's own samples is measured, so calm air keeps the raw values
+                # (no lag on a real turn or climb) and turbulent air is filtered.
+                tr_raw = wrap180(body["track_deg"] - tr.prev_track) / max(now - tr.prev_rx, 0.2)
+                tr.turn_rate = tr.kf_turn.update(tr_raw)
+            tr.vs = vs_raw                               # raw: escape planning / negotiation react to real maneuvers
+            tr.vs_pred = tr.kf_vs.update(vs_raw)         # smoothed: only for extrapolating the predicted path
             tr.prev_track, tr.prev_rx = body["track_deg"], now
             tr.lat, tr.lon, tr.x, tr.y = body["lat"], body["lon"], x, y
             tr.alt_press_ft, tr.gs, tr.track = body["alt_press_ft"], body["gs_kt"] * KT, body["track_deg"]
-            tr.vs = body.get("vs_fpm", 0.0) * FT / 60.0
             tr.leg, tr.ap_equipped = body.get("leg", "UNKNOWN"), bool(body.get("ap_equipped", False))
             tr.seq, tr.rx_t = int(env.get("seq", 0)), now
             if INTENT_SOURCE == "link":
@@ -472,12 +511,15 @@ class Node:
         self.sightings = [(t, s) for t, s in self.sightings if now - t < 6.0]
 
     # ------------------------------------------------------------------ peers
-    def _on_ground(self, gs: float, z_msl: float) -> bool:
-        field = self.patterns[next(iter(self.patterns))].elev_m
-        return z_msl < field + 6.0
+    def _field_m(self) -> float:
+        return self.patterns[next(iter(self.patterns))].elev_m
 
-    def _peer_state(self, tr: PeerTrack) -> KState:
-        return KState(tr.x, tr.y, tr.alt_press_ft * FT + self.baro_offset_m, tr.gs, tr.track, tr.vs, tr.turn_rate)
+    def _on_ground(self, gs: float, z_msl: float) -> bool:
+        return z_msl < self._field_m() + GROUND_ROLL_M
+
+    def _peer_state(self, tr: PeerTrack, for_path: bool = False) -> KState:
+        vs = tr.vs_pred if for_path else tr.vs
+        return KState(tr.x, tr.y, tr.alt_press_ft * FT + self.baro_offset_m, tr.gs, tr.track, vs, tr.turn_rate)
 
     def _peer_pred(self, tr: PeerTrack) -> Prediction:
         age = max(0.0, self.now - tr.rx_t)
@@ -485,7 +527,7 @@ class Node:
         key = (tr.seq, tr.intent_turn, int(age // 2), aw_state)
         if (tr.pred is None or tr.pred_key != key) and aw_state in (SUSPICIOUS, QUARANTINED):
             # claims not believed: no leg, no intent, straight-line physical envelope with a wide tube
-            st = self._peer_state(tr)
+            st = self._peer_state(tr, for_path=True)
             t0 = tr.rx_t - self.latency_est
             tr.pred = self.predictor.straight_line(st, t0, PEER_HORIZON_S, 1.0, 0.0, "UNKNOWN", None, max(0.0, age - 1.0))
             scale = self.trust.sigma_scale(tr.id)
@@ -494,7 +536,7 @@ class Node:
             tr.pred_key = key
             return tr.pred
         if tr.pred is None or tr.pred_key != key:
-            st = self._peer_state(tr)
+            st = self._peer_state(tr, for_path=True)
             t0 = tr.rx_t - self.latency_est
             declared = tr.leg if tr.leg != "UNKNOWN" else None
             cls = self.predictor.classify(st, declared)
@@ -533,7 +575,8 @@ class Node:
         near = conflict_mod.k_nearest(own_xy, usable)
         self._near_ids = list(near)
         for pid in near:
-            c = conflict_mod.assess(pid, self.own_pred, self._peer_pred(self.peers[pid]), now)
+            c = conflict_mod.assess(pid, self.own_pred, self._peer_pred(self.peers[pid]), now,
+                                    ground_z=self._field_m() + GROUND_ROLL_M)
             if c is not None:
                 conflicts[pid] = c
         paths = {}
@@ -547,6 +590,8 @@ class Node:
             trk = self.trackers.setdefault(pid, layers.LayerTracker())
             cap = self.trust.cap(pid) or "CLEAR"
             c = conflicts.get(pid)
+            if c is not None and c.ground_only:
+                cap = layers.cap_level(cap, "SEQUENCE")   # landing rolls overlap only: space them, no alarm, no maneuver
             prev = trk.level
             ttc = c.ttc_s if c else None
             pc = self.negotiator.pairs.get(pid)

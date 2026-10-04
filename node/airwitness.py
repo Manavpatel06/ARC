@@ -63,6 +63,7 @@ C = 299_792_458.0
 MAX_SPEED_KT = 250.0                       # broad GA limits: legitimate emergency maneuvers must pass
 MAX_ACCEL_KT_S = 12.0
 MAX_TURN_DPS = 15.0
+TAXI_KT = 40.0                             # below this ground speed it is not flying: no turn-rate limit
 MAX_VS_FPM = 3000.0
 MAX_VS_CHANGE_FPM_S = 3000.0               # ~1.5 g change: an abrupt push-over / go-around must still pass
 JUMP_M = 400.0
@@ -553,7 +554,7 @@ class AirWitness:
                     viol.append("position_jump")
                 if vel_res > MAX_ACCEL_KT_S:
                     viol.append("accel")
-                if turn_res > MAX_TURN_DPS:
+                if turn_res > MAX_TURN_DPS and min(cur[5], p[5]) >= TAXI_KT:     # taxiing / rollout may turn fast
                     viol.append("turn_rate")
                 if not near_ground and p[4] >= NEAR_GROUND_FT:
                     if abs(cur[4] - p[4]) / dte * 60.0 > MAX_VS_FPM * 1.3:

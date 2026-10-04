@@ -393,7 +393,9 @@ def test_head_on_both_aircraft_take_over_in_the_same_sense():
 def test_sequencing_is_kept_after_a_maneuver_cleared_the_conflict():
     from harness.montecarlo import make_encounter, DT, DURATION_S
     kept = 0
-    for seed in (2009, 2011, 2015, 2022):
+    # seeds with a real airborne maneuver (2011/2015 used to "maneuver" for a predicted overlap of the two landing
+    # rolls on the runway, which is now capped at SEQUENCE: no alarm, no maneuver)
+    for seed in (2013, 2038, 2040, 2053):
         ac = make_encounter("base_vs_straight_in", seed, PATS)
         res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=DT, seed=seed).run(DURATION_S)
         kept += sum(1 for _, _, f in res.advisories if f["reason"].get("kept_after") == "maneuver")

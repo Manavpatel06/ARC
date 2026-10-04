@@ -52,6 +52,11 @@ def apply_deviation(f: PatternFollower, dev: Optional[dict]) -> bool:
     return False
 
 
+TURB_TAU_H_S = 20.0                     # pilot / autopilot works a horizontal gust displacement off in ~20 s
+TURB_TAU_V_S = 12.0                     # ... and an altitude excursion in ~12 s
+TURB_RESPONSE_S = 1.5                   # airframe response to horizontal gusts (same as harness/dryden_world.py)
+
+
 def _ground_m(x: float, y: float, fallback: float) -> float:
     """Terrain under the aircraft from the real grid (the world reports AGL against terrain, contract v1.1)."""
     try:
@@ -95,6 +100,11 @@ class SimAircraft:
         self.slow_until = -1.0
         self.v_nominal = self.v
         self.node: Optional[Node] = None
+        self.gust = None                                 # harness.dryden.Dryden when the Sim has turbulence (opt-in)
+        self.turb_level = 0
+        self.off = [0.0, 0.0, 0.0]                       # gust displacement from the flown path (east, north, up) m
+        self.dv = (0.0, 0.0, 0.0)                        # its rate, m/s (adds to the reported velocity)
+        self.gh = (0.0, 0.0)                             # horizontal gust after the airframe's response lag
 
     @property
     def stick_active(self) -> bool:
@@ -103,9 +113,14 @@ class SimAircraft:
     def ownship(self, t: float, rng: random.Random) -> dict:
         lat, lon = to_latlon(self.x + rng.gauss(0, self.gps_sigma), self.y + rng.gauss(0, self.gps_sigma))
         msl = (self.z + rng.gauss(0, 2.0)) / FT
+        gs, trk = self.v, self.hdg
+        if self.gust is not None:                       # ground velocity includes the gust drift
+            hx, hy = hvec(self.hdg)
+            ge, gn = hx * self.v + self.dv[0], hy * self.v + self.dv[1]
+            gs, trk = math.hypot(ge, gn), wrap360(math.degrees(math.atan2(ge, gn)))
         return {"type": "OWNSHIP", "ac_id": self.id, "t": t, "lat": lat, "lon": lon, "alt_msl_ft": msl,
-                "alt_press_ft": msl - 10.0, "agl_ft": (self.z - _ground_m(self.x, self.y, self.pat.elev_m)) / FT, "gs_kt": self.v / KT,
-                "track_deg": self.hdg, "hdg_deg": self.hdg, "bank_deg": self.bank, "vs_fpm": self.vs / FT * 60.0,
+                "alt_press_ft": msl - 10.0, "agl_ft": (self.z - _ground_m(self.x, self.y, self.pat.elev_m)) / FT, "gs_kt": gs / KT,
+                "track_deg": trk, "hdg_deg": self.hdg, "bank_deg": self.bank, "vs_fpm": (self.vs + self.dv[2]) / FT * 60.0,
                 "ias_kt": self.v / KT, "ap_equipped": self.ap, "stick_active": self.stick_active, "flaps": 0,
                 **(self.autopilot_targets() if self.ap else {})}
 
@@ -138,6 +153,7 @@ class SimAircraft:
     def end_maneuver(self, predictor: Predictor) -> None:
         was = self.maneuver
         self.maneuver = None
+        self.off = [0.0, 0.0, 0.0]                        # the new pattern path starts where the aircraft really is
         if was is not None and was.go_around:
             st = KState(self.x, self.y, self.z, self.v, self.hdg, self.vs, 0.0, self.z - self.pat.elev_m)
             cls = predictor.classify(st)
@@ -193,6 +209,16 @@ class SimAircraft:
             self.x, self.y, self.z, self.hdg, self.v, self.vs = f.x, f.y, f.z, f.hdg, f.v, f.vz
             w = math.radians(wrap180(f.hdg - h0)) / dt
             self.bank = math.degrees(math.atan(w * max(self.v, 1.0) / G))
+            if self.gust is not None and not f.landed:
+                self._disturb(dt)
+                self.x, self.y = f.x + self.off[0], f.y + self.off[1]
+                self.z = max(self.pat.elev_m, f.z + self.off[2])
+            elif self.gust is not None:                    # on the runway: the wheels take out the gust drift
+                k = math.exp(-dt / TURB_RESPONSE_S)        # ... over a second or two, not in one step
+                self.dv = (self.dv[0] * k, self.dv[1] * k, 0.0)
+                self.off = [self.off[0] + self.dv[0] * dt, self.off[1] + self.dv[1] * dt, 0.0]
+                self.gh = (0.0, 0.0)
+                self.x, self.y = f.x + self.off[0], f.y + self.off[1]
             return
         tb = m.bank if m is not None else (self.bank if self.stick_until > 0 else 0.0)
         tv = (m.vs_fpm * FT / 60.0) if m is not None else 0.0
@@ -203,6 +229,23 @@ class SimAircraft:
         self.x += hx * self.v * dt
         self.y += hy * self.v * dt
         self.z = max(self.pat.elev_m, self.z + self.vs * dt)
+        if self.gust is not None:
+            self._disturb(dt)
+            self.x, self.y = self.x + self.dv[0] * dt, self.y + self.dv[1] * dt
+            self.z = max(self.pat.elev_m, self.z + self.dv[2] * dt)
+
+    def _disturb(self, dt: float) -> None:
+        """Dryden gusts push the aircraft off the path it is flying; the pilot / autopilot works it back."""
+        agl_ft = max(0.0, self.z - self.pat.elev_m) / FT
+        gu, gv, gw = self.gust.step(dt, self.v, agl_ft, self.turb_level)
+        gw *= min(1.0, agl_ft / 50.0)                     # no vertical jolts into the runway
+        k = min(1.0, dt / TURB_RESPONSE_S)                   # airframe inertia smooths horizontal gusts
+        self.gh = (self.gh[0] + (gu - self.gh[0]) * k, self.gh[1] + (gv - self.gh[1]) * k)
+        gu, gv = self.gh
+        hx, hy = hvec(self.hdg)
+        ve, vn = gu * hx + gv * hy, gu * hy - gv * hx       # u along the heading, v to the right
+        self.dv = (ve - self.off[0] / TURB_TAU_H_S, vn - self.off[1] / TURB_TAU_H_S, gw - self.off[2] / TURB_TAU_V_S)
+        self.off = [self.off[i] + self.dv[i] * dt for i in range(3)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -229,7 +272,7 @@ class Sim:
     def __init__(self, patterns: dict, aircraft: list[SimAircraft], node_factory: Optional[Callable] = None,
                  loss: float = 0.1, latency_s: float = 0.3, dt: float = 0.1, seed: int = 0,
                  stick_events: Optional[dict] = None, verbose: bool = False, pair: Optional[tuple] = None,
-                 follow_sequence: bool = True, blackout: Optional[tuple] = None):
+                 follow_sequence: bool = True, blackout: Optional[tuple] = None, turbulence: int = 0):
         self.patterns = patterns
         self.predictor = Predictor(patterns)
         self.aircraft = {a.id: a for a in aircraft}
@@ -247,6 +290,11 @@ class Sim:
         self.blackout = blackout                          # (t_start, t_end) seconds from T0: the radio delivers nothing
         self.res = Result()
         self.pair = pair or tuple(list(self.aircraft)[:2])
+        if turbulence:                                    # opt-in Dryden add-on (harness/dryden.py); 0 = unchanged
+            import zlib
+            from harness.dryden import Dryden
+            for a in aircraft:
+                a.gust, a.turb_level = Dryden(seed * 1_000_003 + zlib.crc32(a.id.encode())), int(turbulence)
         if node_factory:
             for a in aircraft:
                 if a.arc:

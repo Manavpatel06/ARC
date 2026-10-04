@@ -122,15 +122,17 @@ def seven_pm() -> None:
     check("authority rejects 45 deg and clips to 30", v.ok and v.command["bank_cmd_deg"] == -30.0 and bool(v.clipped),
           f"bank_cmd -45 -> {v.command['bank_cmd_deg']:.0f}; notes {v.clipped}")
 
-    # boxed_in.json on a field with a ridge across the left side of the final: every candidate is blocked.
+    # The airborne base-to-final merge (base_cutoff_conflict.json) on a field walled in by a 180 m ridge everywhere off
+    # the final course: every escape candidate is blocked.  (boxed_in_conflict.json used to be used here, but its only
+    # "conflict" was a predicted overlap of the two landing rolls on the runway - not airborne - which ARC now ignores.)
     p25 = PATS["25L"]
 
     def ridge(x, y):
         s, l = p25.xy_to_sl(x, y)
-        return p25.elev_m + (60.0 if (abs(l) > 150.0 or s > -300.0) else 0.0)
-    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "boxed_in_conflict.json"), PATS, comply=0.0)
+        return p25.elev_m + (180.0 if (abs(l) > 150.0 or s > -300.0) else 0.0)
+    ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "base_cutoff_conflict.json"), PATS, comply=0.0)
     sim = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, terrain_fn=ridge), loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
-    res = sim.run(75.0)
+    res = sim.run(120.0)
     ns = [(t - T0, i, f) for t, i, f in res.advisories if f["level"] == "NO_SOLUTION"]
     check("NO_SOLUTION on boxed_in (terrain floor active)", bool(ns) and ns[0][2]["text"] == "NO SAFE MANEUVER - YOUR AIRCRAFT"
           and not res.commands,

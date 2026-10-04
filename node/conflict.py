@@ -37,6 +37,7 @@ class Conflict:
     t_enter_s: float              # == ttc_s, kept for readability at call sites
     method: str                   # weakest method of the two predictions
     confidence: float             # min of the two prediction confidences
+    ground_only: bool = False     # only both landing rolls overlap on the runway: a spacing problem, not airborne
 
     @property
     def miss_h_ft(self) -> float:
@@ -68,13 +69,21 @@ def separation_series(own: Prediction, peer: Prediction, now: float, horizon: fl
 
 
 def assess(target: str, own: Prediction, peer: Prediction, now: float, horizon: float = HORIZON_S,
-           n_sigma: float = N_SIGMA) -> Optional[Conflict]:
+           n_sigma: float = N_SIGMA, ground_z: Optional[float] = None) -> Optional[Conflict]:
+    """ground_z: altitude (m MSL) at or below which a predicted point is rolling on the runway.  A conflict whose
+    every in-box instant has BOTH aircraft on the runway (two landing rolls overlapping) is marked ground_only: the
+    node still sequences on it (spacing advice early helps) but never alerts TRAFFIC or maneuvers for it."""
     tau, dh, dz, sh, sv = separation_series(own, peer, now, horizon)
     h_eff = np.maximum(0.0, dh - n_sigma * sh)
     v_eff = np.maximum(0.0, dz - n_sigma * sv)
     inside = (h_eff < NMAC_H_M) & (v_eff < NMAC_V_M)
     if not inside.any():
         return None
+    ground_only = False
+    if ground_z is not None:
+        za = np.interp(now + tau, own.pts[:, 0] + own.t0, own.pts[:, 3])
+        zb = np.interp(now + tau, peer.pts[:, 0] + peer.t0, peer.pts[:, 3])
+        ground_only = not (inside & ((za > ground_z) | (zb > ground_z))).any()
     raw = np.where(inside, np.maximum(dh / NMAC_H_M, dz / NMAC_V_M), np.inf)       # true closest approach in the box
     margin = raw
     # Escalation runs on the time the conflict *begins* (monotone, well-conditioned even when two aircraft
@@ -83,7 +92,7 @@ def assess(target: str, own: Prediction, peer: Prediction, now: float, horizon: 
     t_enter = float(tau[int(np.argmax(inside))])
     method = "turn-aware" if own.method == peer.method == "turn-aware" else "straight-line"
     return Conflict(target, t_enter, float(tau[i]), float(dh[i]), float(dz[i]), float(sh[i]), t_enter, method,
-                    min(own.confidence, peer.confidence))
+                    min(own.confidence, peer.confidence), ground_only)
 
 
 def k_nearest(own_xy: tuple[float, float], peers: dict[str, tuple[float, float]], k: int = K_NEAREST) -> list[str]:

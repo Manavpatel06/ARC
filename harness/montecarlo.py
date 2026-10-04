@@ -182,7 +182,8 @@ def make_encounter(kind: str, seed: int, pats: dict) -> list[SimAircraft]:
 
 
 def run_one(args) -> dict:
-    kind, seed, loss, latency, modes = args
+    kind, seed, loss, latency, modes = args[:5]
+    turb = args[5] if len(args) > 5 else 0                     # Dryden add-on level (0 = off)
     pats = build_patterns()
     res: dict = {"kind": kind, "seed": seed}
     factories = {"none": None,
@@ -192,7 +193,7 @@ def run_one(args) -> dict:
     for mode in modes:
         ac = make_encounter(kind, seed, pats)
         sim = Sim(pats, ac, factories[mode], loss=loss, latency_s=latency, dt=DT, seed=seed,
-                  follow_sequence=(mode != "arc_nosq"))
+                  follow_sequence=(mode != "arc_nosq"), turbulence=turb)
         r = sim.run(DURATION_S)
         margin = max(r.min_h_m / NMAC_H_M, r.min_v_at_min_h_m / NMAC_V_M)
         alerts = {lv for (_, lv) in r.first_level_t if lv in ("TRAFFIC", "RESOLVE", "TAKEOVER")}
@@ -314,9 +315,14 @@ def main() -> None:
     ap.add_argument("--latency", type=float, default=0.3)
     ap.add_argument("--kinds", default=",".join(KINDS))
     ap.add_argument("--out", default=os.path.join(_REPO, "harness", "out", "arc_vs_baseline.png"))
+    ap.add_argument("--turb", type=int, default=0, choices=(0, 1, 2, 3),
+                    help="Dryden turbulence add-on: 0 off (default), 1 light, 2 moderate, 3 severe")
     a = ap.parse_args()
+    if a.turb and a.out.endswith("arc_vs_baseline.png"):
+        a.out = a.out.replace(".png", f"_turb{a.turb}.png")       # never overwrite the calm-air chart
     kinds = a.kinds.split(",")
-    jobs = [(k, 1000 * i + s, a.loss, a.latency, ("none", "baseline", "arc_nosq", "arc")) for i, k in enumerate(kinds) for s in range(a.n)]
+    jobs = [(k, 1000 * i + s, a.loss, a.latency, ("none", "baseline", "arc_nosq", "arc"), a.turb)
+            for i, k in enumerate(kinds) for s in range(a.n)]
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=a.workers) as ex:
         rows = list(ex.map(run_one, jobs, chunksize=2))
