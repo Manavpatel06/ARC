@@ -123,6 +123,8 @@ def maneuver_text(chosen: str, target: str, peer_sense: Optional[str], urgent: b
         side = "LEFT" if chosen[0] == "L" else "RIGHT"
         deg = chosen[1:]
         verb, verb_s = f"TURN {side} {deg}", f"turn {side.lower()} {spoken_number(int(deg))}"
+    elif chosen == "GO_AROUND":
+        verb, verb_s = "GO AROUND - CLIMB STRAIGHT AHEAD", "go around, climb straight ahead"
     elif chosen == "CLIMB":
         verb, verb_s = "CLIMB", "climb"
     elif chosen == "DESCEND":

@@ -46,6 +46,7 @@ class _Pair:
     my_cand: Optional[str] = None
     my_basis: str = ""
     committed_at: float = 0.0
+    last_tx: float = -1e9
     fallback: Optional[str] = None
 
 

@@ -43,6 +43,9 @@ PEER_TIMEOUT_S = 30.0          # a silent peer stays on the table (sigma growing
 LATENCY_EST_S = 0.3
 PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
+COMMIT_RESEND_S = 2.0
+SEQ_HOLD_S = 150.0
+SEQ_HOLD_RANGE_M = 6000.0
 PILOT_MAX_BANK = 45.0
 PILOT_HOLD_S = 15.0
 ESC_GRID = np.arange(0.0, escape.HORIZON_S + 1e-9, escape.DT)
@@ -121,6 +124,8 @@ class Node:
         self.first_conflict_seen: Optional[float] = None            # first time the predictor showed any conflict
         self._near_ids: list[str] = []
         self._tk_retry_at = -1e9
+        self._escalated: set[str] = set()
+        self._seq_hold: dict[str, tuple] = {}
         self._seq_extend: Optional[tuple[float, float, str]] = None  # (time advised, seconds, leg it applies to)
 
     # ------------------------------------------------------------------ helpers
@@ -374,10 +379,19 @@ class Node:
             if ttc is not None and ttc <= 40.0 and pc is not None and pc.peer_commit is not None                     and now - pc.peer_commit.get("_rx", -1e9) < 5.0:
                 ttc = min(ttc, 19.0)          # peer already committed: answer now, do not wait for our own 20 s mark
             trk.update(now, ttc, cap)
+            if layers.RANK[trk.level] >= layers.RANK["RESOLVE"]:
+                self._escalated.add(pid)
             if trk.level == "CLEAR" and prev != "CLEAR":
                 self.negotiator.reset(pid)
                 self._esc_cache.pop(pid, None)
-                self._seq_own.pop(pid, None)
+                plan = self._seq_own.get(pid) or self._seq_plans.get(pid)
+                if pid in self._escalated and plan is not None:
+                    # a maneuver cleared this conflict, but the aircraft are still in the same pattern: keep the
+                    # sequencing plan (order + spacing advice) so the same merge cannot simply come back
+                    self._seq_hold[pid] = (plan, now + SEQ_HOLD_S)
+                else:
+                    self._seq_own.pop(pid, None)
+                self._escalated.discard(pid)
                 self._seq_plans.pop(pid, None)
 
     # ------------------------------------------------------------------ decisions
@@ -407,6 +421,8 @@ class Node:
 
         if top is None:
             self._camera_only(now)
+            if self._seq_hold_advice(now):
+                return
             lvl = self._adv["level"]
             if lvl != "CLEAR" and not (lvl == "RELEASE" and now - self._adv["t"] < 3.0):
                 self._advise("CLEAR", "CLEAR OF CONFLICT", "clear of conflict", None, None, {"cause": "no predicted conflict"})
@@ -430,6 +446,37 @@ class Node:
         else:
             self._do_resolve(now, pid, tr, c, level, reason, paths, ctx)
         self._camera_only(now)
+
+    # --- sequencing kept after a maneuver
+    def _seq_hold_advice(self, now: float) -> bool:
+        """After RELEASE / CLEAR: keep telling the follower to space itself until the spacing is really restored."""
+        for pid in list(self._seq_hold):
+            plan, until = self._seq_hold[pid]
+            tr = self.peers.get(pid)
+            own_cls = self.own_cls
+            if tr is None or now > until or own_cls.runway is None or self.id not in plan.order or pid not in plan.order:
+                self._seq_hold.pop(pid, None)
+                self._seq_own.pop(pid, None)
+                continue
+            peer_cls = self.predictor.classify(self._peer_state(tr), tr.leg if tr.leg != "UNKNOWN" else None)
+            pat = self.patterns[own_cls.runway]
+            if peer_cls.runway != own_cls.runway or own_cls.leg == "UNKNOWN" or peer_cls.leg == "UNKNOWN"                     or math.hypot(tr.x - self.own_st.x, tr.y - self.own_st.y) > SEQ_HOLD_RANGE_M:
+                self._seq_hold.pop(pid, None)
+                self._seq_own.pop(pid, None)
+                continue
+            mine = pat.remaining_path_m(self.own_st.x, self.own_st.y, own_cls.leg)
+            theirs = pat.remaining_path_m(tr.x, tr.y, peer_cls.leg)
+            lead_gap = (mine - theirs) if plan.order.index(self.id) == 1 else (theirs - mine)   # + = leader really is ahead
+            if lead_gap >= layers.MIN_SPACING_M * 1.2:                  # spacing restored in the agreed order
+                self._seq_hold.pop(pid, None)
+                self._seq_own.pop(pid, None)
+                continue
+            text, speak = layers.sequence_text(self.id, plan, own_cls.leg, pid)
+            self._advise("SEQUENCE", text, speak, pid, None,
+                         {"order": plan.order, "extend_s": plan.extend_s, "kept_after": "maneuver",
+                          "gap_m": round(lead_gap), "method": "sequencing-hold"})
+            return True
+        return False
 
     # --- sequencing
     def _do_sequence(self, now, pid, tr, c, reason) -> None:
@@ -479,15 +526,20 @@ class Node:
         o, hold, peers, sig = self._escape_inputs(now, paths)
         if pid not in peers:
             return
-        peer_state = {"x": tr.x, "y": tr.y, "z": tr.alt_press_ft * FT + self.baro_offset_m,
+        # the peer's last STATE is up to ~1.3 s old: simulate its committed maneuver from where it is now
+        age = max(0.0, now - tr.rx_t + self.latency_est)
+        pvx, pvy = hvec(tr.track)
+        peer_state = {"x": tr.x + pvx * tr.gs * age, "y": tr.y + pvy * tr.gs * age,
+                      "z": tr.alt_press_ft * FT + self.baro_offset_m + tr.vs * age,
                       "hdg": tr.track, "gs": tr.gs, "vs": tr.vs}
 
         # What the bounds monitor would refuse to fly is not offered to an AP-equipped pilot either: the RESOLVE
         # advice, the commit sent to the peer and the later TAKEOVER are then the same maneuver.
+        go_around = self.own_cls.leg in ("BASE", "FINAL", "STRAIGHT_IN")        # only offered while on the approach
         blocked = {}
         neutral = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": 0.0, "vs_cmd_fpm": 0.0, "hold_s": 10.0}, ctx)
         if ctx["ap_equipped"] and not ctx["stick_active"] and neutral.ok:     # situation-level refusals (e.g. below 300 ft
-            for cand in escape.candidates(escape.climb_rate_fpm(self.da_ft), o.bank):
+            for cand in escape.candidates(escape.climb_rate_fpm(self.da_ft), o.bank, go_around):
                 if cand.kind == "hold":
                     continue
                 v = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": cand.bank, "vs_cmd_fpm": cand.vs_fpm, "hold_s": 10.0}, ctx)
@@ -515,7 +567,7 @@ class Node:
                 pp[pid] = escape.peer_commit_path(peer_state, peer_commit, now, peers[pid])
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
             return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=hold_s,
-                                   require_maneuver=comp, blocked=blocked, peers_alt=alt,
+                                   require_maneuver=comp, blocked=blocked, peers_alt=alt, go_around=go_around,
                                    prefer_hold=row_me.stands_on,
                                    max_bank=PILOT_MAX_BANK if pilot_mode else 30.0)
 
@@ -535,8 +587,13 @@ class Node:
         if dec is None:
             self._no_solution(now, pid, c, evaluate(None))
             return
+        pair = self.negotiator.pair(pid)
         if dec.commit is not None:
             self._emit_radio("MANEUVER_COMMIT", dec.commit)
+            pair.last_tx = now
+        elif pair.my_commit is not None and now - pair.last_tx >= COMMIT_RESEND_S:
+            self._emit_radio("MANEUVER_COMMIT", pair.my_commit)         # a lost commit must not leave the peer guessing
+            pair.last_tx = now
         res = dec.result or self._esc_cache.get(pid, (0.0, None))[1]
         if dec.result is not None:
             self._esc_cache[pid] = (now, dec.result)
@@ -564,6 +621,14 @@ class Node:
         res = evaluate(peer_commit)
         order = [e for e in res.ranked]
         ranked_first = [e for e in order if e.cand.name == dec.cand] + [e for e in order if e.cand.name != dec.cand]
+        # Agreed lateral sense (both committed R, or both L: 14 CFR 91.113): keep it through the takeover even if this
+        # re-evaluation says the margin is thin.  Flipping to the opposite sense turns the two aircraft into each other.
+        if dec.sense in ("L", "R"):
+            kept = next((e for e in res.evals if e.cand.name == dec.cand and (e.feasible or e.reason == "traffic")), None)
+            if kept is not None and kept not in ranked_first[:1]:
+                ranked_first = [kept] + [e for e in ranked_first if e is not kept]
+            ranked_first = [e for e in ranked_first if not (e.cand.kind == "turn" and
+                                                              e.cand.sense in ("L", "R") and e.cand.sense != dec.sense)] or ranked_first
         rejected_by_auth = {}
         for ev in ranked_first:
             if ev.cand.kind == "hold":
@@ -593,7 +658,7 @@ class Node:
             if ev.cand.kind == "turn":
                 text, speak = f"FLOCK HAS THE AIRCRAFT - {side} {abs(cmd['bank_cmd_deg']):.0f}", "flock has the aircraft"
             else:
-                text, speak = f"FLOCK HAS THE AIRCRAFT - {ev.cand.name}", "flock has the aircraft"
+                text, speak = f"FLOCK HAS THE AIRCRAFT - {ev.cand.name.replace('_', ' ')}", "flock has the aircraft"
             self._advise("TAKEOVER", text, speak, pid, c.ttc_s, cmd["reason"], force=True)
             return
         res.rejected.update(rejected_by_auth)
