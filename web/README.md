@@ -25,6 +25,10 @@ Cockpit controls:
   click the map, **Z**, or D-pad up/down; heading-up / north-up: **N** or D-pad left/right.
 - Reset your aircraft to its scenario start: hold **L2 + R2** together for 5 s (keyboard: hold **R**; or hold the
   on-screen **RESET** button). A countdown shows while you hold; letting go cancels.
+- God view **⟲ Reset demo** (click twice within 3 s, or Shift+R twice): BOTH judge aircraft back to their demo start
+  points at once (live_kdvt: 4 NM north / 4 NM south, inbound at pattern altitude) and AI traffic sitting on those
+  points cleared. Next to it: live-traffic status (runway flow, AI count). Aircraft that land and taxi off or depart
+  disappear from the map.
 - Autopilot (every judge aircraft; AI aircraft only if ap_equipped — FLOCK takeover still needs ap_equipped): in the air it levels, joins the pattern (the leg it is lined up with, else a
   downwind entry at pattern altitude), flies the circuit and lands to a full stop. Pressed again while stopped on the
   runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.

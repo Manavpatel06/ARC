@@ -10,6 +10,16 @@ runs), "density_altitude_override" (ft) and "weather_preset" (world/weather.py P
 "metar"); CLI flags override all three. Density altitude: CLI/scenario override > preset > METAR.
 Aircraft spawn with their altimeter set to the current QNH, except in "pressure_drop", where they
 still have the METAR setting (stale) to show the altimeter trap.
+
+Live traffic (harness/scenarios/live_kdvt.json):
+  "runway_flow": "auto" | "07" | "25"   auto = the end the METAR wind favours (calm -> 25)
+  runway names "NORTH" / "SOUTH" / "ACTIVE" resolve against the flow: NORTH = 07L|25R, SOUTH and
+  ACTIVE = 07R|25L
+  start {"leg": "INBOUND", "from_deg": 0, "dist_nm": 4, "runway": "NORTH"[, "alt_msl_ft"]}: placed
+  dist_nm out on that bearing from the field, flying at it straight and level (TRANSIT) at pattern
+  altitude until a pilot or the AP button takes it; it joins that runway's pattern 2 NM past the field
+  "traffic": {"seed": 7, "airborne": [5, 8], "runways": {"SOUTH": 0.75, "NORTH": 0.25}, "live_seed": false,
+              "mix": {...}}   -> world/traffic.py TrafficGenerator (CLI --seed overrides the seed)
 """
 from __future__ import annotations
 import json, math
@@ -19,10 +29,22 @@ from data.metar import load as load_metar, wind_vector_ms
 from data.runways import load as load_runways
 from schemas import Scenario
 from world.flight_model import Aircraft, Env
-from world.traffic import LEG_IAS, Pattern, PatternPilot
+from world.traffic import LEG_IAS, NM_M, Pattern, PatternPilot, TrafficGenerator
 from world.weather import PRESETS, Weather, preset as weather_preset
 
 STALE_BARO_PRESETS = {"pressure_drop"}
+FLOW_RUNWAYS = {"07": {"NORTH": "07L", "SOUTH": "07R", "ACTIVE": "07R"},
+                "25": {"NORTH": "25R", "SOUTH": "25L", "ACTIVE": "25L"}}
+RESET_CLEAR_NM, RESET_CLEAR_FT = 2.0, 1500.0     # demo reset removes AI traffic this close to a judge's start
+
+def runway_flow(wx: dict, want: str = "auto") -> str:
+    """'07' or '25': the end with a headwind (true wind vs the 086/266 true runways); calm -> 25."""
+    if want in ("07", "25"):
+        return want
+    wkt, wdir = float(wx.get("wind_kt", 0) or 0), float(wx.get("wind_dir_deg", 0) or 0)
+    if wkt < 3:
+        return "25"
+    return "07" if math.cos(math.radians(wdir - 86.0)) >= 0 else "25"
 
 def make_env(airport: dict, wx: dict, da_override: float | None) -> Env:
     try:
@@ -39,7 +61,7 @@ def make_env(airport: dict, wx: dict, da_override: float | None) -> Env:
 class World:
     """Everything the server needs from a scenario."""
     def __init__(self, path: str | dict | None, da_override: float | None = None, time_scale: float | None = None,
-                 weather: str | None = None):
+                 weather: str | None = None, seed: int | None = None):
         """path: scenario file, or an already-loaded scenario dict (world/find_conflict.py)."""
         raw = {"name": "default", "aircraft": [
             {"id": "N101", "start": {"leg": "DOWNWIND", "runway": "25L", "offset_s": 0}, "ap": True, "human": True},
@@ -63,20 +85,69 @@ class World:
         self.env.runway_at = self.runways.on_runway
         self.da_pinned = da_override is not None
         self.set_preset(weather or raw.get("weather_preset", "metar"))
+        self.flow = runway_flow(self.metar, str(raw.get("runway_flow", "auto")))
         self.patterns: dict[str, Pattern] = {}
         self.fleet: dict[str, Aircraft] = {}
         self.specs = {spec.id: spec for spec in self.scenario.aircraft}
         for spec in self.scenario.aircraft:
             self.fleet[spec.id] = self._spawn(spec, initial=True)
         self.humans = [a.id for a in self.fleet.values() if a.human]
+        self.traffic: TrafficGenerator | None = None
+        if raw.get("traffic"):
+            cfg = raw["traffic"]
+            self.traffic_runways = {self.runway(k): float(v) for k, v in
+                                    (cfg.get("runways") or {"ACTIVE": 1.0}).items()}
+            for r in self.traffic_runways:
+                self.pattern(r)                            # the god view draws every active pattern
+            self.traffic = TrafficGenerator(self, cfg, seed)
+
+    # ---------- runways ----------
+    def runway(self, name: str) -> str:
+        """'NORTH' / 'SOUTH' / 'ACTIVE' -> the runway end in use today; real idents pass through."""
+        return FLOW_RUNWAYS[self.flow].get(str(name).upper(), name)
+
+    def pattern(self, rwy: str) -> Pattern:
+        if rwy not in self.patterns:
+            self.patterns[rwy] = Pattern(rwy)
+        return self.patterns[rwy]
+
+    # ---------- live traffic (world/traffic.py TrafficGenerator) ----------
+    def add_traffic(self, ac_id: str, lat: float, lon: float, alt_msl_ft: float, hdg: float, ias: float,
+                    pilot: PatternPilot, ap_equipped: bool = False) -> Aircraft:
+        ac = Aircraft(ac_id, lat, lon, alt_msl_ft, ias, hdg, ap_equipped=ap_equipped, autopilot=pilot)
+        self._settle(ac, stale=False)
+        self.fleet[ac_id] = ac
+        return ac
+
+    def remove_traffic(self, ac_id: str) -> None:
+        if ac_id not in self.specs:                        # scenario aircraft are never removed
+            self.fleet.pop(ac_id, None)
+
+    def _settle(self, ac: Aircraft, stale: bool) -> None:
+        ac.agl_ft = ac.alt_msl_ft - self.env.terrain_ft(ac.lat, ac.lon)
+        ac.qnh_inhg = self.env.qnh_inhg
+        ac.baro_set_inhg = float(self.metar.get("altimeter_inhg", 29.92) or 29.92) if stale else self.env.qnh_inhg
+        ac.on_ground = ac.agl_ft <= 0.5
+
+    def reset_demo(self) -> tuple[list[Aircraft], list[str]]:
+        """God-view RESET DEMO: every judge aircraft back to its scenario start, and AI traffic sitting on
+        those starts removed. Returns (reset aircraft, removed traffic ids)."""
+        reset = [self.reset_aircraft(i) for i in self.humans]
+        removed = []
+        if self.traffic is not None:
+            for ac in reset:
+                x, y = P.to_enu(ac.lat, ac.lon)
+                removed += self.traffic.clear_near(x, y, ac.alt_msl_ft, RESET_CLEAR_NM * NM_M, RESET_CLEAR_FT)
+        return reset, removed
 
     def _spawn(self, spec, initial: bool = False) -> Aircraft:
         """Build an aircraft at its scenario start (also used by reset_aircraft)."""
         st = spec.start
-        rwy = st.get("runway", "25L")
-        if rwy not in self.patterns:
-            self.patterns[rwy] = Pattern(rwy)
+        rwy = self.runway(st.get("runway", "25L"))
+        self.pattern(rwy)
         leg0 = st.get("leg", "DOWNWIND").upper()
+        if leg0 == "INBOUND":
+            return self._spawn_inbound(spec, rwy, initial)
         if leg0 == "RUNWAY":
             pos = self._runway_start(self.patterns[rwy], float(st.get("offset_s", 2.0)))
         else:
@@ -89,12 +160,27 @@ class World:
                       flock=spec.flock, autopilot=pilot)
         if pos["leg"] == "RUNWAY" and not spec.human:
             pilot.phase = "TAKEOFF"                        # AI departs straight away
-        ac.agl_ft = ac.alt_msl_ft - self.env.terrain_ft(ac.lat, ac.lon)
-        ac.qnh_inhg = self.env.qnh_inhg
-        stale = initial and self.env.wx.name in STALE_BARO_PRESETS
-        ac.baro_set_inhg = float(self.metar.get("altimeter_inhg", 29.92) or 29.92) if stale else self.env.qnh_inhg
-        ac.on_ground = ac.agl_ft <= 0.5
+        self._settle(ac, stale=initial and self.env.wx.name in STALE_BARO_PRESETS)
         return ac
+
+    def _spawn_inbound(self, spec, rwy: str, initial: bool) -> Aircraft:
+        """Free start: dist_nm out on bearing from_deg from the field, flying at the field, straight and
+        level at pattern altitude (TRANSIT) until someone flies it."""
+        st = spec.start
+        brg, d = float(st.get("from_deg", 0.0)), float(st.get("dist_nm", 4.0)) * NM_M
+        pat = self.patterns[rwy]
+        alt = float(st.get("alt_msl_ft", pat.tpa_ft))
+        hdg = (brg + 180.0) % 360.0
+        lat, lon = P.from_enu(d * math.sin(math.radians(brg)), d * math.cos(math.radians(brg)))
+        pilot = PatternPilot(pat, "DOWNWIND", spec.id)
+        pilot.phase, pilot.leg, pilot.transit = "TRANSIT", "INBOUND", (hdg, alt)
+        ac = Aircraft(spec.id, lat, lon, alt, 95.0, hdg, ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
+                      flock=spec.flock, autopilot=pilot)
+        self._settle(ac, stale=initial and self.env.wx.name in STALE_BARO_PRESETS)
+        return ac
+
+    def runway_start(self, pat: Pattern, offset_s: float) -> dict:
+        return self._runway_start(pat, offset_s)
 
     def reset_aircraft(self, ac_id: str) -> Aircraft:
         """Put one aircraft back at its scenario start: fresh autopilot, no AP / takeover / pilot input.
@@ -159,7 +245,8 @@ class World:
         """Static picture for the god view and cockpit charts: airport, pattern legs, weather."""
         return {"airport": self.airport, "patterns": {k: p.geometry() for k, p in self.patterns.items()},
                 "metar": self.metar, "da_field_ft": self.env.da_field_ft, "scenario": self.scenario.name,
-                "time_scale": self.time_scale, "wx": self.wx_state(), "presets": sorted(PRESETS)}
+                "time_scale": self.time_scale, "wx": self.wx_state(), "presets": sorted(PRESETS),
+                "flow": self.flow, "live_traffic": self.traffic is not None, "judges": list(self.humans)}
 
     def wx_state(self) -> dict:
         from world.weather import PRESET_NOTES

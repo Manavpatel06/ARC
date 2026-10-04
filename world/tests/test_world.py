@@ -3,7 +3,7 @@ world/tests/test_world.py — Lane A regression suite (physics, pattern AI, auto
 separation, scenarios). Pure in-process simulation, no network.  Run:  python -m pytest -q world/tests
 """
 from __future__ import annotations
-import collections, math, sys
+import collections, json, math, sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +20,13 @@ from world.taws import Taws                                  # noqa: E402
 
 DT = 0.05
 SCN = ROOT / "harness" / "scenarios"
+
+def scn(name: str, **kw) -> World:
+    """Scenario with the committed sample weather: results must not depend on whatever METAR
+    `python data/metar.py` fetched last (judges.json says "live")."""
+    raw = json.load(open(SCN / name))
+    raw["weather"] = "cached"
+    return World(raw, **kw)
 
 def fly(w: World, ids, secs: float, t0: float = 0.0, each=None) -> float:
     t = t0
@@ -60,7 +67,7 @@ def test_turn_rate_is_g_tan_bank_over_v():
     assert (ac.hdg_deg - h0) == pytest.approx(expect, rel=0.05)
 
 def test_bank_rate_limited_to_15_deg_s():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     banks = []
     def rec(t):
         a.apply_input(1.0, 0, 0.5, t); banks.append(a.bank_ctl_deg)
@@ -70,7 +77,7 @@ def test_bank_rate_limited_to_15_deg_s():
 
 # ---------------------------------------------------------------- pattern AI
 def test_ai_pattern_ten_minutes_laps_tracking_and_landings():
-    w = World(str(SCN / "judges.json")); tw = Taws(w.airport)
+    w = scn("judges.json"); tw = Taws(w.airport)
     laps = collections.Counter(); prev = {}; worst = 0.0; touchdowns = []
     def rec(t):
         nonlocal worst
@@ -94,7 +101,7 @@ def test_ai_pattern_ten_minutes_laps_tracking_and_landings():
 
 # ---------------------------------------------------------------- takeover / autopilot
 def test_command_needs_ap_and_no_stick_and_is_bounded():
-    w = World(str(SCN / "judges.json"))
+    w = scn("judges.json")
     n101, n102 = w.fleet["N101"], w.fleet["N102"]           # N101 ap_equipped, N102 not
     cmd = {"mode": "TAKEOVER", "bank_cmd_deg": -45, "hold_s": 30, "bounds": {"max_bank_deg": 30, "max_hold_s": 10}}
     assert n102.apply_command(cmd, 0.0) is False
@@ -106,7 +113,7 @@ def test_command_needs_ap_and_no_stick_and_is_bounded():
     assert n101.apply_command(cmd, 3.0) is False
 
 def test_ap_from_anywhere_lands_full_stop_then_takes_off_again():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N101"]; tw = Taws(w.airport)
+    w = scn("judges.json"); a = w.fleet["N101"]; tw = Taws(w.airport)
     a.lat, a.lon = move(33.6883, -112.0826, 0, 4000)
     a.alt_msl_ft, a.hdg_deg, a.vs_fpm = 3400, 200, -400
     a.apply_input(0.5, -0.3, 0.6, 0.0)
@@ -122,7 +129,7 @@ def test_ap_from_anywhere_lands_full_stop_then_takes_off_again():
     assert any(e[0] == "LIFTOFF" for e in a.events)
 
 def test_stick_disconnects_ap_and_ap_rules():
-    w = World(str(SCN / "judges.json"))
+    w = scn("judges.json")
     assert w.fleet["N202"].engage_ap(True)[0] is False       # AI without an autopilot
     assert w.fleet["N102"].engage_ap(True)[0] is True        # judge aircraft always may
     a = w.fleet["N101"]; a.engage_ap(True)
@@ -133,13 +140,13 @@ def test_stick_disconnects_ap_and_ap_rules():
 
 # ---------------------------------------------------------------- ground handling
 def test_idle_on_runway_stops_and_names_the_runway():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     put_on_runway(w, a, ias=70)
     fly(w, ["N102"], 25, each=lambda t: a.apply_input(0, 0, 0.0, t))
     assert a.ias_kt == 0 and ("STOPPED", "25L") in a.events
 
 def test_brake_overrides_throttle_and_no_brake_keeps_rolling():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     put_on_runway(w, a, ias=60)
     fly(w, ["N102"], 25, each=lambda t: a.apply_input(0, 0, 0.6, t, brake=True))
     assert a.ias_kt == 0
@@ -148,21 +155,21 @@ def test_brake_overrides_throttle_and_no_brake_keeps_rolling():
     assert a.ias_kt > 50
 
 def test_off_runway_cannot_take_off():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     a.lat, a.lon = move(33.6883, -112.0826, 0, -5000)
     a.alt_msl_ft = w.env.terrain_ft(a.lat, a.lon); a.agl_ft = 0; a.vs_fpm = 0; a.ias_kt = 90; a.on_ground = True
     fly(w, ["N102"], 30, each=lambda t: a.apply_input(0, 0.8, 1.0, t))
     assert a.agl_ft < 1 and a.ias_kt == 0 and a.surface == "OFF"
 
 def test_manual_takeoff_from_runway():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     put_on_runway(w, a)
     fly(w, ["N102"], 40, each=lambda t: a.apply_input(0, 0.6 if a.ias_kt > 58 else 0, 1.0, t))
     assert any(e[0] == "LIFTOFF" and e[1] >= 55 for e in a.events) and a.agl_ft > 50
 
 # ---------------------------------------------------------------- terrain awareness
 def test_taws_quiet_for_normal_traffic():
-    w = World(str(SCN / "judges.json")); tw = Taws(w.airport); alerts = collections.Counter()
+    w = scn("judges.json"); tw = Taws(w.airport); alerts = collections.Counter()
     def rec(t):
         if round(t / DT) % 2 == 0:
             for a in w.fleet.values():
@@ -173,7 +180,7 @@ def test_taws_quiet_for_normal_traffic():
     assert not alerts, alerts
 
 def test_taws_dive_far_from_field_warns_then_impact():
-    w = World(str(SCN / "judges.json")); tw = Taws(w.airport); a = w.fleet["N102"]
+    w = scn("judges.json"); tw = Taws(w.airport); a = w.fleet["N102"]
     a.lat, a.lon = move(33.6883, -112.0826, 0, -5000)
     a.alt_msl_ft = w.env.terrain_ft(a.lat, a.lon) + 1200; a.hdg_deg = 180
     seen, surface = [], None
@@ -190,7 +197,7 @@ def test_taws_dive_far_from_field_warns_then_impact():
 
 # ---------------------------------------------------------------- weather
 def test_pressure_drop_puts_stale_altimeters_low():
-    w = World(str(SCN / "judges.json"), weather="pressure_drop"); trues = []
+    w = scn("judges.json", weather="pressure_drop"); trues = []
     def rec(t):
         for a in w.fleet.values():
             L = a.autopilot.p.legs[a.autopilot.leg]
@@ -203,7 +210,7 @@ def test_pressure_drop_puts_stale_altimeters_low():
 
 @pytest.mark.parametrize("preset,max_flips", [("hot_gusty_afternoon", 3.0), ("haboob", 4.0)])
 def test_turbulence_is_smooth_not_jitter(preset, max_flips):
-    w = World(str(SCN / "judges.json"), weather=preset); a = w.fleet["N101"]
+    w = scn("judges.json", weather=preset); a = w.fleet["N101"]
     fly(w, ["N101"], 5)
     banks = []
     fly(w, ["N101"], 60, t0=5, each=lambda t: banks.append(a.bank_deg))
@@ -214,17 +221,17 @@ def test_turbulence_is_smooth_not_jitter(preset, max_flips):
 def test_every_preset_loads_and_flies():
     from world.weather import PRESETS
     for name in PRESETS:
-        w = World(str(SCN / "judges.json"), weather=name)
+        w = scn("judges.json", weather=name)
         fly(w, list(w.fleet), 20)
         assert all(math.isfinite(a.alt_msl_ft) and math.isfinite(a.ias_kt) for a in w.fleet.values()), name
 
 def test_scenario_weather_pin():
-    assert World(str(SCN / "three_on_final.json")).metar["wind_kt"] == 8       # "cached" = committed sample
+    assert scn("three_on_final.json").metar["wind_kt"] == 8       # "cached" = committed sample
 
 # ---------------------------------------------------------------- separation + scenarios
 @pytest.mark.parametrize("name,expect", [("base_vs_straight_in", "NMAC"), ("three_on_final", "NMAC"), ("head_on_judges", "COLLISION")])
 def test_conflict_scenarios_still_conflict_without_flock(name, expect):
-    w = World(str(SCN / f"{name}.json")); sep = SeparationMonitor(); kinds = set()
+    w = scn(f"{name}.json"); sep = SeparationMonitor(); kinds = set()
     def rec(t):
         if round(t / DT) % 2 == 0:
             kinds.update(e["event"] for e in sep.check(w.fleet, t))
@@ -232,7 +239,7 @@ def test_conflict_scenarios_still_conflict_without_flock(name, expect):
     assert expect in kinds, f"{name}: {kinds or 'no encounter'} - re-tune with world/find_conflict.py"
 
 def test_three_on_final_all_pairs_in_the_box():
-    w = World(str(SCN / "three_on_final.json")); sep = SeparationMonitor(); pairs = set()
+    w = scn("three_on_final.json"); sep = SeparationMonitor(); pairs = set()
     def rec(t):
         if round(t / DT) % 2 == 0:
             pairs.update((e["a"], e["b"]) for e in sep.check(w.fleet, t) if e["event"] == "NMAC")
@@ -240,17 +247,172 @@ def test_three_on_final_all_pairs_in_the_box():
     assert len(pairs) == 3, pairs
 
 def test_reset_returns_aircraft_to_spawn():
-    w = World(str(SCN / "judges.json")); a = w.fleet["N102"]
+    w = scn("judges.json"); a = w.fleet["N102"]
     start = (a.lat, a.lon, a.alt_msl_ft)
     fly(w, ["N102"], 30, each=lambda t: a.apply_input(0.8, -1, 1, t))
     b = w.reset_aircraft("N102")
     assert (b.lat, b.lon, b.alt_msl_ft) == pytest.approx(start) and b.mode == "AUTOPILOT" and w.fleet["N102"] is b
 
 def test_presets_restore_or_set_density_altitude():
-    w = World(str(SCN / "judges.json"))
+    w = scn("judges.json")
     metar_da = w.env.da_field_ft
     w.set_preset("low_ceiling"); assert w.env.da_field_ft == 3500
     w.set_preset("pressure_drop"); assert w.env.da_field_ft == metar_da      # METAR weather + pressure drop
     w.set_preset("haboob"); w.set_preset("metar"); assert w.env.da_field_ft == metar_da
-    pinned = World(str(SCN / "judges.json"), da_override=5555); pinned.set_preset("haboob")
+    pinned = scn("judges.json", da_override=5555); pinned.set_preset("haboob")
     assert pinned.env.da_field_ft == 5555                                    # CLI --da wins over presets
+
+# ---------------------------------------------------------------- live traffic (live_kdvt.json)
+from world.scenario import runway_flow                     # noqa: E402
+from world.traffic import NM_M, TrafficGenerator          # noqa: E402
+from world.flight_model import wrap180                     # noqa: E402
+
+def live(**over) -> World:
+    """live_kdvt with the sample weather (wind 250/8 -> runway 25 flow) unless over-ridden."""
+    raw = json.load(open(SCN / "live_kdvt.json"))
+    raw["weather"] = "cached"
+    seed = over.pop("seed", None)
+    raw.update(over)
+    return World(raw, seed=seed)
+
+def run_live(w: World, secs: float, t0: float = 0.0, sep: SeparationMonitor | None = None, each=None):
+    """Everything flies; the generator runs once a second like the server."""
+    t, n, air, events = t0, 0, [], []
+    for _ in range(int(secs / DT)):
+        for ac in list(w.fleet.values()):
+            ac.step(DT, w.env, t)
+            ac.events.clear()
+        t += DT; n += 1
+        if n % 20 == 0:
+            s, r = w.traffic.step(t)
+            events += [("+", i, w.traffic.describe(i)["mission"]) for i in s] + [("-", i, None) for i in r]
+            air.append(w.traffic.airborne())
+            if sep:
+                for i in r:
+                    sep.forget(i)
+        if sep and n % 2 == 0:
+            events += [(e["event"], e["a"], e["b"]) for e in sep.check(w.fleet, t) if e["event"] != "NMAC_END"]
+        if each:
+            each(t)
+    return t, air, events
+
+def test_runway_flow_follows_the_wind():
+    assert runway_flow({"wind_dir_deg": 120, "wind_kt": 9}) == "07"          # today's KDVT METAR
+    assert runway_flow({"wind_dir_deg": 250, "wind_kt": 8}) == "25"
+    assert runway_flow({"wind_dir_deg": 100, "wind_kt": 2}) == "25"          # calm: 25
+    assert runway_flow({"wind_dir_deg": 250, "wind_kt": 8}, "07") == "07"    # scenario override
+    w = live(runway_flow="07")
+    assert w.flow == "07" and w.traffic_runways == {"07R": 0.75, "07L": 0.25} and set(w.patterns) == {"07R", "07L"}
+    assert live().traffic_runways == {"25L": 0.75, "25R": 0.25}
+
+def test_judges_start_4nm_north_and_south_inbound_at_pattern_altitude():
+    w = live(runway_flow="07")
+    a, b = w.fleet["N101"], w.fleet["N102"]
+    for ac, brg in ((a, 0.0), (b, 180.0)):
+        x, y = P.to_enu(ac.lat, ac.lon)
+        assert math.hypot(x, y) / NM_M == pytest.approx(4.0, abs=0.01)
+        assert math.degrees(math.atan2(x, y)) % 360 == pytest.approx(brg, abs=0.5)
+        assert ac.hdg_deg == pytest.approx((brg + 180) % 360) and ac.alt_msl_ft == pytest.approx(P.ELEV_FT + P.TPA_AGL_FT, abs=1)
+        assert ac.human and ac.mode == "AUTOPILOT" and ac.autopilot.phase == "TRANSIT"
+    assert a.autopilot.p.ident == "07L" and b.autopilot.p.ident == "07R"      # north / south runway
+    # untouched they hold course and altitude at each other ...
+    fly(w, ["N101", "N102"], 60)
+    assert abs(wrap180(a.track_deg - 180)) < 3 and abs(wrap180(b.track_deg)) < 3 and abs(a.alt_msl_ft - 2500) < 60
+    # ... and join their own pattern 2 NM past the field
+    fly(w, ["N101"], 240, t0=60)
+    assert a.autopilot.phase in ("JOIN", "PATTERN")
+
+def test_generator_keeps_traffic_flowing_and_repeats_with_the_seed():
+    w1, w2 = live(runway_flow="07", seed=11), live(runway_flow="07", seed=11)
+    sep = SeparationMonitor()
+    _, air, ev1 = run_live(w1, 600, sep=sep)
+    _, _, ev2 = run_live(w2, 600)
+    spawns = [e for e in ev1 if e[0] == "+"]
+    assert [e for e in ev1 if e[0] in "+-"] == [e for e in ev2 if e[0] in "+-"]      # same seed, same traffic
+    assert min(air[60:]) >= 4 and max(air) <= 8 and sum(air[60:]) / len(air[60:]) >= 5.5, air
+    assert len(spawns) >= 10 and any(e[0] == "-" for e in ev1)                     # comes and goes
+    assert {"circuits", "arrival_45"} <= {e[2] for e in spawns}
+    ai_hits = [e for e in ev1 if e[0] in ("NMAC", "COLLISION") and "N101" not in e[1:] and "N102" not in e[1:]]
+    assert not ai_hits, ai_hits                                                       # AI never hit each other
+    assert live(runway_flow="07", seed=12).traffic.seed == 12
+    w3 = live(runway_flow="07", seed=12); run_live(w3, 120)
+    assert sorted(w3.traffic.used) != sorted(w1.traffic.used)                        # another seed, other traffic
+
+def test_departures_and_arrivals_finish_and_leave():
+    w = live(runway_flow="07", seed=23)
+    gen = w.traffic
+    dep = gen._departure("07R", 0.0)
+    assert dep and w.fleet[dep].autopilot.phase == "TAKEOFF" and w.fleet[dep].on_ground
+    sti = gen._straight_in("07R", 0.0)
+    gone = {}
+    def watch(t):
+        for i in (dep, sti):
+            if i not in w.fleet and i not in gone:
+                gone[i] = t
+    run_live(w, 720, each=watch)                                      # a go-around (runway busy) costs a circuit
+    assert dep in gone and sti in gone, (gone, w.fleet.get(dep) and w.fleet[dep].autopilot.phase)
+
+def test_ai_pilot_follows_node_advice_after_about_3_s():
+    w = live(runway_flow="07", seed=5)
+    gen = w.traffic
+    i = gen._circuits("07R", 0.0)
+    ac, pl = w.fleet[i], w.fleet[i].autopilot
+    pl.phase, pl.leg = "PATTERN", "DOWNWIND"
+    pl.follow_p = 1.0
+    e = pl.advise({"level": "RESOLVE", "text": "TURN LEFT 30 - N101 TURNING RIGHT", "reason": {"chosen": "L30"}}, 100.0)
+    assert e and e["follow"] and e["action"] == ["TURN", -30.0]
+    assert pl.advise({"level": "RESOLVE", "text": "TURN LEFT 30 - N101 TURNING RIGHT", "reason": {"chosen": "L30"}}, 101.0) is None  # repeat
+    assert pl.targets(ac, w.env, 101.0)[0] != -30.0                  # not yet: pilot reaction time
+    assert pl.targets(ac, w.env, 103.6)[0] == -30.0                  # ~3 s later: banking left 30
+    pl.man = None
+    pl.advise({"level": "SEQUENCE", "text": "NUMBER 2 - EXTEND DOWNWIND 20 S", "reason": {}}, 110.0)
+    pl.targets(ac, w.env, 114.0)
+    assert pl.extend_s == 20.0
+    pl.phase, pl.leg = "PATTERN", "FINAL"
+    pl.advise({"level": "TAKEOVER", "text": "CLIMB NOW - N204 DESCENDING", "reason": {"chosen": "CLIMB"}}, 120.0)
+    ac.agl_ft, ac.on_ground = 500, False
+    pl.targets(ac, w.env, 124.0)
+    assert pl.phase == "GO_AROUND"                                    # advice on final -> go around
+    pl.follow_p = 0.0
+    e = pl.advise({"level": "RESOLVE", "text": "TURN RIGHT 20 - N9 CONTINUING", "reason": {"chosen": "R20"}}, 130.0)
+    assert e and not e["follow"] and not pl.pending
+    pl.follow_p = 0.7
+    pl.rng.seed(1)
+    picks = [pl.rng.random() < pl.follow_p for _ in range(1000)]
+    assert 0.65 < sum(picks) / 1000 < 0.75
+
+def test_extended_downwind_moves_the_base_turn_out():
+    def base_turn_along(ext: float) -> float:
+        w = live(runway_flow="07", seed=5)
+        i = w.traffic._circuits("07R", 0.0)
+        ac, pl = w.fleet[i], w.fleet[i].autopilot
+        pos = P.place("DOWNWIND", "07R", 10, 95.0)
+        ac.lat, ac.lon, ac.alt_msl_ft, ac.hdg_deg, ac.ias_kt = pos["lat"], pos["lon"], pos["alt_msl_ft"], pos["hdg_deg"], 95.0
+        ac.agl_ft, ac.on_ground = pos["agl_ft"], False
+        pl.phase, pl.leg, pl.extend_s = "PATTERN", "DOWNWIND", ext
+        D = pl.p.legs["DOWNWIND"]
+        t = 0.0
+        while pl.leg == "DOWNWIND" and t < 300:
+            ac.step(DT, w.env, t); t += DT
+        return D.project(P.to_enu(ac.lat, ac.lon))[0]
+    plain, extended = base_turn_along(0.0), base_turn_along(30.0)
+    assert 1200 < extended - plain < 1800                             # ~30 s at ~95 kt further out
+
+def test_reset_demo_puts_both_judges_back_and_clears_their_starts():
+    w = live(runway_flow="07", seed=7)
+    run_live(w, 90)
+    a = w.fleet["N101"]
+    a.apply_input(0.6, 0.4, 1.0, 90.0)
+    fly(w, ["N101"], 20, t0=90)
+    gen: TrafficGenerator = w.traffic
+    near = gen._new_id()                                              # park an AI aircraft on N102's start
+    pl = gen._pilot(near, w.pattern("07R"), "DOWNWIND"); pl.phase = "JOIN"
+    s = w.specs["N102"].start
+    lat, lon = P.from_enu(0, -4 * NM_M + 500)
+    w.add_traffic(near, lat, lon, 2400, 0.0, 95.0, pl); gen.active[near] = {"mission": "arrival_45", "born": 0, "rwy": "07R", "live": None}
+    reset, removed = w.reset_demo()
+    assert [r.id for r in reset] == ["N101", "N102"] and near in removed and near not in w.fleet
+    for ac, brg in ((w.fleet["N101"], 0.0), (w.fleet["N102"], 180.0)):
+        x, y = P.to_enu(ac.lat, ac.lon)
+        assert math.hypot(x, y) / NM_M == pytest.approx(4.0, abs=0.01) and ac.mode == "AUTOPILOT"
+        assert ac.autopilot.phase == "TRANSIT" and not ac.has_pilot

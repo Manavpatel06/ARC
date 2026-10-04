@@ -1,0 +1,9 @@
+{"name":"live_kdvt",
+ "note":"Free flight at KDVT with live traffic. Judges start 4 NM north (A) and 4 NM south (B) inbound at pattern altitude; no tuned conflict. Runway flow from the live METAR wind. God view RESET DEMO puts both judges back here.",
+ "aircraft":[
+ {"id":"N101","start":{"leg":"INBOUND","from_deg":0,"dist_nm":4,"runway":"NORTH"},"ap":true,"human":true},
+ {"id":"N102","start":{"leg":"INBOUND","from_deg":180,"dist_nm":4,"runway":"SOUTH"},"ap":true,"human":true}
+ ],
+ "runway_flow":"auto",
+ "traffic":{"seed":7,"airborne":[5,8],"runways":{"SOUTH":0.75,"NORTH":0.25},"live_seed":false},
+ "channel":{"loss":0.1,"latency_s":0.3},"weather":"live","spoofer":false,"camera_target":false}
