@@ -1,93 +1,134 @@
-# FLOCK AirWitness — camera-free anti-spoofing (Lane B)
+# FLOCK AirWitness-Hybrid — passive, camera-free anti-spoofing (Lane B)
 
-> FLOCK does not trust an aircraft because it broadcasts a GPS coordinate. Every transmission is treated as a claim. Cryptography checks who sent it, physics checks whether its motion is possible, nearby aircraft act as independent witnesses, and RF ranging or multilateration checks whether the transmitter is physically where it claims to be. Unverified traffic can still warn the pilot, but it can never by itself command the airplane.
+> Every received broadcast is a claim. FLOCK starts tracking, predicting and warning on it immediately; AirWitness
+> evaluates the claim in parallel and only ever changes what it is allowed to do. Nothing asks another aircraft to
+> prove anything, nothing waits for an answer, and low trust never deletes traffic.
 
-Code: `node/airwitness.py` (engine), wired in `node/node.py` and `node/trust.py`. Tests: `node/tests/test_airwitness.py` (T1–T20). Demo: `python harness/redflock_spoof.py`. RF simulator: `harness/rf_sim.py`. Lane C supplies signatures, replay rejection on the wire, RSSI/Doppler and peer witness reports (`radio/client.py`, `radio/evidence.py`); AirWitness turns all of it into one decision.
+Code: `node/airwitness.py` (engine), wired in `node/node.py` and `node/trust.py`. Tests: `node/tests/test_airwitness.py`
+(spec tests 1–27 plus regression checks). Attacks: `python harness/redflock_spoof.py` (14 attacks). Simulated
+surveillance: `harness/surveillance_sim.py`. Simulated RF: `harness/rf_sim.py`.
+
+## What was removed (challenge-response)
+
+The previous version proved liveness by putting a nonce in our HEARTBEAT (`"c": {peer: nonce}`) and waiting for the
+peer to echo it (`"r"`), and it held "no answer to our negotiation" against a peer. Both are gone:
+
+| Removed | Where |
+|---|---|
+| `CHALLENGE_EVERY_S / TIMEOUT_S / VALID_S`, `import secrets`, `nonce_fn` | `node/airwitness.py` constants / `__init__` |
+| `_Track.chal_pending / chal_ok_t / chal_misses / chal_last`, `neg_miss` | `node/airwitness.py` |
+| HEARTBEAT `"c"` handling (queue an echo) and `"r"` handling (match our nonce) | `AirWitness.on_message` |
+| `AirWitness.tick()` (issue nonces, time them out, count misses, count negotiation misses) | whole method |
+| replay exemption "real owner answered a fresh challenge"; `challenge: PASS / NO RESPONSE / PENDING`; `negotiation: NO ANSWER` penalty | `AirWitness.assess` |
+| `extra = self.aw.tick(now)` and the extra challenge/echo HEARTBEATs | `Node._periodic_radio` |
+| N204 answering challenges | `harness/redflock_spoof.py` |
+
+`git diff d266114 -- node/airwitness.py node/node.py harness/redflock_spoof.py` shows every removed line;
+`test_no_challenge_path_left` fails if a `tick`, `nonce` or `chal_` path comes back or a HEARTBEAT carries anything
+but `alive` and the passive digest `w`.
 
 ## Pipeline
 
 ```
-radio envelope (claim) -> AirWitness evidence -> trust state + uncertainty -> Threat Tube (prediction sigma)
-                      -> conflict / layers -> Escape Field -> bounds monitor (authority.py) -> allowed action
+TARGET BROADCAST -> FAST PASSIVE PACKET GUARD (signature / session / sequence / replay / duplicate / freshness)
+     |                                   |
+COLLISION ENGINE runs on the claim   AIRWITNESS-HYBRID (2 Hz): physics | independent surveillance | RF + peers
+     |                                   |
+     |                    P(REAL) / P(SPOOF) / P(FAULTY) + hard gates -> VERIFIED / UNVERIFIED / SUSPICIOUS / QUARANTINED
+     |                                   |
+     +---- Verified CLOF / Shadow CLOF -> Threat Tube width -> trust-robust Escape -> negotiation (verified only)
+                                                           -> authority.py bounds monitor (formal safety kernel) -> action
 ```
-Cyber-security never chooses the maneuver; it only decides what a target's claims are allowed to influence.
 
-## Evidence (all built, no camera)
+## Evidence sources (each returns PASS / WEAK / CONFLICT / UNKNOWN; unavailable = UNKNOWN, never FAIL)
 
-| Check | How | Effect |
+| Source | How | Hard gate |
 |---|---|---|
-| Signature | Ed25519 from `radio/client.py` (`_auth`) | unsigned / unknown key: hard gate, never VERIFIED (still tracked) |
-| Freshness | claimed time vs receive time, ±2 s | stale packet dropped |
-| Replay | sliding window (as in IPsec): duplicate sequence number, or > 32 behind / > 2 s older than newest | packet dropped; SUSPICIOUS minimum, unless the real owner still answers a fresh signed challenge (then the attacker cannot demote it) |
-| Challenge-response | nonce in our HEARTBEAT (`"c": {peer: nonce}`), echoed in theirs (`"r"`), signed | proves the peer is live now; a miss only costs confidence (loss happens) |
-| Kinematics | speed ≤ 250 kt, accel ≤ 12 kt/s, turn ≤ 15 °/s, climb ≤ 3,000 fpm, teleport vs dead-reckoning | SUSPICIOUS minimum |
-| Continuity | residual of each position vs the track's own dead-reckoning | soft |
-| Intent consistency | a MANEUVER_COMMIT must show up in the following STATEs | widens the tube only (a pilot ignoring advice is not a spoofer) |
-| Peer witnesses | signed neighbour reports (Lane C) | corroboration raises, refutation / silence lowers |
-| RF location | `RFMeasurement`: range (RSSI or ranging), bearing, TDOA, Doppler vs the CLAIMED position | conflict: SUSPICIOUS minimum (Doppler alone never decides) |
-| Duplicate identity | one id at two places at once | SUSPICIOUS minimum |
-| Sybil | several ids that RF says come from one transmitter | SUSPICIOUS minimum |
-| Ownship GNSS | GNSS vs heading/speed dead-reckoning and baro altitude | GPS kept, own uncertainty grows, reported DEGRADED |
+| signature | Ed25519 `_auth` from `radio/client.py` | invalid/absent: never VERIFIED (still tracked) |
+| packet guard | SHA-1 packet hash (duplicates), session id `sid` (new = restart, older = expired), IPsec-style sequence window, sequence jump > 100, ≥ 3 sessions in 60 s, ±2 s freshness, local monotonic arrival | dropped packets never update the track; a strike unless the identity's own live signed track is clean (attack on it, not by it) |
+| motion (`MotionEvidence`) | position / velocity / turn / vertical residuals; GA limits 250 kt, 12 kt/s, 15°/s, 3000 fpm, 1500 fpm/s (legit emergency maneuvers pass) | conflict = strike |
+| trajectory | constant-turn-rate prediction vs received state, rolling RMS | soft |
+| intent | a MANEUVER_COMMIT flown the opposite way | widens the tube only |
+| identity | one id in two places | strike |
+| pop-in / baro-geo | first heard < 2 km and airborne; GNSS-baro offset vs ours | baro-geo conflict = strike |
+| TCAS (`TCASMeasurement`) | read-only range / bearing / relative altitude vs the claim | contradiction = strike; agreement = physical support |
+| Mode-S (`ModeSObservation`), 1030/1090 (`InterrogationReplyEvidence`) | passive; support only | – |
+| RF location | RSSI / ranging / bearing / TDOA vs the claimed position | conflict = strike |
+| Doppler trend (`RFWaveEvidence`) | sign + trend of carrier shift vs the claimed radial motion | counts only together with another failure |
+| RSSI trend | correlation with claimed range; low weight | never decides alone |
+| witnesses | Lane C reports (corroborated / refuted) | – |
+| multi-observer (`MultiObserverEvidence`) | verified peers' piggybacked WITNESS_DIGEST: radial-motion sign at each observer vs the claim | conflict = strike |
+| sybil | several ids from one transmitter | strike |
+| negotiation | a peer's ordinary answer to our own commit / proposal | positive only; silence is not held against anyone |
 
-Two independent hard failures make a target QUARANTINED. Soft evidence moves the score; an upgrade to VERIFIED has to hold for 2 s, a downgrade is immediate.
+Inference: one likelihood factor per source over REAL / SPOOF / FAULTY (prior 0.90 / 0.05 / 0.05), then the gates.
+QUARANTINED: two independent strikes or P(spoof) ≥ 0.85. SUSPICIOUS: one strike or P(spoof) ≥ 0.45. VERIFIED:
+valid signature, clean packets, ≥ 3 s of track and P(real) ≥ 0.85, held 2 s (downgrades are immediate). All constants
+are at the top of `node/airwitness.py`.
 
-## States and what they may do
+## What each state may do
 
-| AirWitness state | TRUST wire state (contract v1.1) | May drive | Tube |
-|---|---|---|---|
-| VERIFIED | TRUSTED | negotiation, RESOLVE, automatic TAKEOVER | normal |
-| UNVERIFIED (e.g. legacy ADS-B, new peer) | SUSPICIOUS + `aw:UNVERIFIED` | warnings and advice to our pilot; no commit to it, no takeover | x1.5 |
-| SUSPICIOUS | SUSPICIOUS | TRAFFIC warning only; claimed leg/intent ignored | straight-line physical envelope x2.5 |
-| QUARANTINED | FAKE | display only (radar draws it hollow) | – |
+| State | TRUST wire | CLOF | Tube | Negotiation / 4D contract | Automatic command from its data |
+|---|---|---|---|---|---|
+| VERIFIED | TRUSTED | verified | ×1 | allowed | allowed |
+| UNVERIFIED | SUSPICIOUS + `aw:UNVERIFIED` | shadow | ×1.5 | blocked | blocked (RESOLVE advice only) |
+| SUSPICIOUS | SUSPICIOUS | shadow | ×2.5, claimed intent ignored | blocked | blocked (TRAFFIC) |
+| QUARANTINED | FAKE | – (shadow + TRAFFIC if TCAS / 1030-1090 independently sees it) | ×4 | blocked | blocked |
 
-Low trust never deletes a target: it removes what its claims are allowed to do and widens its uncertainty. The TRUST frame carries every check (`aw:STATE`, `signature:…`, `rf_bearing:CONFLICT…`, `action:…`); ADVISORY reasons carry `trust` with the state, score and reasons.
-
-**Contract note (team decision):** the schema's TRUST states are TRUSTED / SUSPICIOUS / FAKE / CAMERA_ONLY, so UNVERIFIED travels as SUSPICIOUS plus `aw:UNVERIFIED` in the evidence list. An additive v1.2 adding the four AirWitness states would let the cockpit badge show it directly.
+A new target is assessed on its first packet: it is never TRUSTED by default. MANEUVER_COMMITs from a target that is
+not VERIFIED are ignored. Shadow targets are resolved with the **trust-robust escape**: candidates are scored with the
+target real (H1) and spoofed (H2), and maneuvers safe under both come first (`trust_robust` in `node/node.py`; the
+RESOLVE reason carries `trust_robust` and `takeover_inhibited`). The TRUST frame carries `clof` per target and every
+evidence line, P(real/spoof/faulty) and the authority list; `TrustResult.explain()` prints the panel.
 
 ## Results
 
-- Tests T1–T20 (plus an explanation test) pass: `python -m pytest node/tests/test_airwitness.py -q`.
-- RED FLOCK ladder (`harness/redflock_spoof.py`), our aircraft head-on with the ghost, autopilot-equipped:
+- Tests: 133 pass (`python -m pytest -q`), including spec tests 1–27 and `test_no_challenge_path_left`. accept_b 16/16.
+- Monte Carlo (`python harness/montecarlo.py --n 60`, 420 encounters, 154 true conflicts, 10 % loss, 0.3 s latency):
 
-| Attempt | Ghost ends | Ghost may drive | Commits to ghost | Takeovers |
-|---|---|---|---|---|
-| 1 impossible motion (400 kt, jumps) | QUARANTINED | nothing | 0 | 0 |
-| 2 replay of the real N204's packets | replays dropped, N204 stays VERIFIED | – | 0 | 0 |
-| 3 fresh, plausible, unsigned, 2.5 km ahead | QUARANTINED (signature + RF bearing + no witnesses) | nothing | 0 | 0 |
-| 4 hardest: own key, transmitter at the claimed position | SUSPICIOUS | TRAFFIC warning only | 0 | 0 |
-| 5 sybil x3 from one ground site | QUARANTINED | nothing | 0 | 0 |
+| | NMAC | median min-sep | nuisance alerts / maneuvers | NO_SOLUTION | tick mean |
+|---|---|---|---|---|---|
+| no logic | 154/154 | – | – | – | – |
+| baseline | 28/154 (18 %) | 913 ft | 1 % / 1 % | 0 | 2.0 ms |
+| FLOCK (before, challenge-response) | 11/154 (7 %) | 1138 ft | 3 % | 4 | – |
+| **FLOCK (AirWitness-Hybrid)** | **5/154 (3 %)** | **1169 ft** | 3 % / 0 % | 4 | 3.9 ms |
 
-- Live on the real stack (world + Lane C signed radio + channel + two nodes + `radio/spoofer.py`): the two real aircraft VERIFIED each other (signed challenge-response PASS); GHOST7 unsigned → SUSPICIOUS, GHOST7 impossible → QUARANTINED; no advisory or command about the ghost in either run.
+- False positives: 0 spoof alerts and 0 SUSPICIOUS/QUARANTINED real peers in the same 420 legitimate encounters.
+  (The first run found one, a vertical-speed change of > 1500 fpm/s when a simulated pilot ended a maneuver; the
+  limit is now 3000 fpm/s, ~1.5 g, so an abrupt push-over or go-around passes.)
+- RED FLOCK (`python harness/redflock_spoof.py`): 14/14 attacks blocked. No spoof was ever VERIFIED, got negotiation or
+  a 4D contract, caused an automatic maneuver, or pushed the escape choice to one unsafe if it is fake.
 
-## What is simulated, what needs hardware
+| attack | worst state | flagged | quarantined |
+|---|---|---|---|
+| invalid signature, smooth, smooth + intent | QUARANTINED | 3 s | 3 s |
+| replay / duplicate / stale session of N204 | packets dropped, N204 stays VERIFIED | – | – |
+| teleport, sybil ×3, TCAS conflict | QUARANTINED | 1 s | 1 s |
+| duplicate identity (stolen key, sequence hijack) | N204 identity QUARANTINED (see limits) | 0 s | 1 s |
+| plausible ADS-B-only ghost | UNVERIFIED: warned, no authority (honest hard case) | – | – |
+| RF trend, witness disagreement, intermittent | QUARANTINED | 1–3 s | 3 s |
 
-- Built and real today: signatures, replay window, challenge-response, kinematics, continuity, intent, peer witnesses, duplicate id, trust states, tube inflation, explanations, ownship GNSS check.
-- Simulated (V2, `harness/rf_sim.py`): two-way ranging, angle of arrival, TDOA, Doppler, emitter fingerprint ids for the sybil test. The RSSI range from the channel emulator is used live. Laptops and ESP32s do not give aviation-grade multilateration; real synchronized RF hardware fills the same `RFMeasurement` fields later without changing the engine.
-- Research only: RF fingerprinting (would be weak supporting evidence, never safety-critical).
+- Latency (attack runs): packet guard peak 1.0 ms, trust update peak 0.4 ms, collision loop mean 1.0 ms. The Monte
+  Carlo's tick peaks (hundreds of ms) were measured with two heavy jobs sharing the CPU.
 
-Known limit, said out loud: an attacker with several valid, registered keys and transmitters placed to fake geometry could corroborate itself (Sybil with real keys). Registration-bound keys plus RF location from several receivers make that expensive, not impossible.
+## Inputs: real, simulated, interface-only
 
-## Round 2 — software-only additions (no hardware)
+| | Inputs |
+|---|---|
+| **Real from the current stack** | Ed25519 signatures (Lane C `radio/client.py`), session id, sequence numbers, packet hashes, freshness, local monotonic arrival, motion / trajectory / intent checks, GNSS-vs-baro altitude, RSSI and carrier Doppler from the channel emulator (`_rf`), Lane C witness reports, the passive WITNESS_DIGEST, negotiation answers |
+| **Simulated** | TCAS, passive Mode-S, 1030/1090 reply pairs (`harness/surveillance_sim.py`); two-way ranging, bearing, TDOA, transmitter ids for the sybil test (`harness/rf_sim.py`) |
+| **Interface-only / future hardware** | a real TCAS traffic file, a 1090 MHz receiver, SDR / synchronized RF. They plug into `TCASMeasurement`, `ModeSObservation`, `InterrogationReplyEvidence`, `RFMeasurement` and `Node.on_surveillance` without engine changes |
 
-| Idea | Plausible with software only? | What FLOCK does |
-|---|---|---|
-| RF fingerprinting (transmitter imperfections) | **No.** Needs raw IQ samples from an SDR front end; the radio we have only gives decoded packets + RSSI/Doppler. | Not built for real. The sybil test uses a simulated emitter id (`source_id`) through the same interface, so a future SDR plug-in needs no engine change. Would only ever be weak evidence. |
-| Direction of arrival with two antennas | **No** (needs a second antenna and phase/time measurement). | Replaced by a software equivalent: **collective radio location**. Every FLOCK node shares its RSSI-derived range to each target in its signed HEARTBEAT (`"w"`); each receiver checks the claimed position against the ranges measured by several VERIFIED peers at known places. Several aircraft act as the "two ears", spread kilometres apart. |
-| Kinematic / plausibility filters (incl. "pops into existence") | **Yes.** | Speed / acceleration / turn / climb / teleport limits, track continuity, plus **pop-in**: a target first heard within 2 km and already airborne (real traffic arrives from the edge of radio range). |
-| Barometric vs geometric altitude | **Yes** (needs both altitudes in the message). | Our STATE now carries `alt_geo_ft` next to `alt_press_ft` (additive field). Every aircraft in the same air mass has nearly the same GNSS-minus-baro offset; a target whose offset differs from ours by > 400 ft fails (> 250 ft costs confidence). Legacy traffic without the field: n/a. |
-| ACAS X-style probabilistic reasoning | **Yes** (software). | Trust becomes uncertainty: the trust state scales each target's Threat Tube (x1 / x1.5 / x2.5), so doubtful data widens the protected volume instead of being believed or deleted. Full ACAS X tables are out of scope. |
-| Negotiation as evidence (new) | **Yes.** | A live FLOCK peer answers our MANEUVER_COMMIT / SEQ_PROPOSE within 6 s (`negotiation: PASS (answered in 1.0 s)`), which counts as independent proof of life; a target that keeps talking but never answers loses confidence; a peer that commits one way and flies the opposite way is "intent inconsistent" (tube widened). Commits from anything that is not VERIFIED are never used for planning, and we never send commits to it. |
+## Limits (said out loud)
 
-Pilot alert: when a target becomes SUSPICIOUS or QUARANTINED, or our own GNSS becomes inconsistent, the node adds an `alerts` list to its TRUST frame (additive) — the cockpit shows a warning banner and speaks it once ("caution, spoofed traffic, G H O S T 7, ignored"). Live it reached the pilot 1–5 s after the ghost's first packet; full quarantine took 2–17 s depending on geometry.
-
-Measured detection (in-process ladder, `harness/redflock_spoof.py`): impossible motion, fresh unsigned ghost and sybil flagged + quarantined + alerted within 1 s of the first packet; a replay is dropped on the first replayed packet; the "own key, true position" attacker is SUSPICIOUS + alerted within 1 s (warning only, never quarantined — it is the honest hard case).
-
-## Limitations that remain (and why they cannot be fixed in software alone)
-
-1. **An attacker with a valid registered key** (stolen key or insider) passes the signature gate; only physics, RF location and peer witnesses can catch it.
-2. **RSSI-only ranging is coarse** (3 dB ≈ a factor of 1.4 in distance): it catches gross position lies, not a transmitter a few hundred metres from its claim. Fine location needs ranging/TDOA hardware (simulated today).
-3. **Doppler** depends on a stable oscillator in real radios; here it comes from the channel emulator, and it never decides alone.
-4. **Isolated aircraft** (no FLOCK peers in range) get no witnesses and no collective radio location; they still have signature, replay, physics and pop-in checks.
-5. **Legacy (unsigned) traffic that pops up close** (e.g. after radio shadowing) is treated as SUSPICIOUS: it is still shown and warned about, but FLOCK will not act on it automatically.
-6. **Contract**: the frozen TRUST states have no UNVERIFIED (sent as SUSPICIOUS + `aw:UNVERIFIED`); `alerts` and `alt_geo_ft` are additive fields; a v1.2 should make them official.
-7. **Real RF hardware** (fingerprinting, DoA, ranging) is out of scope by choice (software only); the `RFMeasurement` interface is where it plugs in.
+1. A brand-new target needs ~5 s (3 s of track + 2 s hold) to become VERIFIED; until then it is a shadow target
+   (warning and unilateral advice, no negotiation, no takeover).
+2. An attacker with a stolen, registered key who hijacks an identity gets that identity QUARANTINED — including the
+   real owner. Safe, but it is a denial of service on that aircraft's coordination.
+3. A plausible ADS-B-only ghost with no RF, TCAS or peers around it stays UNVERIFIED: it is warned about, never acted on
+   automatically. Only independent sensors can say more.
+4. When TCAS contradicts a spoofed ADS-B position, the aircraft TCAS really sees is not drawn as its own FLOCK track
+   (the aircraft's TCAS display shows it).
+5. RSSI ranging is coarse (3 dB ≈ ×1.4 distance); Doppler depends on stable oscillators on real radios.
+6. Contract: UNVERIFIED travels as SUSPICIOUS + `aw:UNVERIFIED`; `clof`, `alerts`, `alt_geo_ft` and `sid` are additive
+   fields — a v1.2 should make them official.

@@ -57,6 +57,19 @@ STICK_INHIBIT_S = 5.0
 ADV_MIN_PERIOD_S = 3.0
 
 
+def trust_robust(h1, h2) -> dict:
+    """Trust-robust escape ranking.  h1 = escape result assuming the doubtful target is real, h2 = assuming it is
+    spoofed.  Re-orders h1.ranked (in place) so maneuvers safe under BOTH come first, keeping h1's own preference
+    order inside each group; nothing unsafe under H1 is ever promoted."""
+    safe_h2 = {e.cand.name for e in h2.ranked}
+    both = [e for e in h1.ranked if e.cand.name in safe_h2]
+    if both:
+        h1.ranked = both + [e for e in h1.ranked if e not in both]
+    ch = h1.ranked[0] if h1.ranked else None
+    return {"chosen": ch.cand.name if ch else None, "safe_if_spoofed": bool(ch and ch.cand.name in safe_h2),
+            "both_safe": [e.cand.name for e in both][:5]}
+
+
 @dataclass
 class PeerTrack:
     id: str
@@ -102,6 +115,7 @@ class Node:
         # run() switches it on with the real radio/client.py.
         self.aw = AirWitness(ac_id, to_enu, signed_radio=False)
         self._aw_t = -1e9
+        self.sid = f"{int(time.time() * 1000) % 0xFFFFFFFF:08x}"   # our radio session id (a restart starts a new one)
         self._alerted: dict = {}
         self._alert_t: dict = {}
         self.auth = authority.AuthorityMonitor(ac_id)
@@ -190,6 +204,8 @@ class Node:
         if msg == "STATE":
             if tr is None:
                 tr = self.peers[peer] = PeerTrack(peer)
+                if AIRWITNESS_ON:                        # a new target is a claim from its first packet, never TRUSTED by default
+                    self.trust.set_result(peer, self.aw.assess(peer, now))
             x, y = to_enu(body["lat"], body["lon"])
             if tr.prev_track is not None and now > tr.prev_rx:
                 tr.turn_rate = wrap180(body["track_deg"] - tr.prev_track) / max(now - tr.prev_rx, 0.2)
@@ -212,10 +228,30 @@ class Node:
                                                        {k: float(v) for k, v in body.get("extend_s", {}).items()}, 0.0)
                 self._emit_radio("SEQ_ACCEPT", {"proposal_seq": int(env.get("seq", 0))})
         elif msg == "MANEUVER_COMMIT":
-            if body.get("target") == self.id:
+            trusted = self.trust.may_negotiate(peer) and (not AIRWITNESS_ON or self.trust.result(peer) is not None)
+            if body.get("target") == self.id and trusted:                       # verified peers only (4D contract)
                 self.negotiator.on_commit(peer, body, now)
         elif msg == "SIGHTING":
             self.sightings.append((now, dict(body, _from=peer)))
+
+    def on_surveillance(self, m) -> None:
+        """Optional read-only surveillance (TCAS traffic file, passive Mode-S, observed 1030/1090 pairs).  Evidence only:
+        it never creates or deletes a target and nothing waits for it."""
+        from node.airwitness import InterrogationReplyEvidence, ModeSObservation, TCASMeasurement
+        if isinstance(m, TCASMeasurement):
+            self.aw.add_tcas(m)
+        elif isinstance(m, ModeSObservation):
+            self.aw.add_mode_s(m)
+        elif isinstance(m, InterrogationReplyEvidence):
+            self.aw.add_interrogation_reply(m)
+
+    def latency_summary(self) -> dict:
+        """packet-security / trust-update / collision-loop latency (mean and peak)."""
+        def mm(v, k=1.0):
+            v = list(v)
+            return {"mean": round(sum(v) / len(v) * k, 3), "max": round(max(v) * k, 3), "n": len(v)} if v else None
+        return {"packet_guard_ms": mm(self.aw.stats["guard_us"], 1e-3), "trust_update_ms": mm(self.aw.stats["assess_us"], 1e-3),
+                "collision_loop_ms": mm(self.tick_ms)}
 
     def _set_intent(self, tr: PeerTrack, intent: str, now: float, valid_for: float = 20.0) -> None:
         pi = Predictor.parse_intent(intent)
@@ -288,20 +324,22 @@ class Node:
             self._emit_radio("STATE", {"lat": o["lat"], "lon": o["lon"], "alt_press_ft": o["alt_press_ft"],
                                        "gs_kt": o["gs_kt"], "track_deg": o["track_deg"], "vs_fpm": o.get("vs_fpm", 0.0),
                                        "leg": leg, "intent": intent, "ap_equipped": bool(o.get("ap_equipped")),
-                                       "alt_geo_ft": round(o["alt_msl_ft"])})   # extra field: baro/GNSS cross-check
+                                       "alt_geo_ft": round(o["alt_msl_ft"]),    # extra field: baro/GNSS cross-check
+                                       "sid": self.sid})                        # extra field: session id (packet guard)
         if nt and nt[1] <= 20.0 and nt[0] != self._last_intent_leg:
             self._last_intent_leg = nt[0]
             self._emit_radio("INTENT", {"leg": leg, "intent": intent, "valid_for_s": 20.0})
         elif not nt or nt[1] > 25.0:
             self._last_intent_leg = None if not nt else self._last_intent_leg
-        extra = self.aw.tick(now)                    # challenge nonces to send, nonces to echo (liveness)
         if now - self._last["hb"] >= HEARTBEAT_PERIOD_S:
-            w = self.aw.witness_report(now)          # our RSSI ranges: peers multilaterate transmitters with them
-            if w:
-                extra["w"] = w
-        if now - self._last["hb"] >= HEARTBEAT_PERIOD_S or extra:
+            # passive WITNESS_DIGEST piggybacked on the normal heartbeat: what we observe of nearby targets, unasked.
+            # Nothing is requested from anyone and nothing waits for an answer.
             self._last["hb"] = now
-            self._emit_radio("HEARTBEAT", dict({"alive": True}, **extra))
+            body = {"alive": True}
+            w = self.aw.witness_digest(now)
+            if w:
+                body["w"] = w
+            self._emit_radio("HEARTBEAT", body)
         if self.verbose and now - self._last["leglog"] >= 1.0:
             self._last["leglog"] = now
             print(f"[node {self.id}] t={now:.1f} leg={cls.leg} rwy={cls.runway} conf={cls.conf:.2f} "
@@ -312,6 +350,9 @@ class Node:
             self._last["trust"] = now
             ids = sorted(self.peers) + sorted({f"CAM-{s['observer']}" for t_s, s in self.sightings if now - t_s < 6.0})
             frame = self.trust.frame(self.id, now, ids, self._rels(now))
+            clof = {pid: r.clof_layer for pid in sorted(self.peers) if (r := self.trust.result(pid)) is not None}
+            if clof:
+                frame["clof"] = clof                    # additive field: verified / shadow / None per target
             alerts = self._spoof_alerts()
             if alerts:
                 frame["alerts"] = alerts                # additive field: cockpit banner + voice
@@ -599,17 +640,31 @@ class Node:
         return dict(reason, trust={"state": r.state, "score": r.score, "action": r.action, "reasons": r.reasons[:6]})
 
     def _do_unverified_resolve(self, now, pid, c, reason, o, hold, peers, sig, ctx) -> None:
-        """Target is not VERIFIED: no MANEUVER_COMMIT to it, nothing it claims is relied on, no takeover.
-        We solve it alone (it holds course) and advise our own pilot."""
+        """Target is not VERIFIED (shadow CLOF): no MANEUVER_COMMIT to it, nothing it claims is relied on, no takeover.
+        Trust-robust escape: H1 = the target is real (avoid its widened tube), H2 = it is spoofed (only the other,
+        verified traffic, terrain and obstacles are real).  Prefer a maneuver that is safe under BOTH, so a ghost
+        cannot push us into real traffic or terrain."""
         pilot_bank = 30.0 if (ctx["ap_equipped"] and not ctx["stick_active"]) else PILOT_MAX_BANK
-        res = escape.evaluate(o, hold, peers, self.terrain_fn, self.obstacle_fn, sig, hold_s=PILOT_HOLD_S,
-                              max_bank=pilot_bank, prefer_right=True,
-                              go_around=self.own_cls.leg in ("BASE", "FINAL", "STRAIGHT_IN"))
+        go_around = self.own_cls.leg in ("BASE", "FINAL", "STRAIGHT_IN")
+
+        def ev(pp, ss):
+            return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, ss, hold_s=PILOT_HOLD_S,
+                                   max_bank=pilot_bank, prefer_right=True, go_around=go_around)
+        res = ev(peers, sig)                                                       # H1: real
+        h2 = ev({k: v for k, v in peers.items() if k != pid}, {k: v for k, v in sig.items() if k != pid})   # H2: spoof
+        robust = trust_robust(res, h2)
         why = self._with_trust(dict(res.reason(c.ttc_s), basis="unilateral-unverified-target", method=c.method,
+                                    clof="shadow", trust_robust=robust,
                                     predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2)), pid)
         if res.chosen is None:
             self._no_solution(now, pid, c, res)
             return
+        if ctx["ap_equipped"] and not ctx["stick_active"]:
+            # say why FLOCK will not fly it: never from an unverified target's data, and what the bounds monitor says
+            ch = res.chosen.cand
+            v = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": ch.bank, "vs_cmd_fpm": ch.vs_fpm, "hold_s": 10.0}, ctx)
+            why["takeover_inhibited"] = dict({"trust": f"target {self.trust.aw_state(pid)}: no automatic command from its data"},
+                                             **({"bounds": v.rejected} if not v.ok else {}))
         text, speak = layers.maneuver_text(res.chosen.cand.name, pid, None, urgent=c.ttc_s <= 8.0)
         self._advise("RESOLVE", text, speak, pid, c.ttc_s, why)
 
