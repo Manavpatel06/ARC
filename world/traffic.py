@@ -147,6 +147,7 @@ class PatternPilot:
         self.advice_log: list[dict] = []
         self.rng = random.Random(h)
         self.follow_p = FOLLOW_P
+        self.hold_short = False                        # World.runway_watch: runway not clear for takeoff
 
     # ---------- AP button ----------
     def engage(self, ac: Aircraft) -> str:
@@ -251,6 +252,8 @@ class PatternPilot:
             if ac.agl_ft > 100:
                 self.leg, self.phase, self.touched = "UPWIND", ("DEPART" if self.depart else "PATTERN"), True
                 return 0.0, 9_999, LEG_IAS["UPWIND"] + self.ias_bias
+            if self.hold_short and ac.on_ground:
+                return steer, 0.0, 0.0                               # runway / short final busy: wait on the brakes
             return steer if ac.on_ground else 0.0, (9_999 if ac.ias_kt >= ROTATE_IAS else 0.0), TAKEOFF_IAS
         if self.phase == "ROLLOUT" and not ac.on_ground:
             # crossed the threshold still airborne: flare and settle onto the centreline
@@ -462,8 +465,7 @@ class TrafficGenerator:
                 self.w.remove_traffic(i)
                 self.active.pop(i)
                 removed.append(i)
-        self._runway_watch()
-        self._see_and_avoid(now)
+        self._see_and_avoid(now)                    # (runway occupied / hold short: World.runway_watch, everyone)
         if now >= self.next_t:
             got = self._spawn_one(now) if len(self.active) < self.hi else None
             if got:
@@ -551,22 +553,6 @@ class TrafficGenerator:
         if live:
             self.counts["live"] += 1
         return ac_id
-
-    def _runway_watch(self) -> None:
-        """Landing AI below 300 ft go around if the runway ahead is still occupied (what a real pilot does)."""
-        for i in self.active:
-            ac = self.w.fleet.get(i)
-            pl = ac.autopilot if ac else None
-            if pl is None or pl.phase != "PATTERN" or pl.leg not in ("FINAL", "STRAIGHT_IN") or ac.agl_ft > 300:
-                continue
-            R = pl.p.legs["RUNWAY"]
-            for o in self.w.fleet.values():
-                if o is ac or o.agl_ft > 60:
-                    continue
-                along, xtrk = R.project(P.to_enu(o.lat, o.lon))
-                if -30 < along < pl.p.runway_len_m and abs(xtrk) < 60 and (o.ias_kt > VACATE_KT or not o.on_ground):
-                    pl.go_around()
-                    break
 
     def _see_and_avoid(self, now: float) -> None:
         """Last resort, what any pilot does without FLOCK: traffic ahead inside 0.5 NM that will pass within
