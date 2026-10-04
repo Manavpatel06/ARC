@@ -53,6 +53,10 @@ Pattern-breaking pilots (new kinds, 60 each: `early_base_cutoff` base 0.9-1.7 km
 
 - ADS-B target state helps only the early base: +3 s median detection (paired: earlier in 9 of 35 conflicts, later in
   none), NMAC unchanged. A selected heading cannot say "I will turn later", so extensions are invisible to it.
-- The bigger finding: with pattern-breaking pilots ARC's turn-aware prediction is a liability - 6 of 60 nuisance
-  alerts on spaced extensions (baseline 0) and early-base median min separation 1,180 ft vs baseline 1,730 ft.
-  Fix under test: fall back to straight-line when the observed motion leaves the pattern model.
+- Pattern breakers do not hurt ARC: it detects the early base at 64 s vs baseline 62 s and the extended downwind at
+  77 s vs 37 s. Its smaller early-base min separation (1,180 vs 1,730 ft) is by design (2-box margin, 21 deg mean bank
+  vs the baseline's fixed 30 deg turn), and its alert comes after a SEQUENCE layer instead of at detection.
+- The 6 of 60 nuisance alerts on spaced extensions are not mispredicted turns: 5 fire at 135-149 s, when A is on
+  final while the straight-in ahead lands (runway occupancy); 1 fires early (43 s), in line with the 3 % elsewhere.
+- Tried and rejected: falling back to straight-line once an aircraft is 250 m past the model's turn point
+  (nuisance 12 % -> 10 %, but extended-downwind detection 77 s -> 54 s, because it stops predicting the late base).
