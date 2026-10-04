@@ -2,7 +2,7 @@
 sources/sdr_beast.py - live 1090 MHz input from an RTL-SDR running readsb / dump1090-fa (RECEIVE ONLY).
 
 readsb's Beast binary output (TCP 30005) carries every raw Mode S frame with a 12 MHz timestamp and a signal
-level - exactly what the physical-layer checks need. This module turns that stream into FLOCK's normalized
+level - exactly what the physical-layer checks need. This module turns that stream into ARC's normalized
 sensor messages (verify/schema.py SensorMsg):
   DF4/5/20/21 (replies to ground radar)  -> MODES_REPLY   address recovered from the parity (CRC) field
   DF11 (acquisition squitter)            -> MODES_REPLY
@@ -68,7 +68,7 @@ def parse_beast(buf: bytearray) -> tuple[list[tuple[int, float, bytes]], bytearr
     return out, buf[i:]
 
 def frame_to_msgs(ts: int, sig: float, frame: bytes, t_ns: int, own: tuple[float, float] | None = None) -> list[dict]:
-    """One Mode S frame -> FLOCK sensor messages (possibly none)."""
+    """One Mode S frame -> ARC sensor messages (possibly none)."""
     if len(frame) not in (7, 14):
         return []
     df = frame[0] >> 3

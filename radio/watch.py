@@ -1,5 +1,5 @@
 """
-radio/watch.py — live, readable view of all FLOCK communication in your terminal (Lane C).
+radio/watch.py — live, readable view of all ARC communication in your terminal (Lane C).
 Connects to the world as role `log` and prints every radio packet (delivered / dropped + reason), every
 rejection, lost/restored link, fault, trust change and advisory — colour-coded, one line each — plus a
 summary line every 10 s. Reconnects by itself when the world restarts.
@@ -175,7 +175,7 @@ class Watch:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Live view of all FLOCK communication")
+    ap = argparse.ArgumentParser(description="Live view of all ARC communication")
     ap.add_argument("--world", default="ws://localhost:8765")
     ap.add_argument("--only", help="show only lines involving this aircraft id")
     ap.add_argument("--no-state", action="store_true", help="hide routine delivered STATE/HEARTBEAT and range/loss drops")

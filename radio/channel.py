@@ -1,5 +1,5 @@
 """
-radio/channel.py — the emulated air between FLOCK nodes (Lane C, task C2).
+radio/channel.py — the emulated air between ARC nodes (Lane C, task C2).
 
 The ONLY process that knows true positions (world role `channel`, TRUTH frames), and it uses them
 only to decide delivery and to attach emulated RSSI/Doppler. Nodes never see truth.

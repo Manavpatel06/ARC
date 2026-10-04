@@ -60,7 +60,7 @@ export const LEVEL_COLOR = {
 export const TRUST_COLOR = {
   TRUSTED: "var(--trust-ok)", SUSPICIOUS: "var(--trust-sus)", FAKE: "var(--trust-fake)",
   CAMERA_ONLY: "var(--trust-cam)",
-  VERIFIED: "var(--trust-ok)", UNVERIFIED: "var(--trust-sus)", SUSPECT: "var(--trust-fake)",   // FLOCK verify/ (VERIFY)
+  VERIFIED: "var(--trust-ok)", UNVERIFIED: "var(--trust-sus)", SUSPECT: "var(--trust-fake)",   // ARC verify/ (VERIFY)
 };
 
 // Resolve a CSS var for canvas drawing.

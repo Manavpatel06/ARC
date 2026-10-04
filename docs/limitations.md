@@ -1,4 +1,4 @@
-# FLOCK — limitations (said out loud)
+# ARC — limitations (said out loud)
 
 1. **Simulated aircraft interfaces.** TCAS, Mode S replies, 1030 interrogations, own-ship GPS integrity and
    RSSI come from `world/sensors.py`, not from a real aircraft. Their noise and range numbers (TCAS range σ 15 m,
@@ -6,7 +6,7 @@
    MOPS or radar specifications. A real installation reads TCAS / GPS integrity through an Aircraft Interface
    Device; that path is not built.
 2. **Passive checks can be beaten.** An attacker with a real transponder near the claimed position, or one who
-   controls signal strength and timing per receiver, defeats TCAS / Mode S / RSSI checks. FLOCK raises the cost
+   controls signal strength and timing per receiver, defeats TCAS / Mode S / RSSI checks. ARC raises the cost
    of spoofing; it does not make it impossible.
 3. **Single-aircraft geometry.** One receiver cannot locate a transmitter; RSSI ranging is coarse (3 dB ≈ ×1.4
    distance, transponder power varies ±3 dB). Multi-receiver checks (Lane B's multi-observer / witnesses) need a
@@ -20,7 +20,7 @@
    and Mode S evidence still go against it, but its name is the plain callsign).
 7. **Public feeds lack raw signal data** (no RSSI, no frames): recorded real traffic is replayed through the
    simulated physical layer.
-8. **Security of FLOCK itself is a demo version.** The unit's Ed25519 key is generated on first use and pinned
+8. **Security of ARC itself is a demo version.** The unit's Ed25519 key is generated on first use and pinned
    by the world on first contact (trust on first use); the display end is not authenticated. Production needs
    keys provisioned at installation, an authenticated display link and protected key storage.
 9. **Not certified, not certifiable as-is.** An EFB app reading avionics data read-only is the deployment story;

@@ -1,8 +1,8 @@
-# FLOCK — Status report template (1 PM and 7 PM)
+# ARC — Status report template (1 PM and 7 PM)
 
 Copy this file to `docs/status-<time>.md`, fill the `<...>`, keep it to one page. Quote numbers from the acceptance scripts, not from memory.
 
-**One line:** <what FLOCK is, one sentence, same words as last time>
+**One line:** <what ARC is, one sentence, same words as last time>
 
 ## Working right now (demo on request)
 - **World / views** (Manas): <what runs, on which laptop>
@@ -13,7 +13,7 @@ Copy this file to `docs/status-<time>.md`, fill the `<...>`, keep it to one page
 ## Numbers we can stand behind
 | Claim | Number | Where it comes from |
 |---|---|---|
-| NMAC rate, no avoidance / straight-line baseline / FLOCK | <..> | `python harness/montecarlo.py` (simulation, say so) |
+| NMAC rate, no avoidance / straight-line baseline / ARC | <..> | `python harness/montecarlo.py` (simulation, say so) |
 | Warning lead time | <..> s | same |
 | Nuisance alerts on benign encounters | <..> % | same |
 | Per-tick compute | <..> ms | `accept_b.py` |

@@ -2,7 +2,7 @@
 harness/baseline.py — Lane B.
 
 The comparison logic for the Monte Carlo: the *same* node (same thresholds, same sigma growth, same radio,
-same bounds monitor, same layer timings) with the two things FLOCK adds taken away:
+same bounds monitor, same layer timings) with the two things ARC adds taken away:
 
   * prediction is straight-line only  (Predictor(conf_min=2.0) can never reach the turn-aware branch)
   * the maneuver is fixed: turn right 30 deg, no Escape Field, no negotiation, no sequencing
@@ -21,7 +21,7 @@ FIXED = escape.Candidate("R30", "turn", 30.0, 0.0, 30.0 / 45.0)
 class BaselineNode(Node):
     def __init__(self, ac_id: str, **kw):
         super().__init__(ac_id, **kw)
-        # same sigma growth as FLOCK's turn-aware track, so only the geometry model differs
+        # same sigma growth as ARC's turn-aware track, so only the geometry model differs
         self.predictor = Predictor(self.patterns, conf_min=2.0, line_sigma_k=0.8)
 
     def _do_sequence(self, now, pid, tr, c, reason) -> None:        # no sequencing layer in the baseline

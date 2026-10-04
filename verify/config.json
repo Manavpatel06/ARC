@@ -1,5 +1,5 @@
 {
-  "_doc": "FLOCK verification thresholds and weights. Every number the checks / fusion use lives here (docs/checks.md explains each). JSON, not YAML: no extra dependency on the demo laptop.",
+  "_doc": "ARC verification thresholds and weights. Every number the checks / fusion use lives here (docs/checks.md explains each). JSON, not YAML: no extra dependency on the demo laptop.",
   "track_timeout_s": 30.0,
   "evaluate_hz": 1.0,
   "kinematics": {

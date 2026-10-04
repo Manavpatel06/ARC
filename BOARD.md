@@ -55,7 +55,7 @@ Stubs to run while building: `stubs/fake_world.py` (OWNSHIP in, COMMAND applied)
 | B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [x] |
 | B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [x] |
 | B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [x] |
-| B10 | `harness/montecarlo.py`: FLOCK vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
+| B10 | `harness/montecarlo.py`: ARC vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
 | B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [x] |  `node.py` attaches `radio.evidence.TrustEvidence` when the real radio is present; TRUST carries `rel` + evidence (tested live with channel.py) |
 | B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [x] |  lost-link R/R fallback + stale-track handling (`accept_b.py` B12), `three_on_final_conflict.json` added |
 | B13 | *Phase 3:* Marana replay scenario `harness/scenarios/marana_2025.json`. | after go/no-go | [ ] |

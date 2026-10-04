@@ -1,9 +1,9 @@
 """
-harness/redflock_spoof.py — RED FLOCK attacks AirWitness-Hybrid (passive) on the real node (Lane B).
+harness/redflock_spoof.py — RED ARC attacks AirWitness-Hybrid (passive) on the real node (Lane B).
 
-Our aircraft N101 (autopilot-equipped) flies the 25L downwind.  N204 is a legitimate FLOCK aircraft (signed, its own
+Our aircraft N101 (autopilot-equipped) flies the 25L downwind.  N204 is a legitimate ARC aircraft (signed, its own
 session id), well clear to the north.  The attacker's ground transmitter sits 3 km behind our start point.  Each
-attack tries to put an aircraft head-on, 2.5 km ahead and closing, into our picture.  Nothing in FLOCK ever asks a
+attack tries to put an aircraft head-on, 2.5 km ahead and closing, into our picture.  Nothing in ARC ever asks a
 target to prove anything; every verdict below comes from passive evidence.
 
    1 invalid_signature   bad Ed25519 signature on a plausible track
@@ -11,7 +11,7 @@ target to prove anything; every verdict below comes from passive evidence.
    3 duplicate           N204's packets re-sent byte-for-byte straight away
    4 stale_session       packets in N204's old (expired) session id
    5 teleport            400 kt with position jumps
-   6 smooth              physically perfect head-on track, unsigned, FLOCK band (RSSI)
+   6 smooth              physically perfect head-on track, unsigned, ARC band (RSSI)
    7 smooth_intent       as 6 plus INTENT and MANEUVER_COMMITs trying to enter a contract with us
    8 duplicate_identity  N204's identity with a stolen key, sequence numbers far ahead (hijack)
    9 sybil               three ghosts from the one ground transmitter
@@ -21,7 +21,7 @@ target to prove anything; every verdict below comes from passive evidence.
   13 witness_disagree    a verified peer's passive digest and witness report contradict the claim
   14 intermittent        appears 4 s, vanishes 6 s, reappears elsewhere in a new session, repeatedly
 
-Security objective (what RED FLOCK is rewarded for):  spoof VERIFIED, spoof gets negotiation authority, spoof causes
+Security objective (what RED ARC is rewarded for):  spoof VERIFIED, spoof gets negotiation authority, spoof causes
 an automatic maneuver, spoof deforms the escape choice into one that is unsafe if the target is fake.
 Pass = none of those four, and the real N204 keeps VERIFIED (except attack 8, where N204's identity is the victim).
 
@@ -153,7 +153,7 @@ def run_attack(kind: str, seconds: float = 40.0) -> dict:
                     sid = f"g{int(k * 0.1) // 10}"
                     gx += 600.0 * (int(k * 0.1) // 10)
                 if kind == "tcas_conflict":
-                    auth = None                                      # legacy ADS-B: no FLOCK auth field at all
+                    auth = None                                      # legacy ADS-B: no ARC auth field at all
                 e = _state(g, seq[g], t, gx, gy, gtrk, gs=gs, auth=auth if auth else "unsigned", sid=sid)
                 node.on_radio(e)
                 if kind == "smooth_intent":
@@ -165,7 +165,7 @@ def run_attack(kind: str, seconds: float = 40.0) -> dict:
                 # ---- what the physics really shows
                 if kind in ("smooth", "smooth_intent", "invalid_signature", "teleport", "sybil", "intermittent",
                             "witness_disagree"):
-                    # the FLOCK-band channel gives RSSI and carrier Doppler for every received packet
+                    # the ARC-band channel gives RSSI and carrier Doppler for every received packet
                     node.aw.ingest_rf(measure("N101", own_pos, g, site, t, kinds=("rssi", "doppler"), rng=rng,
                                               obs_vel=own_v, source_id="GROUND-TX" if kind == "sybil" else None))
                 if kind == "rf_trend":
@@ -248,7 +248,7 @@ def main() -> None:
     c = [x["collision_loop_ms"]["mean"] for x in lat if x["collision_loop_ms"]]
     print(f"latency: packet guard peak {max(g):.3f} ms, trust update peak {max(a):.2f} ms, collision loop mean "
           f"{sum(c) / len(c):.2f} ms")
-    print(f"\nRED FLOCK vs AirWitness-Hybrid: {n_ok}/{len(ATTACKS)} attacks blocked "
+    print(f"\nRED ARC vs AirWitness-Hybrid: {n_ok}/{len(ATTACKS)} attacks blocked "
           + ("- no spoof gained trusted maneuver authority" if ok_all else "- FAILURES above"))
     sys.exit(0 if ok_all else 1)
 

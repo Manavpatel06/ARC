@@ -1,5 +1,5 @@
 """
-harness/fit_learned.py — Lane D (D13). Learn FLOCK's prediction numbers from REAL KDVT traffic, offline,
+harness/fit_learned.py — Lane D (D13). Learn ARC's prediction numbers from REAL KDVT traffic, offline,
 and freeze them in a versioned file. Runtime stays deterministic: the node only reads the frozen numbers.
 
 Input : recorded real ADS-B around KDVT (data/live_traffic.py --record -> harness/out/live_*.jsonl)
@@ -29,10 +29,10 @@ from node.predict import CONF_MIN, KState, Predictor, SIGMA0_M            # noqa
 
 HORIZONS = (10, 20, 30, 45, 60)       # seconds ahead that are scored
 MAX_GAP_S = 20.0                      # a track breaks if two reports are further apart than this
-WITHIN_NM = 5.0                       # FLOCK's working area: the KDVT pattern and its approaches
+WITHIN_NM = 5.0                       # ARC's working area: the KDVT pattern and its approaches
 MAX_AGL_FT = 3000.0
 MIN_GS_KT = 40.0
-MIN_AGL_FT = 200.0                    # below this: takeoff / landing roll, not FLOCK's problem
+MIN_AGL_FT = 200.0                    # below this: takeoff / landing roll, not ARC's problem
 COVER = 0.68                          # 1-sigma coverage target
 
 
@@ -90,7 +90,7 @@ def segments(track):
 
 
 def samples(tracks, elev_m):
-    """Every report inside FLOCK's area that has the real future available: (KState, [(dt, x, y)])."""
+    """Every report inside ARC's area that has the real future available: (KState, [(dt, x, y)])."""
     out = []
     for tid, track in tracks.items():
         for seg in segments(track):
@@ -258,7 +258,7 @@ def main():
            f"Data: {len(files)} recording(s), {len(tracks)} real aircraft, {len(S)} scored positions inside {WITHIN_NM} NM / {MAX_AGL_FT:.0f} ft AGL, "
            f"{out['data']['from']} to {out['data']['to']}. Fingerprint {out['data']['sha256']}.", "",
            "## Prediction error on real aircraft (median, metres)", "",
-           "| ahead | samples | FLOCK (as run) | straight-line | turn-aware only (n) | same samples, straight-line |", "|---|---|---|---|---|---|"]
+           "| ahead | samples | ARC (as run) | straight-line | turn-aware only (n) | same samples, straight-line |", "|---|---|---|---|---|---|"]
     for r in table:
         rep.append(f"| {r['h_s']} s | {r['n']} | {r['flock_median_m']} | {r['line_median_m']} | {r['turn_aware_median_m']} ({r['turn_aware_n']}) | {r['same_samples_line_median_m']} |")
     rep += ["", "## Fitted numbers (68 % of real errors inside sigma)", "", "| value | now | fitted | samples |", "|---|---|---|---|",
@@ -272,7 +272,7 @@ def main():
         if r["n"]:
             rep.append(f"| {r['leg']} | {r['n']} | {r['turn_aware_30s_m']} | {r['straight_30s_m']} | {r['use']} |")
     rep += ["", "Deterministic at runtime: these are fixed numbers in node/learned_values.json; nothing is learned while flying.",
-            "Sigma here is the error of POSITION-ONLY prediction (ADS-B-only traffic). FLOCK aircraft also send INTENT at 1 Hz,",
+            "Sigma here is the error of POSITION-ONLY prediction (ADS-B-only traffic). ARC aircraft also send INTENT at 1 Hz,",
             "which removes most of the turn-timing error measured here."]
     rp = os.path.join(ROOT, "harness", "out", "learned_report.md")
     open(rp, "w").write("\n".join(rep) + "\n")

@@ -56,7 +56,7 @@ export function startGod() {
     stat: null, local: null, ac: new Map(), trails: new Map(), adv: new Map(), pred: new Map(),
     trust: new Map(), crystal: new Map(), cmd: new Map(), stick: new Map(), events: [],
     nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 }, wx: null, thermals: [], live: null,
-    verify: new Map(), truth: null,                   // FLOCK onboard verdicts per judge, simulation ground truth
+    verify: new Map(), truth: null,                   // ARC onboard verdicts per judge, simulation ground truth
     t: 0, da: null, show: loadToggles(),
     view: { cx: 0, cy: 0, scale: 0.08, fitted: false },
   };
@@ -181,7 +181,7 @@ function pruneGone(s, list) {
   }
 }
 
-// FLOCK verification table: what judge A's onboard unit concluded about each target, next to the
+// ARC verification table: what judge A's onboard unit concluded about each target, next to the
 // simulation's ground truth (real / ghost) - the god view is the only place that knows both.
 function renderVerify(s) {
   const own = (s.stat && s.stat.judges && s.stat.judges[0]) || [...s.verify.keys()][0];
@@ -659,7 +659,7 @@ function draw(cv, s) {
     const [x, y] = LL(a.lat, a.lon);
     const col = css(a.mode === "COMMAND" ? "var(--lvl-takeover)" : a.human ? "var(--own)" : a.flock ? "var(--ai)" : "var(--noflock)");
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.5 * k;
-    drawPlane(ctx, x, y, a.hdg_deg * D2R, (a.human ? 13 : 11) * k, a.flock);   // no FLOCK node: outline only
+    drawPlane(ctx, x, y, a.hdg_deg * D2R, (a.human ? 13 : 11) * k, a.flock);   // no ARC node: outline only
 
     // takeover box + countdown
     const c = s.cmd.get(a.ac_id);

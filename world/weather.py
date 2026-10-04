@@ -11,7 +11,7 @@ Nodes still learn weather the real way — from the METAR (data/metar.py) — no
   visibility_sm, ceiling_ft_agl   what the pilot sees (cockpit haze / cloud); no physical effect
   qnh_inhg  actual altimeter setting. Aircraft hold INDICATED altitude with the setting they have
             (Aircraft.baro_set_inhg); if QNH falls and they don't update, they fly lower than they think.
-            Transponders report pressure altitude (29.92 datum), so FLOCK sees the true separation.
+            Transponders report pressure altitude (29.92 datum), so ARC sees the true separation.
   da_ft     density altitude at the field (climb capability); None = keep the current value
 
 Presets: PRESETS[name]. Per-aircraft gust/turbulence noise is seeded from the aircraft id, so offline

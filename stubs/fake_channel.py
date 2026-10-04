@@ -4,7 +4,7 @@ view (Lane A) show realistic radio traffic before the real channel exists.
 
 Connects to the world as role `channel`, reads TRUTH, and posts one LOG-worthy frame per
 radio event back to the world (the world mirrors channel frames to the `log` role as kind=radio):
-  * STATE 1 Hz per FLOCK aircraft, delivered to each peer within 4,828 m, dropped otherwise
+  * STATE 1 Hz per ARC aircraft, delivered to each peer within 4,828 m, dropped otherwise
     (reason "range"), plus random loss (reason "loss") — one frame per (sender, receiver) pair
   * HEARTBEAT every 2 s per aircraft (one frame, broadcast)
   * every ~25 s a scripted negotiation between the two closest aircraft:

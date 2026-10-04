@@ -2,7 +2,7 @@
 world/separation.py — Lane A. Ground-truth separation monitor (world side only).
 
 Checks every aircraft pair against two boxes, from TRUTH positions:
-  NMAC       horizontal < 500 ft AND vertical < 100 ft   (the FLOCK nuisance/conflict box)
+  NMAC       horizontal < 500 ft AND vertical < 100 ft   (the ARC nuisance/conflict box)
   COLLISION  horizontal < 60 ft  AND vertical < 30 ft    (~ C172 wingspan / height)
 One event per encounter: an encounter opens when a pair enters the NMAC box and closes when
 it leaves with hysteresis (h > 700 ft or v > 200 ft); the close event carries the minimum

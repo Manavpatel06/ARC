@@ -1,5 +1,5 @@
 <#
-run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerShell).
+run_demo.ps1 — start the whole ARC demo on the world laptop (Windows PowerShell).
 
   .\run_demo.ps1                                   # judges scenario, real modules where they exist, stubs otherwise
   .\run_demo.ps1 -Scenario harness\scenarios\base_cutoff.json
@@ -16,7 +16,7 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json            # free flight + live traffic
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json -Seed 11   # same, different (repeatable) traffic
 
-Starts, in order: METAR fetch -> world (ws :8765, web :8080, advisory only) -> one FLOCK onboard
+Starts, in order: METAR fetch -> world (ws :8765, web :8080, advisory only) -> one ARC onboard
 verification unit per judge aircraft (verify/unit.py, receive only) -> opens the log page. Inject a spoofed
 ghost from the god view (+ Ghost). -Arc (= -Legacy) also starts the radio channel + one collision-avoidance
 node per aircraft (+ spoofer) and lets nodes take the controls; the verification units still run (unless
@@ -60,7 +60,7 @@ function Stop-PortOwners([int[]]$Ports) {
     }
   }
 }
-function Stop-StaleFlock {      # every python running a FLOCK role (nodes hold no port, so ports alone miss them)
+function Stop-StaleArc {      # every python running an ARC role (nodes hold no port, so ports alone miss them)
   Get-CimInstance Win32_Process -Filter "Name LIKE 'python%'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -match 'world[\\/]world_server\.py|radio[\\/]channel\.py|node[\\/]node\.py|stubs[\\/]fake_|data[\\/]live_traffic\.py|radio[\\/]spoofer\.py|verify[\\/]unit\.py' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -75,9 +75,9 @@ if ($Stop) {
     Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" }
     Remove-Item $PidFile
   }
-  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  if ($WorldPort -eq 8765) { Stop-StaleArc }
   Stop-PortOwners @($WorldPort, $ChanPort, $HttpPort)
-  Write-Host "FLOCK demo stopped."
+  Write-Host "ARC demo stopped."
   exit 0
 }
 
@@ -86,7 +86,7 @@ $busy = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
 if ($busy) {
   Write-Host "Ports $($busy -join ', ') still in use from an earlier run - stopping it first." -ForegroundColor Yellow
   if (Test-Path $PidFile) { Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" } }
-  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  if ($WorldPort -eq 8765) { Stop-StaleArc }
   Stop-PortOwners $busy
   Start-Sleep -Seconds 2
   $still = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
@@ -108,7 +108,7 @@ $Chan = "ws://localhost:$ChanPort"     # radio/channel.py WebSocket radio (Windo
 "" | Set-Content $PidFile
 
 function Start-Role([string]$Title, [string[]]$PyArgs) {
-  $cmd = "`$host.UI.RawUI.WindowTitle = 'FLOCK $Title'; & '$Py' $($PyArgs -join ' '); Write-Host ''; Write-Host '[$Title exited - press Enter]'; Read-Host"
+  $cmd = "`$host.UI.RawUI.WindowTitle = 'ARC $Title'; & '$Py' $($PyArgs -join ' '); Write-Host ''; Write-Host '[$Title exited - press Enter]'; Read-Host"
   $p = Start-Process powershell -ArgumentList "-NoExit", "-Command", $cmd -PassThru
   Add-Content $PidFile $p.Id
   Write-Host ("  started {0,-14} {1}" -f $Title, ($PyArgs -join ' '))
@@ -120,7 +120,7 @@ function Wait-Port([int]$Port, [int]$Seconds = 15) {
   return $false
 }
 
-Write-Host "FLOCK demo  scenario=$Scenario  ip=$Ip"
+Write-Host "ARC demo  scenario=$Scenario  ip=$Ip"
 & $Py data/metar.py
 
 $sc = Get-Content $Scenario -Raw | ConvertFrom-Json
@@ -152,7 +152,7 @@ if ($Legacy) {
     Start-Role "channel(stub)" $chArgs
   }
 
-  # 3. one node per FLOCK aircraft
+  # 3. one node per ARC aircraft
   $flock = $sc.aircraft | Where-Object { $_.flock -ne $false } | ForEach-Object { $_.id }
   if ((Test-Path "node\node.py") -and -not $Stubs) {
     foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
@@ -185,8 +185,8 @@ Write-Host "  cockpit B  http://$($Ip):$HttpPort/index.html?role=cockpitB"
 Write-Host "  god view   http://$($Ip):$HttpPort/index.html?role=god"
 Write-Host "  comms log  http://$($Ip):$HttpPort/log.html"
 if ($Legacy) { Write-Host "  ARC: collision avoidance + takeover$(if (-not $NoVerify) { ' + verification units (god view attacks)' })"; Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):$WorldPort --via-channel ws://$($Ip):$ChanPort" }
-else { Write-Host "  FLOCK verification: one onboard unit per judge (verify/unit.py) - god view + Ghost injects a spoofed aircraft" }
+else { Write-Host "  ARC verification: one onboard unit per judge (verify/unit.py) - god view + Ghost injects a spoofed aircraft" }
 Write-Host "  live sky:   python data/live_traffic.py --world ws://localhost:$WorldPort"
 if ($sc.traffic) { Write-Host "  live traffic: god view RESET DEMO puts the judges back at their starts" }
 Write-Host "Stop everything:  .\run_demo.ps1 -Stop$(if ($WorldPort -ne 8765) { " -WorldPort $WorldPort" })"
-Write-Host "Firewall (once, admin PowerShell):  New-NetFirewallRule -DisplayName 'FLOCK demo' -Direction Inbound -Protocol TCP -LocalPort 8765,8766,8080 -Action Allow"
+Write-Host "Firewall (once, admin PowerShell):  New-NetFirewallRule -DisplayName 'ARC demo' -Direction Inbound -Protocol TCP -LocalPort 8765,8766,8080 -Action Allow"

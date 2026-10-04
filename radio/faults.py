@@ -1,5 +1,5 @@
 """
-radio/faults.py — scripted radio faults for the demo and RED FLOCK (Lane C, task C9).
+radio/faults.py — scripted radio faults for the demo and RED ARC (Lane C, task C9).
 Sends FAULT control frames to radio/channel.py, which applies them and logs every affected packet
 with reason "fault:...".
 

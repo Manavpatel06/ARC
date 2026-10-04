@@ -21,7 +21,7 @@ Cockpit controls:
 - Keyboard: arrows = bank / pitch, W / S = throttle, **C** = chase cam, **A** = autopilot on/off. On-screen **AP** button too.
 - Right panel = moving map over a dark street map (Leaflet 1.9.4 + OpenStreetMap tiles darkened in CSS, needs internet;
   `&basemap=0` turns it off): runways, pattern legs (the leg AP is flying in green), a 60 s "where am I headed"
-  path that curves with your bank (30 s / 60 s marks), and FLOCK traffic from your node. Range 0.75 / 1.5 (default) / 3 / 6 / 12 NM:
+  path that curves with your bank (30 s / 60 s marks), and ARC traffic from your node. Range 0.75 / 1.5 (default) / 3 / 6 / 12 NM:
   click the map, **Z**, or D-pad up/down; heading-up / north-up: **N** or D-pad left/right.
 - Reset your aircraft to its scenario start: hold **L2 + R2** together for 5 s (keyboard: hold **R**; or hold the
   on-screen **RESET** button). A countdown shows while you hold; letting go cancels.
@@ -29,7 +29,7 @@ Cockpit controls:
   points at once (live_kdvt: 4 NM north / 4 NM south, inbound at pattern altitude) and AI traffic sitting on those
   points cleared. Next to it: live-traffic status (runway flow, AI count). Aircraft that land and taxi off or depart
   disappear from the map.
-- Autopilot (every judge aircraft; AI aircraft only if ap_equipped — FLOCK takeover still needs ap_equipped): in the air it levels, joins the pattern (the leg it is lined up with, else a
+- Autopilot (every judge aircraft; AI aircraft only if ap_equipped — ARC takeover still needs ap_equipped): in the air it levels, joins the pattern (the leg it is lined up with, else a
   downwind entry at pattern altitude), flies the circuit and lands to a full stop. Pressed again while stopped on the
   runway: takes off and flies another circuit to a stop. Any stick movement disconnects it.
 - On the ground: roll steers the nosewheel, throttle up to accelerate, pull back above 55 kt to lift off.
@@ -37,7 +37,7 @@ Cockpit controls:
   brakes -> "STOPPED · RUNWAY 25L", then take off again or press AP. OFF the runway brakes don't apply: rough
   ground drags the aircraft to a stop and it can't take off - reset it (hold L2 + R2). Only one cockpit page per aircraft — two pages fight over the controls.
 - Rumble (Chrome, Xbox / DualShock 4; DualSense varies) follows this aircraft's node only: soft tick on SEQUENCE,
-  light pulse every 2 s on TRAFFIC, double pulse every 1 s on RESOLVE, continuous shake while FLOCK has control,
+  light pulse every 2 s on TRAFFIC, double pulse every 1 s on RESOLVE, continuous shake while ARC has control,
   faster/stronger pulses as a TRUSTED target closes inside 1 NM, one knock when control is handed back.
   FAKE / SUSPICIOUS targets never rumble. Footer shows "rumble ✓" when the pad supports it.
 - Weather (god view panel): preset, turbulence, wind / gusts / shear / thermals / visibility / cloud base / QNH sliders,
@@ -49,10 +49,10 @@ Cockpit controls:
   (re-armed after climbing back out; silent while a terrain warning is speaking).
 - Terrain awareness: red PULL UP / TERRAIN, amber SINK RATE / TOO LOW TERRAIN banner over the PFD with repeating
   voice callouts and strong rumble; touchdown notices for OFF-RUNWAY LANDING and TERRAIN IMPACT.
-- Other aircraft on the moving map come from YOUR aircraft's FLOCK node: each peer broadcasts STATE on the radio
+- Other aircraft on the moving map come from YOUR aircraft's ARC node: each peer broadcasts STATE on the radio
   (only delivered within 3 NM), the node turns it into bearing / range / height difference (TRUST `rel`), and the map
-  draws it with distance ("N204 1.2 NM +02"), a line from your aircraft (solid for the one FLOCK is warning about),
-  a NEAREST readout (distance, clock position, height) and badges sorted by distance. Aircraft without a FLOCK
+  draws it with distance ("N204 1.2 NM +02"), a line from your aircraft (solid for the one ARC is warning about),
+  a NEAREST readout (distance, clock position, height) and badges sorted by distance. Aircraft without an ARC
   radio (flock: false) are not heard. Run the real stack (world + radio/channel.py + node/node.py per aircraft,
   e.g. run_demo.ps1 on the integration branch) - with only the world running there is no traffic to show.
 - God view "Live sky": real ADS-B aircraft around KDVT (LIVE_TRAFFIC from `python data/live_traffic.py --world ws://<ip>:8765`)

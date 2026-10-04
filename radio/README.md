@@ -1,6 +1,6 @@
 # Lane C — Radio, protocol, security (Mansi)
 
-Emulated peer-to-peer radio for FLOCK: signed, schema-validated messages; a channel that drops and delays like a
+Emulated peer-to-peer radio for ARC: signed, schema-validated messages; a channel that drops and delays like a
 3-mile link; AIS-style self-organizing slots; a spoofer; and trust evidence so nodes tell real aircraft from fake.
 Brief: `lanes/C-radio-mansi.md`. Acceptance: `python radio/accept_c.py` → **14/14** (1 PM, 4 PM, 7 PM rows).
 
@@ -41,7 +41,7 @@ Radio lines appear only while `radio/channel.py` runs against that world. Reconn
 - **Multicast blocked → WebSocket relay**: `RadioClient(ac_id, via_channel="ws://<CHANNEL_IP>:8766")` — note **8766** (the channel), not 8765 (the world). Node CLI: `--via-channel ws://<CHANNEL_IP>:8766`.
 - **No channel at all**: `RadioClient(ac_id, direct=True)` (like the loopback stub, no loss, no RF).
 - Windows laptop with several network cards: add `--iface <its hotspot IP>` to channel/spoofer/client.
-- Windows firewall (PowerShell as admin): `New-NetFirewallRule -DisplayName "FLOCK UDP" -Direction Inbound -Protocol UDP -LocalPort 5005,5006 -Action Allow` and `... -Protocol TCP -LocalPort 8765,8766,8000 ...`.
+- Windows firewall (PowerShell as admin): `New-NetFirewallRule -DisplayName "ARC UDP" -Direction Inbound -Protocol UDP -LocalPort 5005,5006 -Action Allow` and `... -Protocol TCP -LocalPort 8765,8766,8000 ...`.
 
 ## For Lane B (Reya): turn trust evidence on — 6 lines in `node/node.py` `run()`
 Without this every peer, including GHOST7, stays TRUSTED. Tested against `lane-b-node` @297100f: GHOST7 → FAKE 0.0 on every node, real peers TRUSTED 1.0.

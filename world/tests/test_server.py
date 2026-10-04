@@ -124,7 +124,7 @@ def test_command_always_refused_flock_is_advisory_only(world):
     last = [x for x in god if x["type"] == "TRUTH"][-1]
     assert all(a["mode"] != "COMMAND" for a in last["aircraft"])
 
-# ------------------------------------------------------------------ FLOCK onboard unit (avionics role)
+# ------------------------------------------------------------------ ARC onboard unit (avionics role)
 def test_avionics_gets_only_own_sensor_data_and_no_ground_truth(world):
     frames = run(collect(world, "avionics:N101", 2.0))
     assert frames[0]["type"] == "HELLO" and "static" not in frames[0]
@@ -137,7 +137,7 @@ def test_avionics_gets_only_own_sensor_data_and_no_ground_truth(world):
     assert not {"TRUTH", "GROUND_TRUTH", "ADVISORY", "TRUST"} & types(frames)
     from world.sensors import icao_of
     assert icao_of("N101") not in {m.get("icao") for m in msgs}                   # never hears itself
-    assert run(collect(world, "avionics:N201", 1.0))[0]["type"] == "ERROR"        # AI aircraft carry no FLOCK unit
+    assert run(collect(world, "avionics:N201", 1.0))[0]["type"] == "ERROR"        # AI aircraft carry no ARC unit
 
 def test_verify_goes_to_own_cockpit_god_and_log_only(world):
     v = {"type": "VERIFY", "ac_id": "N999", "t": 0, "targets": [

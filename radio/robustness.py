@@ -1,12 +1,12 @@
 """
-radio/robustness.py — does the FLOCK core still keep aircraft apart when the radio is bad? (Lane C)
+radio/robustness.py — does the ARC core still keep aircraft apart when the radio is bad? (Lane C)
 
-For each scenario x radio condition it starts a private world + channel + one node per FLOCK aircraft on its
+For each scenario x radio condition it starts a private world + channel + one node per ARC aircraft on its
 own ports, applies the condition, and measures the run with harness/e2e_check.py (truth minimum separation,
 NMAC count, link loss, negotiation). Runs several in parallel. Writes harness/out/robustness.json and
 harness/out/robustness_table.md (raw table; radio/ROBUSTNESS.md is the curated slide summary).
 
-Conditions: no FLOCK (world only, baseline) · loss 10 % · 30 % · 50 % · 2 s latency spike (+2 s for 60 s
+Conditions: no ARC (world only, baseline) · loss 10 % · 30 % · 50 % · 2 s latency spike (+2 s for 60 s
 from t = 10 s, on top of 10 % loss) · dropped MANEUVER_COMMIT (first commit dropped, 10 % loss).
 
     python radio/robustness.py                                  # both scenarios, all conditions, 120 s each
@@ -20,7 +20,7 @@ PY = sys.executable
 OUT = os.path.join(ROOT, "harness", "out")
 
 CONDITIONS = [
-    ("no_flock", "No FLOCK (baseline)", dict(loss=None)),
+    ("no_flock", "No ARC (baseline)", dict(loss=None)),
     ("loss0", "Perfect radio (0 % loss)", dict(loss=0.0)),
     ("loss10", "Loss 10 %", dict(loss=0.10)),
     ("loss30", "Loss 30 %", dict(loss=0.30)),
@@ -129,7 +129,7 @@ async def main(a):
 
 def write_md(results, a):
     label = {k: l for k, l, _ in CONDITIONS}
-    lines = ["# FLOCK robustness under a bad radio", "",
+    lines = ["# ARC robustness under a bad radio", "",
              f"Each cell: worst run over {a.seeds} seed(s), {a.seconds:.0f} s, truth from the world (`harness/e2e_check.py`). "
              "Min separation = closest pair that came within 100 ft vertically (else closest overall). "
              "NMAC = < 500 ft horizontal and < 100 ft vertical.", ""]

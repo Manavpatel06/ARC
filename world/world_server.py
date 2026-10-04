@@ -18,7 +18,7 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH) /
                    {"type":"RESET_DEMO"}: every judge aircraft back to its scenario start, AI traffic on
                    those starts removed (WORLD_EVENT RESET per judge + RESET_DEMO).
-FLOCK verification (advisory only, receive only - FLOCK_claude_code_prompt.md):
+ARC verification (advisory only, receive only - FLOCK_claude_code_prompt.md):
   avionics:<id>    the onboard unit (verify/unit.py) of judge aircraft <id>. Gets ONLY what that aircraft's
                    own equipment receives (world/sensors.py): {"type":"SENSORS","t","ac_id","msgs":[...]} at
                    10 Hz - ADS-B it hears, own TCAS tracks, Mode S replies, 1030 interrogations, own-ship
@@ -26,11 +26,11 @@ FLOCK verification (advisory only, receive only - FLOCK_claude_code_prompt.md):
   god              also gets GROUND_TRUTH (1 Hz: every emitter with its label real/ghost, attack list -
                    simulation truth, never to units or cockpits) and may send SET_ATTACK
                    {"attack":"ghost","on":true|false,"victim"?}. Scenario key "attacks": [{"type","at_s",...}].
-  COMMAND          rejected (rejected_by_world "advisory_only"): FLOCK never flies the aircraft. The legacy
+  COMMAND          rejected (rejected_by_world "advisory_only"): ARC never flies the aircraft. The legacy
                    collision-avoidance demo can still be run with --allow-takeover.
 Live traffic (scenario "traffic", world/traffic.py TrafficGenerator): AI aircraft come and go; each
   gets WORLD_EVENT SPAWN / DESPAWN (log; god prunes TRUTH). With --traffic-nodes ws://<channel> the
-  world starts a FLOCK node (node/node.py) for every new AI aircraft and stops it when it leaves; logs
+  world starts an ARC node (node/node.py) for every new AI aircraft and stops it when it leaves; logs
   in harness/out/nodes/<id>.log. AI pilots act on their own node's ADVISORY (LOG kind decision,
   {"ai_pilot": ...}). LIVE_TRAFFIC frames also feed the generator when "live_seed" is on.
   log              LOG frames: decisions, radio (from channel), camera, world events, LIVE_TRAFFIC
@@ -112,7 +112,7 @@ class Hub:
     def __init__(self, world: World, nodes: NodeLauncher | None = None, advisory_only: bool = True):
         self.w = world
         self.nodes = nodes
-        self.advisory_only = advisory_only                 # FLOCK never flies the aircraft (spec hard constraint 1)
+        self.advisory_only = advisory_only                 # ARC never flies the aircraft (spec hard constraint 1)
         self.sensors = SensorSim(world)                    # what each judge aircraft's own equipment receives
         self.sensor_buf: dict[str, list] = defaultdict(list)
         self.scripted = sorted(world.raw.get("attacks", []), key=lambda a: a.get("at_s", 0))   # scenario attacks
@@ -148,7 +148,7 @@ class Hub:
         if raw.startswith("node:"):
             ac_id = raw[5:]
             return (raw, ac_id) if ac_id in self.w.fleet else (None, f"unknown aircraft {ac_id}; fleet={list(self.w.fleet)}")
-        if raw.startswith("avionics:"):                    # FLOCK onboard unit (verify/unit.py) of a judge aircraft
+        if raw.startswith("avionics:"):                    # ARC onboard unit (verify/unit.py) of a judge aircraft
             ac_id = raw[9:]
             ok = ac_id in self.w.fleet and self.w.fleet[ac_id].human
             return (raw, ac_id) if ok else (None, f"no judge aircraft {ac_id}; humans={self.w.humans}")
@@ -252,7 +252,7 @@ class Hub:
                     self.ai_pilot_hears(ac_id, m)
             elif t == "COMMAND":
                 ac = self.w.fleet[ac_id]
-                if self.advisory_only:                     # advisory only: FLOCK never takes the controls
+                if self.advisory_only:                     # advisory only: ARC never takes the controls
                     applied, why = False, "advisory_only"
                 else:
                     applied = ac.apply_command(m, self.now())
@@ -632,12 +632,12 @@ async def main():
     ap.add_argument("--da", type=float, help="density altitude at the field, ft (overrides METAR/scenario)")
     ap.add_argument("--weather", help="weather preset (world/weather.py): metar, calm_morning, hot_gusty_afternoon, haboob, low_ceiling, pressure_drop")
     ap.add_argument("--seed", type=int, help="live-traffic seed (overrides the scenario's traffic.seed)")
-    ap.add_argument("--traffic-nodes", metavar="CHANNEL_WS", help="start a FLOCK node for every live-traffic aircraft, "
+    ap.add_argument("--traffic-nodes", metavar="CHANNEL_WS", help="start an ARC node for every live-traffic aircraft, "
                     "radio via this channel (e.g. ws://localhost:8766)")
     ap.add_argument("--pidfile", help="append node PIDs here (run_demo.ps1 .demo_pids)")
     ap.add_argument("--replay", help="recorded real traffic (data/live_traffic.py --record, harness/out/live_*.jsonl) "
                     "played back as real aircraft the onboard units hear (world/replay.py)")
-    ap.add_argument("--allow-takeover", action="store_true", help="legacy collision-avoidance demo: let nodes fly the aircraft (COMMAND). Off by default: FLOCK is advisory only")
+    ap.add_argument("--allow-takeover", action="store_true", help="legacy collision-avoidance demo: let nodes fly the aircraft (COMMAND). Off by default: ARC is advisory only")
     a = ap.parse_args()
     world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather, seed=a.seed)
     nodes = NodeLauncher(f"ws://localhost:{a.port}", a.traffic_nodes, a.pidfile) if a.traffic_nodes and world.traffic else None

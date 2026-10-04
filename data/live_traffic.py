@@ -3,11 +3,11 @@ data/live_traffic.py — Lane D. REAL aircraft around Deer Valley, live, into th
 
 Pulls ADS-B positions within --radius NM of KDVT every --every seconds from a free public feed
 (airplanes.live -> adsb.lol -> OpenSky, first one that answers), classifies each real aircraft's
-traffic-pattern leg with the SAME geometry FLOCK uses (pattern.py), and sends one LIVE_TRAFFIC frame
+traffic-pattern leg with the SAME geometry ARC uses (pattern.py), and sends one LIVE_TRAFFIC frame
 to the world as role `data`. The world forwards it to the god view (overlay) and the log.
 
-Honesty rule: live aircraft are DISPLAY + PREDICTION ONLY. FLOCK nodes never see them and never act
-on them. (They carry no FLOCK radio; in the real system they would be ADS-B-only targets.)
+Honesty rule: live aircraft are DISPLAY + PREDICTION ONLY. ARC nodes never see them and never act
+on them. (They carry no ARC radio; in the real system they would be ADS-B-only targets.)
 
     python data/live_traffic.py --print                 # no world needed: prints a table every 5 s
     python data/live_traffic.py --world ws://localhost:8765
@@ -49,7 +49,7 @@ PATTERN_TOP_FT = ELEV_FT + TPA_AGL_FT + 800
 # ---------------- feeds ----------------
 def _get(url: str, timeout=6):
     import requests
-    r = requests.get(url, timeout=timeout, headers={"User-Agent": "FLOCK-hackathon/1.0 (ASU Devils Invent)"})
+    r = requests.get(url, timeout=timeout, headers={"User-Agent": "ARC-hackathon/1.0 (ASU Devils Invent)"})
     r.raise_for_status()
     return r.json()
 

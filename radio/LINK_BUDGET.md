@@ -1,6 +1,6 @@
-# FLOCK node radio: band, link budget, BOM (C11)
+# ARC node radio: band, link budget, BOM (C11)
 
-**One line for the slide:** a FLOCK node is a 915 MHz ISM radio (same band FLARM uses in the US), 22 dBm, 2 dBi antennas, with **≥ 22 dB of link margin at 3 miles** and a **prototype parts cost of about $136**, versus about $1,450 for a PowerFLARM Flex and $2,199 for a certified skyBeacon ADS-B Out.
+**One line for the slide:** an ARC node is a 915 MHz ISM radio (same band FLARM uses in the US), 22 dBm, 2 dBi antennas, with **≥ 22 dB of link margin at 3 miles** and a **prototype parts cost of about $136**, versus about $1,450 for a PowerFLARM Flex and $2,199 for a certified skyBeacon ADS-B Out.
 
 ## Band
 
@@ -9,7 +9,7 @@
 | Prototype / product band | **902–928 MHz ISM** (US), FCC Part 15.247 | Unlicensed; **the same band FLARM uses in the USA** (902.2–927.8 MHz; 868 MHz in Europe). Cheap transceivers exist. |
 | Power limit | 1 W conducted with digital modulation (≥ 500 kHz 6 dB bandwidth), or FHSS with ≥ 50 channels; reduce power for antenna gain above 6 dBi; PSD ≤ 8 dBm / 3 kHz | 47 CFR 15.247. We use **22 dBm (160 mW)**, about 6 dB under the limit. |
 | Modulation | **GFSK 250 kb/s** (frequency-hopped) for the slotted 1 Hz STATE; LoRa SF7/500 kHz as a long-range fallback | 120-byte signed STATE = **4.1 ms on air** at 250 kb/s; it fits the 30 ms slot with room for 40-slot frames (~39 aircraft at 1 Hz). LoRa SF7/500 takes 47 ms per packet: more range, a fifth of the capacity. |
-| Certified path (later) | 978 MHz UAT / 1090 ES equipment | Aviation spectrum, TSO and FAA approval. FLOCK's protocol and trust logic stay; only the bearer changes. Hobby ISM emulation is **not** an aviation communications approval. |
+| Certified path (later) | 978 MHz UAT / 1090 ES equipment | Aviation spectrum, TSO and FAA approval. ARC's protocol and trust logic stay; only the bearer changes. Hobby ISM emulation is **not** an aviation communications approval. |
 
 ## Link budget (free space, 915 MHz)
 
@@ -48,6 +48,6 @@ At volume the GNSS and antenna are the big savings: a bare GNSS module plus a pr
 ## Honest words for Q&A
 - "Prototype parts cost," not "product price": no certification, enclosure tooling or support in the $136.
 - The link budget is free-space plus margin, **not measured in flight**. The ESP32-C6 "over the air" test (C10) would be the first measured number.
-- 915 MHz ISM is shared spectrum, which is why FLOCK signs every packet, slots its transmissions and checks RF consistency.
+- 915 MHz ISM is shared spectrum, which is why ARC signs every packet, slots its transmissions and checks RF consistency.
 
 Sources: FLARM FAQ (bands) flarm.com/en/support/faq · 47 CFR 15.247 (govinfo.gov) · Semtech SX1261/2 datasheet (sensitivity, TX current) · Ebyte E22-900M22S · Adafruit ESP32-S3-DevKitC-1, BMP390 · SparkFun MAX-M10S, 915 MHz dipole · Cumulus Soaring (PowerFLARM Flex) · Sporty's (skyBeacon).

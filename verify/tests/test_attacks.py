@@ -1,6 +1,6 @@
 """
 verify/tests/test_attacks.py - every simulated attack end to end (world -> sensors -> onboard unit), the
-whole-picture guardrails (jamming, own GPS), the ported checks, and FLOCK's own security (signed,
+whole-picture guardrails (jamming, own GPS), the ported checks, and ARC's own security (signed,
 hash-chained event log; signed VERIFY frames).      python -m pytest -q verify/tests
 """
 from __future__ import annotations
@@ -77,7 +77,7 @@ def test_ablation_without_tcas_still_catches_a_ghost_with_mode_s_and_timing():
     _, real_suspect, first = summary(r)
     assert first and not real_suspect
 
-# ---------------------------------------------------------------- FLOCK's own security
+# ---------------------------------------------------------------- ARC's own security
 def test_event_log_is_hash_chained_signed_and_tamper_evident(tmp_path):
     sk = load_key("TEST", key_dir=str(tmp_path / "keys"))
     p = tmp_path / "events.jsonl"

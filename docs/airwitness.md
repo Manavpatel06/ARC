@@ -1,6 +1,6 @@
-# FLOCK AirWitness-Hybrid — passive, camera-free anti-spoofing (Lane B)
+# ARC AirWitness-Hybrid — passive, camera-free anti-spoofing (Lane B)
 
-> Every received broadcast is a claim. FLOCK starts tracking, predicting and warning on it immediately; AirWitness
+> Every received broadcast is a claim. ARC starts tracking, predicting and warning on it immediately; AirWitness
 > evaluates the claim in parallel and only ever changes what it is allowed to do. Nothing asks another aircraft to
 > prove anything, nothing waits for an answer, and low trust never deletes traffic.
 
@@ -90,13 +90,13 @@ evidence line, P(real/spoof/faulty) and the authority list; `TrustResult.explain
 |---|---|---|---|---|---|
 | no logic | 154/154 | – | – | – | – |
 | baseline | 28/154 (18 %) | 913 ft | 1 % / 1 % | 0 | 2.0 ms |
-| FLOCK (before, challenge-response) | 11/154 (7 %) | 1138 ft | 3 % | 4 | – |
-| **FLOCK (AirWitness-Hybrid)** | **5/154 (3 %)** | **1169 ft** | 3 % / 0 % | 4 | 3.9 ms |
+| ARC (before, challenge-response) | 11/154 (7 %) | 1138 ft | 3 % | 4 | – |
+| **ARC (AirWitness-Hybrid)** | **5/154 (3 %)** | **1169 ft** | 3 % / 0 % | 4 | 3.9 ms |
 
 - False positives: 0 spoof alerts and 0 SUSPICIOUS/QUARANTINED real peers in the same 420 legitimate encounters.
   (The first run found one, a vertical-speed change of > 1500 fpm/s when a simulated pilot ended a maneuver; the
   limit is now 3000 fpm/s, ~1.5 g, so an abrupt push-over or go-around passes.)
-- RED FLOCK (`python harness/redflock_spoof.py`): 14/14 attacks blocked. No spoof was ever VERIFIED, got negotiation or
+- RED ARC (`python harness/redflock_spoof.py`): 14/14 attacks blocked. No spoof was ever VERIFIED, got negotiation or
   a 4D contract, caused an automatic maneuver, or pushed the escape choice to one unsafe if it is fake.
 
 | attack | worst state | flagged | quarantined |
@@ -127,7 +127,7 @@ evidence line, P(real/spoof/faulty) and the authority list; `TrustResult.explain
    real owner. Safe, but it is a denial of service on that aircraft's coordination.
 3. A plausible ADS-B-only ghost with no RF, TCAS or peers around it stays UNVERIFIED: it is warned about, never acted on
    automatically. Only independent sensors can say more.
-4. When TCAS contradicts a spoofed ADS-B position, the aircraft TCAS really sees is not drawn as its own FLOCK track
+4. When TCAS contradicts a spoofed ADS-B position, the aircraft TCAS really sees is not drawn as its own ARC track
    (the aircraft's TCAS display shows it).
 5. RSSI ranging is coarse (3 dB ≈ ×1.4 distance); Doppler depends on stable oscillators on real radios.
 6. Contract: UNVERIFIED travels as SUSPICIOUS + `aw:UNVERIFIED`; `clof`, `alerts`, `alt_geo_ft` and `sid` are additive

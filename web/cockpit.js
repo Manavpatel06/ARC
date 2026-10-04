@@ -38,7 +38,7 @@ export function startCockpit(role) {
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
         break;
-      case "TRUST":                                   // legacy node; the FLOCK unit's VERIFY wins when present
+      case "TRUST":                                   // legacy node; the ARC unit's VERIFY wins when present
         if (!s.verify || performance.now() - s.verifyAt > VERIFY_STALE_MS) { s.trust = m; trackTraffic(s, m); }
         // AirWitness (Lane B): one alert when a target turns SUSPICIOUS / QUARANTINED or our GNSS goes inconsistent
         for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
@@ -117,7 +117,7 @@ export function startCockpit(role) {
     const b = e.target.closest("button[data-report]");
     if (b) openReport(s, b.dataset.report);
   });
-  $("ck-trust").addEventListener("click", (e) => {            // a target chip: show / hide why FLOCK trusts it
+  $("ck-trust").addEventListener("click", (e) => {            // a target chip: show / hide why ARC trusts it
     const li = e.target.closest("li[data-key]");
     if (li) { s.detail = s.detail === li.dataset.key ? null : li.dataset.key; renderTrust(s); }
   });
@@ -189,7 +189,7 @@ function renderTaws(s) {
 }
 
 // ---------- weather out of the window: haze, dust, cloud (3D only) ----------
-// Visibility is what the pilot sees; it hides traffic outside but not the FLOCK radar.
+// Visibility is what the pilot sees; it hides traffic outside but not the ARC radar.
 function renderVisibility(s) {
   const el = $("ck-haze"), w = s.wx, o = s.own;
   let alpha = 0, color = "rgba(170,178,190,1)";
@@ -363,7 +363,7 @@ function renderBanner(s) {
     if (r.method) bits.push(`${r.method}${r.confidence != null ? ` ${(+r.confidence).toFixed(2)}` : ""}`);
     sub = bits.join(" · ");
   } else if (s.verify && now - s.verifyAt < VERIFY_STALE_MS) {
-    // FLOCK verification summary (advisory only: what to believe on the traffic display, never what to fly)
+    // ARC verification summary (advisory only: what to believe on the traffic display, never what to fly)
     const ts = s.verify.targets || [], sus = ts.filter((t) => t.state === "SUSPECT");
     const bn = s.verify.banners || [];
     if (sus.length) {
@@ -404,7 +404,7 @@ function renderBounds(s) {
 }
 
 // ---------- trust badges ----------
-// VERIFY (FLOCK onboard unit, verify/unit.py) -> the same {targets:[{id,state,score,rel}]} shape the traffic
+// VERIFY (ARC onboard unit, verify/unit.py) -> the same {targets:[{id,state,score,rel}]} shape the traffic
 // display already draws, plus the full verdict for the details panel.
 const VERIFY_STALE_MS = 5000;
 function verifyAsTrust(m) {
@@ -685,7 +685,7 @@ function drawNavMap(cv, s) {
   ctx.setLineDash([]);
   label(ctx, cx + R * 0.71 + 4 * k, cy - R * 0.71, `${rangeNm} NM`, 11 * k, "left", css("var(--text-2)"));
   label(ctx, cx + R * 0.35 + 4 * k, cy - R * 0.35, `${rangeNm / 2}`, 10 * k, "left", css("var(--text-2)"));
-  if (rangeNm > 3) {                                          // radio range of the FLOCK link
+  if (rangeNm > 3) {                                          // radio range of the ARC link
     ctx.strokeStyle = css("var(--grid-strong)"); ctx.setLineDash([2 * k, 6 * k]);
     ctx.beginPath(); ctx.arc(cx, cy, 3 * NM * pxPerM, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   }

@@ -1,6 +1,6 @@
 Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_model.py, traffic.py, scenario.py. Views live in `web/index.html`.
 
-**FLOCK is now advisory only** (`FLOCK_claude_code_prompt.md`): the world rejects every COMMAND
+**ARC is now advisory only** (`FLOCK_claude_code_prompt.md`): the world rejects every COMMAND
 (`rejected_by_world: "advisory_only"`); `--allow-takeover` / `run_demo.ps1 -Legacy` keeps the old
 collision-avoidance demo. `sensors.py` simulates what each judge aircraft's own equipment receives (ADS-B,
 TCAS, Mode S, ground radar) for the onboard verification unit (`verify/`, role `avionics:<id>`);
@@ -42,7 +42,7 @@ python world/find_conflict.py --scenario harness/scenarios/base_cutoff.json --pa
 Conflict scenarios (no avoidance; times at x1; weather pinned with `"weather": "cached"`, real KDVT terrain;
 re-check with find_conflict.py after any change to physics, terrain or pattern geometry):
 
-| Scenario | What happens without FLOCK (world separation monitor) |
+| Scenario | What happens without ARC (world separation monitor) |
 |---|---|
 | `harness/scenarios/base_vs_straight_in.json` | N101 turns base/final into straight-in N399: NMAC on final ~149 s |
 | `harness/scenarios/three_on_final.json` | N101 (judge), N204, straight-in N399 converge on final: all three pairs NMAC, 155-160 s |
@@ -55,7 +55,7 @@ Live traffic — `harness/scenarios/live_kdvt.json` (free flight, no tuned confl
 ```
 
 - Judges: N101 (cockpit A) 4 NM north and N102 (cockpit B) 4 NM south, inbound at pattern altitude (2,500 ft), free to
-  fly anywhere. Untouched they fly straight at each other through the field (FLOCK sequences / warns / resolves),
+  fly anywhere. Untouched they fly straight at each other through the field (ARC sequences / warns / resolves),
   then join their own pattern 2 NM past it. Start `{"leg":"INBOUND","from_deg","dist_nm","runway":"NORTH"|"SOUTH"}`.
 - Runway flow from the METAR wind (`"runway_flow": "auto"`; 120/9 -> runway 07: 07R south, right traffic; 07L north,
   left traffic; calm -> 25). `NORTH` / `SOUTH` / `ACTIVE` runway names follow the flow.

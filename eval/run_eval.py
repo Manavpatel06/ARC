@@ -1,5 +1,5 @@
 """
-eval/run_eval.py - FLOCK verification evaluation against ground truth (what judges will ask).
+eval/run_eval.py - ARC verification evaluation against ground truth (what judges will ask).
 
     python eval/run_eval.py                 # 4 seeds per attack, ablation on 2 seeds -> eval/out/report.md + charts
     python eval/run_eval.py --seeds 8
@@ -165,7 +165,7 @@ def write_report(per_attack, curve, abl, seeds, secs):
 
     def pct(v):
         return "–" if v is None else f"{100 * v:.0f} %"
-    L = ["# FLOCK verification - evaluation", "",
+    L = ["# ARC verification - evaluation", "",
          f"`python eval/run_eval.py --seeds {len(seeds)}` · {len(seeds)} seeds per attack · attack at t = {ATTACK_AT:.0f} s · "
          f"{SECS:.0f} s per run · live KDVT traffic (5-8 AI aircraft, runway 07) · judge A's onboard unit · {secs:.0f} s wall time", "",
          "Simulated sensors (world/sensors.py) and attacks (world/attacks.py); ground truth never reaches the unit. "
@@ -194,7 +194,7 @@ def write_report(per_attack, curve, abl, seeds, secs):
           "(attack aircraft vs real aircraft). The operating point is SUSPECT = trust ≤ 30, plus the guardrails "
           "(a TCAS-confirmed target is never SUSPECT; SUSPECT needs one strong check).", "",
           "## Time to detect", "", "![time to detect](time_to_detect.png)", "",
-          "Drift is slow by design: the attack walks the position 12 m/s, and FLOCK flags it once the offset exceeds "
+          "Drift is slow by design: the attack walks the position 12 m/s, and ARC flags it once the offset exceeds "
           "what TCAS noise can explain (yellow first, then red).", "",
           "## Ablation - why fusion beats any single check", "", "![ablation](ablation.png)", "",
           "| configuration | detection | real aircraft ever SUSPECT | median time to detect |", "|---|---|---|---|"]

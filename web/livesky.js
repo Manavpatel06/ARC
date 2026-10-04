@@ -1,7 +1,7 @@
 // web/livesky.js — Lane D. REAL aircraft (LIVE_TRAFFIC, data/live_traffic.py) in the cockpit:
 // cyan targets on the nav-map radar and in the 3D out-the-window view, like ADS-B In traffic in a real
-// GA cockpit. Display only: FLOCK nodes never see these aircraft and never maneuver for them
-// (they carry no FLOCK radio), so they never raise an advisory.
+// GA cockpit. Display only: ARC nodes never see these aircraft and never maneuver for them
+// (they carry no ARC radio), so they never raise an advisory.
 //
 // The feed polls every ~5 s; positions are dead-reckoned from each report (ground speed, track,
 // vertical speed) so the targets move smoothly in between. Older than LIVE_HIDE_MS -> hidden.
@@ -51,7 +51,7 @@ export function drawLiveOnMap(ctx, list, g) {
     ctx.globalAlpha = a.stale ? 0.4 : 0.95;
     const rot = ((a.track_deg || 0) - up) * D2R, sz = 9 * k;
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.6 * k;
-    drawPlane(ctx, x, y, rot, sz, !a.on_ground);                    // same airplane symbol as FLOCK traffic, in cyan
+    drawPlane(ctx, x, y, rot, sz, !a.on_ground);                    // same airplane symbol as ARC traffic, in cyan
     if (!a.on_ground && a.gs_kt > 30) {                             // track line ahead of the nose
       ctx.beginPath(); ctx.moveTo(x + Math.sin(rot) * sz * 1.2, y - Math.cos(rot) * sz * 1.2);
       ctx.lineTo(x + Math.sin(rot) * (sz * 1.2 + 18 * k), y - Math.cos(rot) * (sz * 1.2 + 18 * k)); ctx.stroke();
@@ -66,7 +66,7 @@ export function drawLiveOnMap(ctx, list, g) {
   label(ctx, 10 * k, g.footerY, `ADS-B: ${shown} real aircraft (display only)`, 10.5 * k, "left", col);
 }
 
-/** 3D view: a model + callsign for each real airborne aircraft (relative to own height, like FLOCK targets). */
+/** 3D view: a model + callsign for each real airborne aircraft (relative to own height, like ARC targets). */
 export function updateLive3D(v3, list, p, h) {
   const C = v3.Cesium, viewer = v3.viewer;
   v3.live = v3.live || new Map();

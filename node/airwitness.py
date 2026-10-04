@@ -1,5 +1,5 @@
 """
-node/airwitness.py — FLOCK AirWitness-Hybrid: PASSIVE, camera-free anti-spoofing (Lane B, Reya).
+node/airwitness.py — ARC AirWitness-Hybrid: PASSIVE, camera-free anti-spoofing (Lane B, Reya).
 
 Every received broadcast is a CLAIM.  Collision avoidance starts on it immediately; AirWitness evaluates it in
 parallel and only ever changes what the claim is ALLOWED to do (trust state, Threat Tube width, authority).
@@ -135,7 +135,7 @@ class RFMeasurement:
 
 @dataclass
 class TCASMeasurement:
-    """Read-only surveillance the aircraft ALREADY has (FLOCK never interrogates).  target_id None = unassociated."""
+    """Read-only surveillance the aircraft ALREADY has (ARC never interrogates).  target_id None = unassociated."""
     t: float
     range_m: float
     bearing_deg: Optional[float] = None

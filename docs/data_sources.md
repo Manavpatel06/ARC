@@ -1,4 +1,4 @@
-# FLOCK — data sources
+# ARC — data sources
 
 Check each source's current terms, rate limits and authentication before relying on it; the notes below are
 what our code assumes, not legal advice. **Recordings of real traffic are not committed to the repo.**

@@ -74,7 +74,7 @@ def own_frame(t, x, y, trk=86.0, gs=90.0):
 
 def ghost_run(steps=450, refute=True, ghost_commit=False, verified_peer=False):
     """Our aircraft on the 25L downwind, an unsigned ghost head-on 2.5 km ahead closing (optionally refuted by a peer
-    witness so it is SUSPICIOUS), optionally a real far-away FLOCK peer."""
+    witness so it is SUSPICIOUS), optionally a real far-away ARC peer."""
     pats = build_patterns()
     node = Node("N101", patterns=pats)
     node.aw.signed_radio = True

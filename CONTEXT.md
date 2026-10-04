@@ -1,9 +1,9 @@
-# FLOCK — Shared context for every AI agent and every teammate
+# ARC — Shared context for every AI agent and every teammate
 
 Paste this file at the top of every AI coding session, then paste your lane file from `lanes/`.
 
 ## What we are building (one paragraph)
-FLOCK is a peer-to-peer collision-avoidance node for general aviation (GA), built for Devils Invent "Future-Ready Avionics" (Honeywell Aerospace, ASU, Oct 2–4 2026), Problem Statement 2: "Automated TCAS for General Aviation — peer-to-peer, cost a priority, ranges up to 3 miles, warn if the pilot ignores, automate avoid via aircraft-to-aircraft negotiation of flight paths." Every aircraft runs the same node. The node reads only its own aircraft's state; everything about other aircraft arrives over a radio link. It predicts where other aircraft are *turning* (traffic-pattern intent), responds in four layers (sequence → warn → negotiate → act), chooses maneuvers that fit this airplane in this world (density altitude, terrain, obstacles, traffic), trusts targets by evidence rather than by broadcast, and hands control back the instant the pilot touches the stick. A Honeywell mentor called it "the idea in his dreams" this morning.
+ARC is a peer-to-peer collision-avoidance node for general aviation (GA), built for Devils Invent "Future-Ready Avionics" (Honeywell Aerospace, ASU, Oct 2–4 2026), Problem Statement 2: "Automated TCAS for General Aviation — peer-to-peer, cost a priority, ranges up to 3 miles, warn if the pilot ignores, automate avoid via aircraft-to-aircraft negotiation of flight paths." Every aircraft runs the same node. The node reads only its own aircraft's state; everything about other aircraft arrives over a radio link. It predicts where other aircraft are *turning* (traffic-pattern intent), responds in four layers (sequence → warn → negotiate → act), chooses maneuvers that fit this airplane in this world (density altitude, terrain, obstacles, traffic), trusts targets by evidence rather than by broadcast, and hands control back the instant the pilot touches the stick. A Honeywell mentor called it "the idea in his dreams" this morning.
 
 ## Hard rules (judges will probe these)
 1. **Nodes see only what a real node would see.** Own GPS/baro/heading from the world; peers only via radio messages; no god-view leaks.
@@ -18,7 +18,7 @@ FLOCK is a peer-to-peer collision-avoidance node for general aviation (GA), buil
 ## Phases
 - **Phase 1 — core avoidance ("ACAS core")**, target green by Sat 7 PM: world + controllers + AI pattern traffic, nodes with turn-aware prediction, four layers, Escape Field (performance + terrain), authority protocol with bounds, comms log + explain panel, Monte Carlo chart.
 - **Phase 2 — radio trust ("radio spoofing & channel")**, Sat evening: channel emulator with range/loss/latency/congestion, signed messages + replay protection, trust engine (plausibility, Doppler consistency, peer corroboration), spoof injection demo, lost-link fallback, AIS-style self-organizing slots for "avoiding clash of signals".
-- **Phase 3 — add-ons from FLOCK-X SENTINEL**, one at a time, only when 1 and 2 are green. Priority order: (1) Escape Crystal + Maneuver Freedom Index, (2) Marana historical replay, (3) Constraint Exchange / 4D contracts, (4) RED FLOCK simple adversarial search + regression library, (5) Threat Tubes with simple uncertainty inflation, (6) dragonfly threat attention. Camera/CV items are cut.
+- **Phase 3 — add-ons from ARC-X SENTINEL**, one at a time, only when 1 and 2 are green. Priority order: (1) Escape Crystal + Maneuver Freedom Index, (2) Marana historical replay, (3) Constraint Exchange / 4D contracts, (4) RED ARC simple adversarial search + regression library, (5) Threat Tubes with simple uncertainty inflation, (6) dragonfly threat attention. Camera/CV items are cut.
 
 ## Team and lanes
 - **Manas — Lane A, Sim world** (`/world`, `/web` views): CesiumJS/three.js Deer Valley, 3-DOF flight model, controllers, AI pattern traffic, cockpit/god/log views, world server.

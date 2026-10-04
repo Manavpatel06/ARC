@@ -1,5 +1,5 @@
 """
-radio/client.py — the FLOCK radio library nodes use (Lane C, tasks C1 + C4 + C5).
+radio/client.py — the ARC radio library nodes use (Lane C, tasks C1 + C4 + C5).
 Same API as stubs/loopback_radio.RadioClient, so Lane B swaps by changing one import:
 
     from radio.client import RadioClient

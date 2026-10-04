@@ -1,6 +1,6 @@
-# FLOCK — Status report, Sat 1:00 PM
+# ARC — Status report, Sat 1:00 PM
 
-**One line:** FLOCK is a peer-to-peer collision-avoidance node for general aviation that predicts where traffic is *turning* in the airport pattern, negotiates complementary maneuvers aircraft-to-aircraft, and only touches the controls inside printed safety bounds.
+**One line:** ARC is a peer-to-peer collision-avoidance node for general aviation that predicts where traffic is *turning* in the airport pattern, negotiates complementary maneuvers aircraft-to-aircraft, and only touches the controls inside printed safety bounds.
 
 ## Working right now (demo on request)
 - **Simulation world** (Manas): authoritative world server, 3-DOF flight model with density-altitude climb limits and live wind, 8 aircraft flying the real Deer Valley (KDVT) traffic pattern on both parallel runways, cockpit view with PlayStation controller + voice, god view of the whole pattern.

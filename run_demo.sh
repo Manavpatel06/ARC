@@ -7,7 +7,7 @@ set -u
 cd "$(dirname "$0")"
 PY=python3; [ -x .venv/bin/python ] && PY=.venv/bin/python
 PIDS=.demo_pids; mkdir -p harness/out
-if [ "${1:-}" = "--stop" ]; then [ -f $PIDS ] && xargs kill < $PIDS 2>/dev/null; rm -f $PIDS; echo "FLOCK demo stopped."; exit 0; fi
+if [ "${1:-}" = "--stop" ]; then [ -f $PIDS ] && xargs kill < $PIDS 2>/dev/null; rm -f $PIDS; echo "ARC demo stopped."; exit 0; fi
 SC=harness/scenarios/judges.json; SPOOF=0; STUBS=0; NOLIVE=0; ARC=0; VERIFY=1
 SPMODE=unsigned
 for a in "$@"; do case $a in --spoof) SPOOF=1;; --spoof-mode=*) SPOOF=1; SPMODE=${a#*=};; --stubs) STUBS=1;; --no-live) NOLIVE=1;; --arc|--legacy) ARC=1;; --no-verify) VERIFY=0;; *.json) SC=$a;; esac; done

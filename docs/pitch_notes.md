@@ -1,6 +1,6 @@
-# FLOCK — pitch notes
+# ARC — pitch notes
 
-**One-liner:** FLOCK verifies that every aircraft on your traffic display actually exists, by checking that
+**One-liner:** ARC verifies that every aircraft on your traffic display actually exists, by checking that
 its signals agree with each other, using equipment the plane already has.
 
 ## What already exists
@@ -10,7 +10,7 @@ its signals agree with each other, using equipment the plane already has.
 - **Academic ML detectors**: mostly offline, ground-station data, black boxes.
 - **Cryptographic ADS-B proposals**: need a protocol change on every aircraft — decades away.
 
-## What FLOCK adds
+## What ARC adds
 - **Onboard and continuous**: verdicts in the cockpit, every second, for every target.
 - **Multi-signal fusion with explanations**: TCAS range/bearing, Mode S presence, 1030/1090 timing, RSSI,
   one-transmitter clusters, kinematics, replay/duplicate detection → one trust score and the top reasons in plain English.

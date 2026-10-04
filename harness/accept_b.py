@@ -37,7 +37,7 @@ def check(name: str, ok: bool, detail: str, note: bool = False) -> None:
 
 
 def scenario(name: str, factory, duration=180.0, loss=0.0, latency=0.3, comply=0.0, **kw):
-    """comply=0: pilots ignore every advisory, so the layers have to escalate all the way (worst case for FLOCK)."""
+    """comply=0: pilots ignore every advisory, so the layers have to escalate all the way (worst case for ARC)."""
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", name), PATS, comply=comply)
     sim = Sim(PATS, ac, factory, loss=loss, latency_s=latency, dt=0.1, **kw)
     return sim, sim.run(duration)
@@ -83,7 +83,7 @@ def four_pm() -> None:
     tf, tb = min(rf.first_seen_t.values()), min(rb.first_seen_t.values())
     af, ab = min(rf.first_conflict_t.values()), min(rb.first_conflict_t.values())
     check("turn-aware prediction shows the base-to-final conflict >= 60 s before straight-line", tb - tf >= 60.0,
-          f"FLOCK first sees it at t={tf:.1f} s, straight-line at t={tb:.1f} s -> {tb - tf:.1f} s earlier "
+          f"ARC first sees it at t={tf:.1f} s, straight-line at t={tb:.1f} s -> {tb - tf:.1f} s earlier "
           f"(first advisory: {af:.1f} s vs {ab:.1f} s -> {ab - af:.1f} s). Bounded by the 90 s horizon: straight-line only "
           f"sees the merge ~{90 - (tb - tf):.0f} s before it starts, because it cannot know about the turn", note=True)
     order = ["SEQUENCE", "TRAFFIC", "RESOLVE", "TAKEOVER"]
@@ -109,7 +109,7 @@ def four_pm() -> None:
         check("two nodes commit", False, f"commits from {sorted(commits)}")
     _, rn = scenario("base_cutoff_conflict.json", None, duration=180.0)
     check("worst case (pilots ignore every advisory, one AP aircraft): bounded takeover only",
-          True, f"no logic: {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; FLOCK: {rf.min_h_m / FT:.0f} ft / "
+          True, f"no logic: {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; ARC: {rf.min_h_m / FT:.0f} ft / "
           f"{rf.min_v_at_min_h_m / FT:.0f} ft vertical ({'NMAC' if rf.nmac else 'no NMAC'}); baseline: {rb.min_h_m / FT:.0f} ft / {rb.min_v_at_min_h_m / FT:.0f} ft", note=True)
 
 
@@ -144,7 +144,7 @@ def seven_pm() -> None:
     ac2 = load_scenario(low, PATS, comply=0.0)
     res2 = Sim(PATS, ac2, flock, loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False).run(75.0)
     inh = [f for _, i, f in res2.advisories if f["level"] == "RESOLVE" and f["reason"].get("takeover_inhibited")]
-    check("below 300 ft AGL on final: FLOCK warns but does not take over", bool(inh) and not res2.commands,
+    check("below 300 ft AGL on final: ARC warns but does not take over", bool(inh) and not res2.commands,
           f"{inh[0]['text']} | inhibited: {inh[0]['reason']['takeover_inhibited']}" if inh else "no inhibited RESOLVE advisory")
 
     # RELEASE on STICK within one tick
@@ -209,8 +209,8 @@ def phase2_b12() -> None:
     r3 = Sim(PATS, ac, flock, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
     rn = Sim(PATS, ac, None, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
-    check("three_on_final: FLOCK resolves what is an NMAC without it", rn.nmac and not r3.nmac,
-          f"no logic {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; FLOCK {r3.min_h_m / FT:.0f} ft / "
+    check("three_on_final: ARC resolves what is an NMAC without it", rn.nmac and not r3.nmac,
+          f"no logic {rn.min_h_m / FT:.0f} ft / {rn.min_v_at_min_h_m / FT:.0f} ft vertical; ARC {r3.min_h_m / FT:.0f} ft / "
           f"{r3.min_v_at_min_h_m / FT:.0f} ft vertical (10% loss, 70% pilot compliance)")
 
 

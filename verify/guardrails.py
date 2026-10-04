@@ -2,7 +2,7 @@
 verify/guardrails.py - rules the trust state may never break, applied after fusion.
 
 1. A target our own TCAS currently tracks where it claims to be is never SUSPECT (floor: UNVERIFIED).
-   FLOCK may only downgrade targets known solely through ADS-B / passive data.
+   ARC may only downgrade targets known solely through ADS-B / passive data.
 2. Not enough evidence (no check with real confidence) -> UNVERIFIED, never SUSPECT and never VERIFIED.
 3. VERIFIED needs physical evidence (TCAS agreement or Mode S replies), not just plausible motion.
 4. SUSPECT needs at least one strong negative check, not an accumulation of weak doubts.

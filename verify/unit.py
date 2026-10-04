@@ -1,5 +1,5 @@
 """
-verify/unit.py - the FLOCK onboard unit: receive only, advisory only.
+verify/unit.py - the ARC onboard unit: receive only, advisory only.
 
     python verify/unit.py --id N101 [--world ws://localhost:8765]
 

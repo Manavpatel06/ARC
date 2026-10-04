@@ -1,10 +1,10 @@
-# FLOCK — starter repo
+# ARC — starter repo
 
 Peer-to-peer collision avoidance for general aviation. Devils Invent "Future-Ready Avionics" (Honeywell Aerospace), PS 2. Team: Manav · Manas · Reya · Mansi.
 
 GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
 
-> **Now: advisory-only traffic VERIFICATION** (`FLOCK_claude_code_prompt.md`). FLOCK checks that every aircraft on
+> **Now: advisory-only traffic VERIFICATION** (`FLOCK_claude_code_prompt.md`). ARC checks that every aircraft on
 > the traffic display really exists — TCAS, Mode S, 1030/1090 timing, signal strength, one-transmitter clusters,
 > kinematics, replay — and never flies the aircraft or transmits. Start: `.\run_demo.ps1 -Scenario
 > harness\scenarios\live_kdvt.json`; read `verify/README.md`, `docs/architecture.md`, `docs/demo_script.md`;
@@ -44,7 +44,7 @@ Windows (world laptop): `.\run_demo.ps1` (add `-Spoof` for GHOST7, `-Stubs` to f
 ## Run order by hand (what run_demo does)
 1. `python world/world_server.py --scenario harness/scenarios/judges.json`
 2. `python radio/channel.py --world ws://<ip>:8765 --loss 0.1 --latency 0.3`
-3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per FLOCK aircraft; `run_demo.sh` spawns all)
+3. `python node/node.py --id N101 --world ws://<ip>:8765` (one per ARC aircraft; `run_demo.sh` spawns all)
 4. Open `web/index.html?role=cockpitA` / `cockpitB` / `god` / `log` on the four laptops.
 
 ## Shared building blocks (import, don't rewrite)

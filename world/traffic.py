@@ -23,7 +23,7 @@ Extra phases for live traffic (TrafficGenerator below) and free-flying judges:
   DEPART     after takeoff: climb out on the centreline, turn to a departure heading, leave the area
   TRANSIT    judge start: straight and level on the inbound track until 2 NM past the field, then JOIN
   GO_AROUND  climb on runway heading (offset left/right if advised), then the circuit again from UPWIND
-AI pilots also listen to their FLOCK node (advise()): ~3 s after a SEQUENCE / RESOLVE they do what it says,
+AI pilots also listen to their ARC node (advise()): ~3 s after a SEQUENCE / RESOLVE they do what it says,
 70 % of the time - EXTEND (later base turn), SLOW AND SPACE, TURN LEFT/RIGHT n, CLIMB, DESCEND - and go
 around if the advice reaches them on final.
 
@@ -159,7 +159,7 @@ class PatternPilot:
             self.phase = "LEVEL"
         return self.phase
 
-    # ---------- FLOCK advice (AI pilots) ----------
+    # ---------- ARC advice (AI pilots) ----------
     def advise(self, m: dict, now: float) -> dict | None:
         """An ADVISORY from this aircraft's node. Decides (FOLLOW_P) whether the pilot complies and queues the
         action ~3 s out. Returns a log entry, or None when there is nothing to act on or it is a repeat."""
@@ -555,7 +555,7 @@ class TrafficGenerator:
         return ac_id
 
     def _see_and_avoid(self, now: float) -> None:
-        """Last resort, what any pilot does without FLOCK: traffic ahead inside 0.5 NM that will pass within
+        """Last resort, what any pilot does without ARC: traffic ahead inside 0.5 NM that will pass within
         150 m / 300 ft in the next 30 s -> turn right 25 deg for a while (14 CFR 91.113), or go around if on
         final. (Parallel finals 214 m apart never trigger it.)"""
         pts = {i: (P.to_enu(a.lat, a.lon), _unit(a.track_deg), a.gs_kt * KT) for i, a in self.w.fleet.items()

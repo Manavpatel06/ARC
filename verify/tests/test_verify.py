@@ -1,5 +1,5 @@
 """
-verify/tests/test_verify.py - FLOCK verification: checks, fusion, guardrails, and the full simulated loop
+verify/tests/test_verify.py - ARC verification: checks, fusion, guardrails, and the full simulated loop
 (world -> sensors -> onboard unit) with a ghost injected.   python -m pytest -q verify/tests
 """
 from __future__ import annotations

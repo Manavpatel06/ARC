@@ -1,5 +1,5 @@
 """
-harness/e2e_check.py — Lane D. Live end-to-end check of the FLOCK core against the REAL running system.
+harness/e2e_check.py — Lane D. Live end-to-end check of the ARC core against the REAL running system.
 
 Connects to a running world as `god` (truth + decisions) and `log` (every radio packet), watches for
 --seconds, then answers the four core questions with numbers:
@@ -9,7 +9,7 @@ Connects to a running world as `god` (truth + decisions) and `log` (every radio 
   4. Do they avoid in real time?      decision timeline per aircraft + truth minimum separation, NMACs.
 
     python harness/e2e_check.py --world ws://localhost:8765 --seconds 150 [--out harness/out/e2e_<name>.json]
-Run once with nodes (FLOCK) and once with only the world (no nodes) for the same scenario to compare.
+Run once with nodes (ARC) and once with only the world (no nodes) for the same scenario to compare.
 """
 from __future__ import annotations
 import argparse, asyncio, collections, json, math, time

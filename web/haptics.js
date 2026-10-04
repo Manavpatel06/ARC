@@ -1,4 +1,4 @@
-// web/haptics.js — Lane A. Controller rumble that rises with the FLOCK alert level.
+// web/haptics.js — Lane A. Controller rumble that rises with the ARC alert level.
 //
 // Driven ONLY by what this aircraft's node reports (ADVISORY level, TAKEOVER command, TRUST rel
 // ranges) — never by world truth — so FAKE / SUSPICIOUS targets never shake the stick.
@@ -6,7 +6,7 @@
 //   SEQUENCE        one soft tick when it first appears
 //   TRAFFIC         light pulse every 2 s
 //   RESOLVE         strong double pulse every 1 s (NO_SOLUTION too)
-//   TAKEOVER        continuous shake (stick-shaker) while FLOCK has control
+//   TAKEOVER        continuous shake (stick-shaker) while ARC has control
 //   proximity       TRUSTED target inside 1 NM: pulses speed up and strengthen as range closes
 //   bump()          one short knock: control handed back (STICK / AP disconnect)
 //   turbulence      light rumble while the own aircraft is being bounced (own state, not traffic)

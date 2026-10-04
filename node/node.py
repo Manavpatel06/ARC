@@ -660,7 +660,7 @@ class Node:
             self._no_solution(now, pid, c, res)
             return
         if ctx["ap_equipped"] and not ctx["stick_active"]:
-            # say why FLOCK will not fly it: never from an unverified target's data, and what the bounds monitor says
+            # say why ARC will not fly it: never from an unverified target's data, and what the bounds monitor says
             ch = res.chosen.cand
             v = authority.vet({"mode": "TAKEOVER", "bank_cmd_deg": ch.bank, "vs_cmd_fpm": ch.vs_fpm, "hold_s": 10.0}, ctx)
             why["takeover_inhibited"] = dict({"trust": f"target {self.trust.aw_state(pid)}: no automatic command from its data"},
@@ -695,7 +695,7 @@ class Node:
                 if not v.ok:
                     blocked[cand.name] = f"bounds: {v.rejected}"
 
-        # FLOCK flies at most 30 deg for 10 s on its own authority; a pilot can be advised up to 45 deg for 15 s
+        # ARC flies at most 30 deg for 10 s on its own authority; a pilot can be advised up to 45 deg for 15 s
         pilot_mode = not (ctx["ap_equipped"] and not ctx["stick_active"])
         hold_s = PILOT_HOLD_S if pilot_mode else 10.0
 
@@ -812,7 +812,7 @@ class Node:
             return
         res.rejected.update(rejected_by_auth)
         if res.ranked:
-            # a maneuver exists but the bounds monitor will not let FLOCK fly it: warn the pilot, say why
+            # a maneuver exists but the bounds monitor will not let ARC fly it: warn the pilot, say why
             text, speak = layers.maneuver_text(dec.cand, pid, dec.peer_sense, urgent=True)
             self._advise("RESOLVE", text, speak, pid, c.ttc_s,
                          dict(why, takeover_inhibited=rejected_by_auth, ttc_s=round(c.ttc_s, 1)))

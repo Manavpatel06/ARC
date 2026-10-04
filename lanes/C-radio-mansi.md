@@ -21,7 +21,7 @@ Build the emulated peer-to-peer radio and everything that makes it trustworthy: 
    - (camera corroboration: schema field exists, NOT implemented — CV is cut.)
    Output a score 0–1 and an evidence list of strings.
 6. `radio/spoofer.py` — rogue node: broadcasts `GHOST7` on final (unsigned, or signed with an unknown key, or kinematically impossible); CLI flags for each attack; `--sybil 3` broadcasts three mutually consistent fakes to show the known limit.
-7. `radio/faults.py` — scripted faults for the demo and for RED FLOCK later: drop a specific MANEUVER_COMMIT, kill a node's heartbeat for 5 s, spike latency to 2 s.
+7. `radio/faults.py` — scripted faults for the demo and for RED ARC later: drop a specific MANEUVER_COMMIT, kill a node's heartbeat for 5 s, spike latency to 2 s.
 
 ## Acceptance tests
 - 1:00 PM: two nodes exchange STATE through `channel.py` with range cutoff; a third node 4 miles away hears nothing; every packet appears in the log.

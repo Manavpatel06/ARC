@@ -1,5 +1,5 @@
 """
-FLOCK shared schemas (pydantic v2). Import this everywhere; do not fork it.
+ARC shared schemas (pydantic v2). Import this everywhere; do not fork it.
 Change only by team agreement. See INTERFACE.md for semantics.
 v1.1 (Sat 12:20): additive only — TrustTarget.rel, Hello, Truth, Prediction, SetDA, Crystal.
 """
@@ -245,7 +245,7 @@ class AircraftSpec(BaseModel):
     ap: bool = False
     human: bool = False
     camera: bool = False
-    flock: bool = True          # False = aircraft with no FLOCK node at all
+    flock: bool = True          # False = aircraft with no ARC node at all
 
 class Scenario(BaseModel):
     name: str

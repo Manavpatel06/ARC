@@ -1,5 +1,5 @@
 """
-world/sensors.py - what each judge aircraft's OWN equipment receives (input to the FLOCK onboard unit).
+world/sensors.py - what each judge aircraft's OWN equipment receives (input to the ARC onboard unit).
 
 The world knows the truth; this module turns it into the evidence a real aircraft would have, with
 realistic rates, ranges and noise. Nothing here is a claim the unit can't make itself:

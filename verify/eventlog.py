@@ -1,5 +1,5 @@
 """
-verify/eventlog.py - FLOCK's own security: a tamper-evident detection record and a signed data link.
+verify/eventlog.py - ARC's own security: a tamper-evident detection record and a signed data link.
 
 EventLog: append-only JSON lines, each entry hash-chained to the one before and signed with the unit's
 Ed25519 key (PyNaCl):

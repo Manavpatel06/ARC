@@ -1,5 +1,5 @@
 """
-radio/crypto.py — Ed25519 signing + replay protection for the FLOCK radio envelope (Lane C).
+radio/crypto.py — Ed25519 signing + replay protection for the ARC radio envelope (Lane C).
 
 What is signed: the canonical JSON of {msg, from, seq, t, body} (sorted keys, no spaces).
 `sig` is base64 Ed25519 over those bytes (64 bytes -> 88 chars).

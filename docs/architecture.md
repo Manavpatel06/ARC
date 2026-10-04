@@ -1,6 +1,6 @@
-# FLOCK — architecture (traffic verification)
+# ARC — architecture (traffic verification)
 
-FLOCK is an **onboard, advisory-only traffic verification system**: for every aircraft on the traffic
+ARC is an **onboard, advisory-only traffic verification system**: for every aircraft on the traffic
 display it says whether that aircraft really exists where it claims to be, with a trust score and reasons.
 It never commands a maneuver, never talks to the autopilot, never transmits, and never tells a pilot to
 ignore TCAS. (The earlier collision-avoidance demo still runs with `run_demo.ps1 -Legacy`.)

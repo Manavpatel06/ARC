@@ -1,5 +1,5 @@
 """
-eval/sim.py - run one labelled scenario offline: world physics + live traffic + world/sensors.py + one FLOCK
+eval/sim.py - run one labelled scenario offline: world physics + live traffic + world/sensors.py + one ARC
 onboard unit (verify/unit.py's VerifyUnit), no server, no network. Same code paths as the live demo.
 
     from eval.sim import run

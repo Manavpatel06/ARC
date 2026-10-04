@@ -16,7 +16,7 @@ Start now, without Lane B or D: run `python stubs/fake_node.py --id N101 --speed
 8. **Use the shared tools:** `agl_ft = alt_msl_ft − data.terrain.elev_at_ft(lat, lon)`; DA and wind from `data.metar.load()`; climb from `data.metar.climb_fpm(da)`; ground velocity = air velocity + `data.metar.wind_vector_ms(wx)` so gs/track differ from ias/heading. `stubs/fake_world.py` implements 2, 6, 7 and 8 as a reference.
 
 ## Goal
-Build the authoritative simulation world and the three browser views so two judges can fly two aircraft with PlayStation controllers inside a traffic pattern at Deer Valley (KDVT) with 6 AI aircraft, while FLOCK nodes (Lane B) connect over WebSocket and receive only their own aircraft's state.
+Build the authoritative simulation world and the three browser views so two judges can fly two aircraft with PlayStation controllers inside a traffic pattern at Deer Valley (KDVT) with 6 AI aircraft, while ARC nodes (Lane B) connect over WebSocket and receive only their own aircraft's state.
 
 ## Deliverables (in `/world` and `/web`)
 1. `world/world_server.py` — FastAPI + websockets. Runs physics at 20 Hz for all aircraft. Hub for roles `node:<id>`, `cockpit:<id>`, `god`, `log`, `channel`, `camera`, `data`. Sends OWNSHIP only to the matching node; applies COMMAND only if `ap_equipped` and `stick_active` is false; emits STICK when a controlled aircraft receives INPUT during a TAKEOVER; mirrors every ADVISORY/COMMAND/TRUST and every radio frame it is handed to role `log`.

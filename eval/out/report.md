@@ -1,4 +1,4 @@
-# FLOCK verification - evaluation
+# ARC verification - evaluation
 
 `python eval/run_eval.py --seeds 4` · 4 seeds per attack · attack at t = 30 s · 150 s per run · live KDVT traffic (5-8 AI aircraft, runway 07) · judge A's onboard unit · 363 s wall time
 
@@ -41,7 +41,7 @@ AUC 0.986 over every target-second after the attack starts (attack aircraft vs r
 
 ![time to detect](time_to_detect.png)
 
-Drift is slow by design: the attack walks the position 12 m/s, and FLOCK flags it once the offset exceeds what TCAS noise can explain (yellow first, then red).
+Drift is slow by design: the attack walks the position 12 m/s, and ARC flags it once the offset exceeds what TCAS noise can explain (yellow first, then red).
 
 ## Ablation - why fusion beats any single check
 

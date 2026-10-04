@@ -1,5 +1,5 @@
 """
-verify/ - FLOCK onboard traffic VERIFICATION (advisory only, receive only).
+verify/ - ARC onboard traffic VERIFICATION (advisory only, receive only).
 
 Answers one question per aircraft on the traffic display: does it really exist where it claims to be?
 It cross-checks each target's ADS-B claims against independent evidence the aircraft already receives

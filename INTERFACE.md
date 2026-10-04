@@ -1,4 +1,4 @@
-# FLOCK — Interface contract (v1.1; v1 frozen Sat 11:30 AM, v1.1 additive changes Sat 12:20 PM; change only by team agreement)
+# ARC — Interface contract (v1.1; v1 frozen Sat 11:30 AM, v1.1 additive changes Sat 12:20 PM; change only by team agreement)
 
 > **v1.1 changes (additive — nothing in v1 changed meaning):** `rel` on each TRUST target (radar positions) · `HELLO` + cockpit A/B resolution · `TRUTH`, `PREDICTION`, `SET_DA`, `CRYSTAL` formalised in `schemas.py` · INPUT semantics pinned · OWNSHIP ground speed/track include wind · scenario `start` semantics pinned (`pattern.place`). See §6.
 

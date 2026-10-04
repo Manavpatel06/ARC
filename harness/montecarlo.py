@@ -1,5 +1,5 @@
 """
-harness/montecarlo.py — Lane B (B10).  FLOCK vs "straight-line + fixed maneuver", same encounters.
+harness/montecarlo.py — Lane B (B10).  ARC vs "straight-line + fixed maneuver", same encounters.
 
 Encounter set (KDVT 25L left traffic, seeded, randomised pilot behaviour):
   conflict-prone  : overtake on downwind, base-to-final cut-off, base vs straight-in, head-on crosswind
@@ -226,7 +226,7 @@ def plot(summary: dict, path: str, n_per_kind: int, loss: float, latency: float)
     import matplotlib.pyplot as plt
 
     C = {"none": "#8a8a8a", "baseline": "#c0504d", "flock_nosq": "#7fa8d6", "flock": "#2f6fb5"}
-    L = {"none": "no avoidance", "baseline": "straight-line\n+ fixed R30", "flock_nosq": "FLOCK\n(pilots ignore\nsequencing)", "flock": "FLOCK"}
+    L = {"none": "no avoidance", "baseline": "straight-line\n+ fixed R30", "flock_nosq": "ARC\n(pilots ignore\nsequencing)", "flock": "ARC"}
     m = summary["modes"]
     sel = [k for k in MODES if k != "none"]
     fig, ax = plt.subplots(1, 4, figsize=(18, 4.9))
@@ -266,7 +266,7 @@ def plot(summary: dict, path: str, n_per_kind: int, loss: float, latency: float)
     for a in ax:
         a.spines[["top", "right"]].set_visible(False)
         a.tick_params(axis="x", labelsize=7.5)
-    fig.suptitle(f"FLOCK vs straight-line baseline - KDVT 25L pattern encounters: {summary['n_conflict']} conflict / "
+    fig.suptitle(f"ARC vs straight-line baseline - KDVT 25L pattern encounters: {summary['n_conflict']} conflict / "
                  f"{summary['n_benign']} benign, loss {int(loss*100)}%, latency {latency}s, pilots: 5 s reaction, 70% comply (simulation)",
                  fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.93))

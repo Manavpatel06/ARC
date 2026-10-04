@@ -1,4 +1,4 @@
-# FLOCK — Build plan, Saturday Oct 3 → Sunday Oct 4, 2026
+# ARC — Build plan, Saturday Oct 3 → Sunday Oct 4, 2026
 
 Work stops Sunday 11:00 AM. Presentations noon. Status reports Sat 1:00 PM and 7:00 PM (mandatory).
 
@@ -10,7 +10,7 @@ Definition of green: two judges' aircraft (controllers) + 6 AI aircraft fly the 
 | 11:30 | Contract frozen | Agree INTERFACE.md + schemas.py together (15 min). Repo pushed. | | | |
 | 1:00 PM status | Skeleton alive | World server runs physics for 8 aircraft; cockpit page shows own aircraft + controller input; god view draws aircraft on a KDVT map (terrain can be flat for now) | node.py connects, receives OWNSHIP, broadcasts STATE, classifies its own leg, emits a TRAFFIC advisory on straight-line CPA | channel.py relays STATE between nodes with range cutoff + loss; schema validation on every message | METAR cached and density altitude computed; runways_kdvt.json; log page shows LOG frames live; one-line pitch ready for status report |
 | 4:00 PM | Loop closes | AI pattern traffic flies legs correctly; bank-to-turn + climb limits from density altitude; COMMAND applied only if ap_equipped and no stick | Turn-aware prediction (predict the next leg's turn); four layers with timings; negotiation (lower ID commits first, complementary sense); Escape Field scoring candidates against traffic + performance | Signed envelopes + seq/time window; HEARTBEAT and lost-link detection → fallback flag | Terrain + obstacle grids loaded into node constraints; explain panel renders ADVISORY.reason and COMMAND.reason; voice via speechSynthesis in cockpit page |
-| 7:00 PM status | Phase 1 green | Cesium terrain or three.js fallback; three views stable on 3 laptops over the hotspot | Authority protocol + bounds monitor; NO_SOLUTION path; harness: FLOCK vs straight-line chart | Spoof injector exists (unsigned GHOST7); congestion knob | End-to-end run recorded on video; status-report demo driven by Manav |
+| 7:00 PM status | Phase 1 green | Cesium terrain or three.js fallback; three views stable on 3 laptops over the hotspot | Authority protocol + bounds monitor; NO_SOLUTION path; harness: ARC vs straight-line chart | Spoof injector exists (unsigned GHOST7); congestion knob | End-to-end run recorded on video; status-report demo driven by Manav |
 
 
 ## Dependency map — what each lane needs from whom, and what stands in until then
@@ -41,15 +41,15 @@ Finish your lane list → take the next *Phase 2* row in your lane → take a **
 - Lost link after a MANEUVER_COMMIT: commits time out consistently; both default to right turn; show in log.
 - Judge round 2 at ~midnight (blind, fresh judges) once Phase 2 is green.
 
-## Phase 3 — Add-ons from FLOCK-X SENTINEL. One at a time, only if 1 and 2 are green
+## Phase 3 — Add-ons from ARC-X SENTINEL. One at a time, only if 1 and 2 are green
 
 1. **Escape Crystal + MFI** (Manav): sample the reachable set (bank × vs × 10 s), subtract terrain/obstacles/traffic tubes; MFI = safe/reachable; render the crystal around the aircraft in the god view; MFI collapse as an extra trigger.
 
-2. **Marana replay** (Reya): reconstruct WPR25FA097 geometry (stop-and-go C172 + go-around Lancair) as a scenario; run baseline vs FLOCK; report lead time honestly.
+2. **Marana replay** (Reya): reconstruct WPR25FA097 geometry (stop-and-go C172 + go-around Lancair) as a scenario; run baseline vs ARC; report lead time honestly.
 
 3. **Constraint Exchange / 4D contracts** (Mansi + Reya): SAFE_SET and CONTRACT messages; contract violation widens the target's uncertainty.
 
-4. **RED FLOCK lite** (Reya): random/evolutionary search over scenario parameters to minimize separation; failures saved as regression scenarios.
+4. **RED ARC lite** (Reya): random/evolutionary search over scenario parameters to minimize separation; failures saved as regression scenarios.
 
 5. **Threat Tubes** (Reya): widen predicted path uncertainty with staleness and non-compliance.
 

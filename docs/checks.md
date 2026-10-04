@@ -1,4 +1,4 @@
-# FLOCK — verification checks, fusion and guardrails
+# ARC — verification checks, fusion and guardrails
 
 Every check: `check(track, ctx, cfg) -> {score 0..1 | None, confidence, reason}`. 0 = evidence of spoofing,
 1 = evidence it is real, **None = not applicable / not enough data — never held against a target**.

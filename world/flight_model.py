@@ -61,7 +61,7 @@ HARD_LANDING_FPM = 800.0
 IDLE_THROTTLE = 0.15       # pilot throttle below this on a runway = idle + wheel brakes
 ROUGH_GROUND_KT_S = 6.0    # off-runway deceleration (no takeoff possible)
 AP_REQUIRES_EQUIPMENT = True   # AI aircraft need ap_equipped for the AP button; judge (human) aircraft always get it
-                               # as a sim convenience. FLOCK takeover (apply_command) still requires ap_equipped.
+                               # as a sim convenience. ARC takeover (apply_command) still requires ap_equipped.
 
 def climb_capability_fpm(da_ft: float) -> float:
     """Max sustained climb (fpm) vs density altitude — Lane D's table, one source for everyone."""

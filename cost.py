@@ -4,10 +4,10 @@ TIE-BREAKER and by the log panel + pitch numbers).
 
 Rule (do not change): SAFETY FIRST, COST SECOND. A maneuver is only ever compared on cost against
 other maneuvers that pass every safety check (traffic margin, terrain, obstacles, performance, bounds).
-Cost never makes FLOCK pick a less safe maneuver.
+Cost never makes ARC pick a less safe maneuver.
 
 Why it matters: today's tools resolve pattern conflicts late, so the usual fix is big — a go-around
-(a whole extra circuit) or a 360° turn for spacing. FLOCK sees the conflict ~60-90 s early, so the
+(a whole extra circuit) or a 360° turn for spacing. ARC sees the conflict ~60-90 s early, so the
 fix is small: "extend downwind 15 s". This module puts numbers on that difference.
 
     from cost import action_cost, compare_table
@@ -99,9 +99,9 @@ def candidate_cost(name: str, bank_deg: float = 0.0, vs_fpm: float = 0.0, hold_s
 
 def compare_table() -> list[dict]:
     """The pitch slide: what each way of resolving the same pattern conflict costs one aircraft."""
-    rows = [("FLOCK early sequencing: extend downwind 15 s", action_cost("EXTEND", seconds=15)),
-            ("FLOCK resolve: 20° turn for 10 s, then rejoin", action_cost("RESOLVE_TURN", bank_deg=20, hold_s=10)),
-            ("FLOCK resolve: 30° turn for 10 s, then rejoin", action_cost("RESOLVE_TURN", bank_deg=30, hold_s=10)),
+    rows = [("ARC early sequencing: extend downwind 15 s", action_cost("EXTEND", seconds=15)),
+            ("ARC resolve: 20° turn for 10 s, then rejoin", action_cost("RESOLVE_TURN", bank_deg=20, hold_s=10)),
+            ("ARC resolve: 30° turn for 10 s, then rejoin", action_cost("RESOLVE_TURN", bank_deg=30, hold_s=10)),
             ("Late fix: 360° turn for spacing (20° bank)", action_cost("TURN_360", bank_deg=20)),
             ("Late fix: go-around, one more KDVT circuit", action_cost("GO_AROUND"))]
     return [dict(label=l, **c) for l, c in rows]

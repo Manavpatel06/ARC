@@ -1,7 +1,7 @@
 """
 harness/surveillance_sim.py — SIMULATED independent surveillance for AirWitness-Hybrid (Lane B).
 
-FLOCK never interrogates anything.  On real aircraft these inputs would come read-only from avionics the aircraft
+ARC never interrogates anything.  On real aircraft these inputs would come read-only from avionics the aircraft
 already has (a TCAS / ACAS unit's traffic file, a 1090 MHz receiver).  The current stack has none of that, so this
 module produces the SAME objects from the TRUE position of a real transmitter (or from nothing, for a ghost), and
 node/airwitness.py consumes them through add_tcas / add_mode_s / add_interrogation_reply unchanged.

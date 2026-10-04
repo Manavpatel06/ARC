@@ -1,6 +1,6 @@
-FLOCK onboard traffic **verification** — advisory only, receive only (`FLOCK_claude_code_prompt.md`).
+ARC onboard traffic **verification** — advisory only, receive only (`FLOCK_claude_code_prompt.md`).
 
-FLOCK checks whether every aircraft on the traffic display really exists where it claims to be, by
+ARC checks whether every aircraft on the traffic display really exists where it claims to be, by
 cross-checking its ADS-B claims against evidence the aircraft already receives. Per target: trust 0–100,
 VERIFIED / UNVERIFIED / SUSPECT and plain-English reasons. It never commands a maneuver, never talks to the
 autopilot, never transmits.
