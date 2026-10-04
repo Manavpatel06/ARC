@@ -237,7 +237,8 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
              exclude: tuple = (), require_maneuver: bool = False,
-             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None) -> EscapeResult:
+             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None,
+             prefer_hold: bool = False) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
@@ -298,6 +299,13 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
                                   round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
         good = group + [e for e in good if e not in group]
     ranked = good + marginal
+    if prefer_hold:
+        # 14 CFR 91.113 stand-on aircraft: keep course and speed if that is ALREADY safe with full margin
+        # (hold is only in `good` when it is feasible and margin >= MARGIN_OK); otherwise act like anyone else
+        h = next((e for e in ranked if e.cand.kind == "hold"), None)
+        if h is not None:
+            ranked = [h] + [e for e in ranked if e is not h]
+            require_maneuver = False
     if require_maneuver:
         # complementary = our maneuver must add separation on top of what the peer's maneuver already gives
         adds = [e for e in ranked if e.cand.kind != "hold" and e.margin >= base + 0.15]

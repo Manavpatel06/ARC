@@ -82,20 +82,29 @@ class Negotiator:
                 "start_t": now, "hold_s": hold_s}
 
     def decide(self, now: float, target: str, evaluate: Callable[[Optional[dict]], EscapeResult],
-               expected_peer: Callable[[], Optional[dict]], hold_s: float = 10.0) -> Optional[Decision]:
+               expected_peer: Callable[[], Optional[dict]], hold_s: float = 10.0,
+               i_go_first: Optional[bool] = None, stand_on: bool = False) -> Optional[Decision]:
         """
         evaluate(peer_commit_or_None) -> EscapeResult for me given the peer's (assumed or real) maneuver.
         expected_peer() -> the commit body the lower-ID peer is expected to choose (higher ID only), or None.
         Returns None when there is no feasible candidate at all (caller raises NO_SOLUTION).
         """
         p = self.pair(target)
-        lower = self.own_id < target
+        # 14 CFR 91.113: the give-way aircraft commits first, the stand-on aircraft responds; when the rules do not
+        # give one clear answer (head-on, ambiguous) both fall back to the old lower-ID-first ordering
+        lower = (self.own_id < target) if i_go_first is None else i_go_first
         lost = self.link_lost(target, now)
         if lost:
             basis = "fallback-link-lost"
-            if p.my_cand == FALLBACK_NAME and p.my_basis == basis:
-                return Decision(target, p.my_cand, "R", basis, "R", None, None)
+            if p.my_cand in (FALLBACK_NAME, "HOLD") and p.my_basis in (basis, basis + "-stand-on"):
+                return Decision(target, p.my_cand, p.my_commit["sense"] if p.my_commit else "R", p.my_basis, "R", None, None)
             res = evaluate({"sense": "R", "bank_deg": 30.0, "start_t": now, "hold_s": hold_s})
+            if stand_on:
+                # the give-way peer falls back to R30 by the same rule; the stand-on aircraft keeps its course if that
+                # is safe with full margin against the peer's fallback turn, else it turns right too
+                h = next((e for e in res.evals if e.cand.kind == "hold"), None)
+                if h is not None and h.feasible and h.margin >= MARGIN_OK:
+                    return self._finish(p, target, h, res, basis + "-stand-on", "R", now, hold_s)
             ev = next((e for e in res.evals if e.cand.name == FALLBACK_NAME), None)
             if ev is None or not ev.feasible:
                 return self._finish(p, target, None, res, basis, "R", now, hold_s)

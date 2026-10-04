@@ -24,7 +24,7 @@ from node.geometry import (FT, KT, G, LEG_ORDER, GLIDE_DEG, Pattern, hvec, turn_
 
 CONF_MIN = 0.6
 PATTERN_BANK_DEG = 20.0
-SIGMA0_M = 15.0
+SIGMA0_M = 46.0          # 1-sigma position error: 14 CFR 91.227 requires NACp < 0.05 NM (92.6 m, 95 %) -> ~46 m (was 15 m)
 SIGMA_V0_M = 3.0
 CLIMB_MS = 500 * FT / 60.0
 DESC_BASE_MS = 500 * FT / 60.0
