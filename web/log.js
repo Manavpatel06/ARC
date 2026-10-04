@@ -26,6 +26,37 @@ const entries = [];         // displayable entries {i, f, cls, typ, sum, src, ki
 const aircraft = new Set();
 const acOff = new Set();
 const lastTrust = new Map();  // "N101>GHOST7" -> state
+const firstHeard = new Map(); // radio id -> first time any packet from it was on the air (time-to-detect)
+const fakes = new Map();      // target id -> {t, by, dt} first time any node called it FAKE
+let lastDecisionBanner = 0, lastSpoofBanner = 0;
+
+// Trust evidence in words a judge can read (radio/evidence.py + radio/client.py reasons).
+function evidenceText(ev) {
+  const s = String(ev);
+  let m;
+  if (s === "unsigned") return "no signature";
+  if (s === "unknown_key") return "signed with an unregistered key";
+  if (s === "signed") return "valid signature";
+  if (s === "plausible") return "flight path plausible";
+  if ((m = s.match(/^rf_rssi_mismatch:(.+)$/))) return `signal strength ${m[1]} off for where it claims to be`;
+  if ((m = s.match(/^rf_doppler_mismatch:(.+)$/))) return `Doppler ${m[1]} off for how it claims to move`;
+  if ((m = s.match(/^kinematics_violation:(.+)$/))) return ({ speed: "impossible speed", position_jump: "position jumped",
+    accel: "impossible acceleration", turn_rate: "impossible turn rate", climb_rate: "impossible climb rate" }[m[1]] || `impossible ${m[1]}`);
+  if ((m = s.match(/^refuted_by:(.+)$/))) return `${m[1]} should hear it and does not`;
+  if ((m = s.match(/^corroborated:(\d+)$/))) return `confirmed by ${m[1]} aircraft`;
+  if (s === "no_corroboration") return "no other aircraft hears it";
+  if (s.startsWith("sighting:")) return `seen by ${s.slice(9)}`;
+  return s;
+}
+function rejectText(reason) {
+  const r = String(reason || "");
+  if (/unsigned_impersonation/.test(r)) return "unsigned packet pretending to be a registered aircraft";
+  if (/bad_sig|signature/.test(r)) return "signature does not match (packet altered)";
+  if (/replay_seq|seq/.test(r)) return "old sequence number (replayed packet)";
+  if (/time_window|time/.test(r)) return "timestamp too old (replayed packet)";
+  if (/key/.test(r)) return "key not registered";
+  return r;
+}
 let paused = false, selected = null, rateCount = 0;
 const st = { delivered: 0, dropped: 0, lost: 0, range: 0, lat: [], slot: 0, rejected: 0 };
 
@@ -53,13 +84,22 @@ function classify(f) {
       }
       e.trustChange = changes.length > 0;
       const list = (changes.length ? changes : p.targets || []);
-      e.sum = list.map((tg) => `${tg.id} ${tg.state} ${num(tg.score, 2)}${tg.evidence?.length ? " (" + tg.evidence.join(", ") + ")" : ""}`).join("  ·  ");
+      e.sum = list.map((tg) => `${tg.id} ${tg.state} ${num(tg.score, 2)}${tg.evidence?.length ? " (" + tg.evidence.map(evidenceText).join("; ") + ")" : ""}`).join("  ·  ");
       if (changes.length) e.color = TRUST_COLOR[changes[0].state] || e.color;
+      // spoofing: a target leaving TRUSTED (or a new one that never was) is the story judges should see
+      e.spoof = changes.filter((tg) => tg.state === "SUSPICIOUS" || tg.state === "FAKE");
+      if (e.spoof.length) { e.tag = e.spoof.some((tg) => tg.state === "FAKE") ? "FAKE" : "SPOOF?"; e.decision = true; }
+      for (const tg of e.spoof) if (tg.state === "FAKE" && !fakes.has(tg.id)) {
+        const t0 = firstHeard.get(tg.id), t = f.t || p.t;
+        fakes.set(tg.id, { t, by: p.ac_id, dt: t0 != null && t != null ? t - t0 : null });
+      }
     } else { e.tag = p.type || "?"; e.sum = JSON.stringify(p).slice(0, 140); }
   } else if (f.kind === "radio") {
     e.msg = p.msg; e.typ = p.msg || p.type || "RADIO"; e.tag = e.typ; e.color = MSG_COLOR[e.typ] || "var(--grey)";
     e.src = p.from || f.src;
     e.dropped = p.delivered === false;
+    if (p.from && p.msg && !firstHeard.has(p.from)) firstHeard.set(p.from, p.t ?? f.t);
+    if (p.rejected_by) { e.reject = true; e.tag = "REJECTED"; e.color = "var(--red)"; }
     const b = p.body || {};
     let s = "";
     if (p.msg === "STATE") s = `${b.leg && b.leg !== "UNKNOWN" ? b.leg + " " : ""}${num(b.alt_press_ft)} ft ${num(b.gs_kt)} kt trk ${num(b.track_deg)}°` + (b.intent ? ` · ${b.intent}` : "");
@@ -71,6 +111,7 @@ function classify(f) {
     else s = JSON.stringify(b).slice(0, 120);
     const to = p.to && p.to !== "*" ? ` → ${p.to}` : "";
     e.sum = `#${p.seq ?? "?"}${to}  ${s}` + (e.dropped ? `   DROPPED: ${p.reason || "?"}` : "") + (p.rng_m != null ? `  · ${(p.rng_m / 1852).toFixed(1)} NM` : "");
+    if (e.reject) e.sum = `${p.rejected_by} REJECTED ${p.msg || "packet"} claiming to be ${p.from}: ${rejectText(p.reason)}`;
   } else {
     e.typ = p.type || f.kind; e.tag = e.typ; e.color = "var(--grey)";
     if (p.type === "HELLO") e.sum = `world up · scenario ${p.static?.scenario || p.scenario || ""} · fleet ${(p.fleet || (p.aircraft || []).map((a) => a.id) || []).join(" ")}`;
@@ -121,6 +162,8 @@ function paintStats() {
   $("sLat").textContent = st.lat.length ? `${Math.round((1000 * st.lat.reduce((a, b) => a + b, 0)) / st.lat.length)} ms` : "—";
   $("sSlot").textContent = st.slot; $("sRej").textContent = st.rejected;
   $("sAc").textContent = aircraft.size;
+  const dts = [...fakes.values()].map((x) => x.dt).filter((x) => x != null);
+  $("sFake").textContent = fakes.size ? `${fakes.size}${dts.length ? ` · ${(dts.reduce((a, b) => a + b, 0) / dts.length).toFixed(1)} s` : ""}` : "0";
 }
 setInterval(() => { $("sRate").textContent = rateCount; rateCount = 0; paintStats(); }, 1000);
 
@@ -145,6 +188,7 @@ function visible(e) {
   if (e.msg === "HEARTBEAT" && !$("mHb").checked) return false;
   if (e.typ === "TRUST" && !e.trustChange && !$("mTrustAll").checked) return false;
   if ($("mDropOnly").checked && !e.dropped) return false;
+  if ($("mSpoof").checked && !(e.spoof?.length || e.reject)) return false;
   const p = e.f.payload || {};
   const who = [e.src, p.ac_id, p.from, p.to, p.target_id, p.body?.target].filter(Boolean);
   if (who.length && who.every((w) => acOff.has(w))) return false;
@@ -175,13 +219,31 @@ function rerender() {
   tbody.replaceChildren(...out.reverse().map(rowEl));
   wrap.scrollTop = wrap.scrollHeight;
 }
-for (const id of ["kDec", "kRadio", "kWorld", "mState", "mHb", "mTrustAll", "mDropOnly"]) $(id).onchange = rerender;
+for (const id of ["kDec", "kRadio", "kWorld", "mState", "mHb", "mTrustAll", "mDropOnly", "mSpoof"]) $(id).onchange = rerender;
 $("search").oninput = () => { clearTimeout(rerender.t); rerender.t = setTimeout(rerender, 150); };
 
 // ---------------- banner (big text for judges) ----------------
+function spoofBanner(e) {
+  if (performance.now() - lastDecisionBanner < 4000) return;      // a live advisory keeps the banner
+  const p = e.f.payload || {};
+  if (e.reject) {
+    $("banner").innerHTML = `<span class="lvl" style="background:var(--red)">${esc(p.rejected_by)} · REJECTED</span>` +
+      `<span class="txt">Packet claiming to be ${esc(p.from)} thrown away</span><span class="why">${esc(rejectText(p.reason))}</span>`;
+    return;
+  }
+  lastSpoofBanner = performance.now();
+  const tg = e.spoof[0], fk = fakes.get(tg.id);
+  const fast = tg.state === "FAKE" && fk && fk.by === p.ac_id && fk.dt != null ? ` · caught ${fk.dt.toFixed(1)} s after it first transmitted` : "";
+  const what = tg.state === "FAKE" ? `${tg.id} is FAKE: shown, never acted on` : `${tg.id} is SUSPICIOUS: warnings only, no maneuver`;
+  $("banner").innerHTML = `<span class="lvl" style="background:${TRUST_COLOR[tg.state]}">${esc(p.ac_id)} · TRUST</span>` +
+    `<span class="txt">${esc(what)}</span><span class="why">${esc((tg.evidence || []).map(evidenceText).join(" · ") + fast)}</span>`;
+}
 function banner(e) {
   const p = e.f.payload || {};
+  if (e.spoof?.length || e.reject) return spoofBanner(e);
   if (!(p.type === "ADVISORY" || (p.type === "COMMAND") || p.type === "STICK")) return;
+  if (p.type === "ADVISORY" && (p.level === "SEQUENCE" || p.level === "CLEAR") && performance.now() - lastSpoofBanner < 8000) return;   // let judges read the spoof verdict
+  if (!(p.type === "ADVISORY" && (p.level === "CLEAR" || p.level === "SEQUENCE"))) lastDecisionBanner = performance.now();
   if (p.type === "ADVISORY" && p.level === "CLEAR") { /* keep showing, but grey */ }
   const r = p.reason || {};
   let why = [];
@@ -249,7 +311,7 @@ function select(e, tr) {
     h += `<h3>Trust picture of ${esc(p.ac_id)}</h3><table class="mtab"><tr><th>target</th><th>state</th><th>score</th><th>evidence</th><th>position</th></tr>`;
     for (const tg of p.targets || []) {
       const rel = tg.rel ? `${num(tg.rel.brg_deg)}° ${(tg.rel.rng_m / 1852).toFixed(2)} NM ${tg.rel.dalt_ft >= 0 ? "+" : ""}${num(tg.rel.dalt_ft)} ft` : "—";
-      h += `<tr><td>${esc(tg.id)}</td><td style="color:${TRUST_COLOR[tg.state]};font-weight:700">${esc(tg.state)}</td><td>${num(tg.score, 2)}</td><td>${esc((tg.evidence || []).join(", "))}</td><td>${esc(rel)}</td></tr>`;
+      h += `<tr><td>${esc(tg.id)}</td><td style="color:${TRUST_COLOR[tg.state]};font-weight:700">${esc(tg.state)}</td><td>${num(tg.score, 2)}</td><td>${esc((tg.evidence || []).map(evidenceText).join("; "))}</td><td>${esc(rel)}</td></tr>`;
     }
     h += `</table><div class="empty" style="margin-top:6px">Only TRUSTED targets may trigger RESOLVE or TAKEOVER. SUSPICIOUS = warnings only. FAKE = shown, never acted on.</div>`;
   }
@@ -271,7 +333,7 @@ function ingest(f, live = true) {
   const e = classify(f);
   updateStats(e);
   entries.push(e); if (entries.length > MAX_FRAMES) entries.shift();
-  if (e.decision || e.typ === "STICK") banner(e);
+  if (e.decision || e.typ === "STICK" || e.reject) banner(e);
   if (!paused && visible(e) && live) append(e);
 }
 

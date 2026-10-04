@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # run_demo.sh — macOS/Linux version of run_demo.ps1 (same order, logs to harness/out/run_*.log).
-#   ./run_demo.sh [scenario.json] [--spoof] [--stubs] [--no-live]      ./run_demo.sh --stop
+#   ./run_demo.sh [scenario.json] [--spoof | --spoof-mode=impossible] [--stubs] [--no-live]      ./run_demo.sh --stop
 set -u
 cd "$(dirname "$0")"
 PY=python3; [ -x .venv/bin/python ] && PY=.venv/bin/python
 PIDS=.demo_pids; mkdir -p harness/out
 if [ "${1:-}" = "--stop" ]; then [ -f $PIDS ] && xargs kill < $PIDS 2>/dev/null; rm -f $PIDS; echo "FLOCK demo stopped."; exit 0; fi
 SC=harness/scenarios/judges.json; SPOOF=0; STUBS=0; NOLIVE=0
-for a in "$@"; do case $a in --spoof) SPOOF=1;; --stubs) STUBS=1;; --no-live) NOLIVE=1;; *.json) SC=$a;; esac; done
+SPMODE=unsigned
+for a in "$@"; do case $a in --spoof) SPOOF=1;; --spoof-mode=*) SPOOF=1; SPMODE=${a#*=};; --stubs) STUBS=1;; --no-live) NOLIVE=1;; *.json) SC=$a;; esac; done
 W=ws://localhost:8765; : > $PIDS
 start() { name=$1; shift; "$PY" "$@" > "harness/out/run_${name// /_}.log" 2>&1 & echo $! >> $PIDS; echo "  started $name: $*"; }
 $PY data/metar.py
@@ -22,7 +23,7 @@ else if [ $SPOOF = 1 ]; then start channel-stub stubs/fake_channel.py --world $W
 IDS=$($PY -c "import json,sys;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('flock',True)))")
 if [ -f node/node.py ] && [ $STUBS = 0 ]; then sleep 2; for id in $IDS; do start "node $id" node/node.py --id $id --world $W --via-channel ws://localhost:8766; done
 else start node-stub stubs/fake_node.py --id N101 --world $W; fi
-[ $SPOOF = 1 ] && [ -f radio/spoofer.py ] && start spoofer radio/spoofer.py --mode unsigned --via-channel ws://localhost:8766
+[ $SPOOF = 1 ] && [ -f radio/spoofer.py ] && start spoofer radio/spoofer.py --mode $SPMODE --via-channel ws://localhost:8766
 [ $NOLIVE = 0 ] && start "live sky" data/live_traffic.py --world $W --record     # real ADS-B on god view + log
 IP=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
 echo "cockpit A http://$IP:8080/index.html?role=cockpitA | B ...role=cockpitB | god ...role=god | log http://$IP:8080/log.html"

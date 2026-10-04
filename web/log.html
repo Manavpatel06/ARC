@@ -80,6 +80,7 @@ pre{font:11px/1.4 var(--mono);background:#fff;border:1px solid var(--line);borde
   <div class="stat"><b id="sLat">—</b><small>mean latency</small></div>
   <div class="stat"><b id="sSlot">0</b><small>slot collisions</small></div>
   <div class="stat"><b id="sRej">0</b><small>rejected sig/seq/time</small></div>
+  <div class="stat"><b id="sFake" style="color:var(--red)">0</b><small>fakes caught · mean time</small></div>
   <div class="spacer"></div>
   <button id="bPause" title="Space">Pause</button>
   <button id="bExport">Export JSONL</button>
@@ -98,6 +99,7 @@ pre{font:11px/1.4 var(--mono);background:#fff;border:1px solid var(--line);borde
   <label><input type="checkbox" id="mHb"> HEARTBEAT</label>
   <label><input type="checkbox" id="mTrustAll"> every TRUST frame</label>
   <label><input type="checkbox" id="mDropOnly"> dropped only</label>
+  <label title="Trust changes, FAKE / SUSPICIOUS targets and rejected packets only"><input type="checkbox" id="mSpoof"> spoofing only</label>
   <input id="search" placeholder="search (e.g. GHOST7, COMMIT)">
 </div>
 <main>

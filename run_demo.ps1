@@ -3,7 +3,9 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
 
   .\run_demo.ps1                                   # judges scenario, real modules where they exist, stubs otherwise
   .\run_demo.ps1 -Scenario harness\scenarios\base_cutoff.json
-  .\run_demo.ps1 -Spoof                            # add GHOST7 spoofer
+  .\run_demo.ps1 -Spoof                            # add GHOST7 spoofer (unsigned)
+  .\run_demo.ps1 -Spoof -SpoofMode impossible       # any radio/spoofer.py --mode: unsigned | unknown-key | impossible | impersonate | replay | ...
+  .\run_demo.ps1 -Spoof -SpoofArgs "--sybil 3"      # extra spoofer flags passed through as-is
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
   .\run_demo.ps1 -NoLive                           # without the real-ADS-B "live sky" window (on by default)
@@ -30,6 +32,8 @@ param(
   [switch]$NoBrowser,
   [switch]$NoLive,
   [switch]$Spoof,
+  [string]$SpoofMode = "unsigned",
+  [string]$SpoofArgs = "",
   [switch]$Stubs,
   [switch]$Stop
 )
@@ -144,7 +148,11 @@ if ((Test-Path "node\node.py") -and -not $Stubs) {
 
 # 4. spoofer
 if ($Spoof) {
-  if (Test-Path "radio\spoofer.py") { Start-Role "spoofer" @("radio/spoofer.py", "--mode", "unsigned", "--via-channel", $Chan) }
+  if (Test-Path "radio\spoofer.py") {
+    $spArgs = @("radio/spoofer.py", "--mode", $SpoofMode, "--via-channel", $Chan)
+    if ($SpoofArgs) { $spArgs += ($SpoofArgs -split '\s+' | Where-Object { $_ }) }
+    Start-Role "spoofer" $spArgs
+  }
   elseif ((Test-Path "radio\channel.py") -and -not $Stubs) { Write-Host "  (no radio/spoofer.py yet - use .\run_demo.ps1 -Stubs -Spoof)" -ForegroundColor Yellow }
 }
 

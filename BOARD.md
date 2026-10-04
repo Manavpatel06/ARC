@@ -84,16 +84,18 @@ Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed
 | # | Task | Target | Status |
 |---|---|---|---|
 | D1 | `data/runways.py` (surveyed ends, `load()`) + `/pattern.py` shared geometry + `data/metar.py` (`load`, `climb_fpm`, `wind_vector_ms`). | 12:30 | [x] |
-| D1b | Run `python data/metar.py` on the hotspot to confirm the live fetch works (blocked from the build sandbox). | 1:00 PM | [ ] |
+| D1b | Run `python data/metar.py` on the hotspot to confirm the live fetch works (blocked from the build sandbox). | 1:00 PM | [x] live METAR + live ADS-B both fetch on the world laptop |
 | D2 | `web/log.html`: live LOG table with colors by type; filters per aircraft; runs against stubs. | 1:00 PM ✔ status | [x] tested against Manas's world_server |
-| D3 | Hotspot test: four laptops reach the world server (`python stubs/ping_world.py --world ws://<ip>:8765`); write the IP in team chat. | 12:00 | [~] |
-| D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [ ] |
+| D3 | Hotspot test: four laptops reach the world server (`python stubs/ping_world.py --world ws://<ip>:8765`); write the IP in team chat. | 12:00 | [x] Windows hotspot 192.168.137.1 (ASU Wi-Fi blocks peers) |
+| D4 | `data/terrain.py` + `data/obstacles.py` → grid + CSV; `elev_at(lat, lon)`. | 3:00 | [x] USGS 3DEP grid + FAA DOF 1,679 obstacles (committed caches) |
 | D5 | Explain panel: click a decision → `reason` rendered (miss, ttc, method, confidence, chosen/rejected, trust evidence, negotiation transcript). | 4:00 PM ✔ status | [x] done early |
-| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. Uses real modules when present, stubs otherwise; `-Spoof`, `-Stubs`, `-Stop`. | 6:00 | [x] .sh tested; .ps1 needs a Windows run |
-| D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [ ] |
-| D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [ ] |
+| D7 | `run_demo.sh` / `.ps1`: start everything in order with the hotspot IP. Uses real modules when present, stubs otherwise; `-Spoof`, `-Stubs`, `-Stop`. | 6:00 | [x] both tested (Windows 4-laptop run); frees stale ports; live sky on by default |
+| D8 | Full run on the hotspot; **backup video recorded**; status-report demo. | 7:00 PM ✔ status | [~] 4-laptop live run green (tag `phase1-green`); backup video next |
+| D9 | *Phase 2:* spoof demo script + log highlights; judge round 2 at ~midnight. | 11:00 PM | [x] `-Spoof -SpoofMode <mode> -SpoofArgs`; log: plain-English evidence, spoof banner with time-to-FAKE, "spoofing only" filter, fakes-caught counter |
 | D10 | *Phase 3:* `node/crystal.py` Escape Crystal + MFI → CRYSTAL frames. | after go/no-go | [ ] |
-| D12 | Pitch deck + 5-min script, four speakers × 70 s; wording fixes from `docs/judge-round-1.md`. | Sat night | [ ] |
+| D11 | Real ADS-B ("live sky") on god view, cockpit radar and 3D (live demo); recorded overnight for the learned-values fit (D13). | Sat 9 PM | [x] |
+| D13 | Learned values: fit leg-classifier thresholds + prediction sigma from recorded KDVT ADS-B, freeze in a versioned file (deterministic at runtime). | Sun 7 AM | [~] recording overnight |
+| D12 | Pitch deck + 5-min script, four speakers × 70 s; wording fixes from `docs/judge-round-1.md`. | Sun 8 AM | [ ] |
 
 ---
 
