@@ -29,5 +29,6 @@
  "weather": "cached",
  "spoofer": false,
  "camera_target": false,
- "note": "tuned by world/find_conflict.py from seed_headon.json: N101-N102: 3 ft / 0 ft at t=74 s (DOWNWIND/DOWNWIND) COLLISION (no avoidance; window 70-120 s)"
+ "note": "tuned by world/find_conflict.py from seed_headon.json: N101-N102: 3 ft / 0 ft at t=74 s (DOWNWIND/DOWNWIND) COLLISION (no avoidance; window 70-120 s)",
+ "live_sky_in_cockpit": true
 }
