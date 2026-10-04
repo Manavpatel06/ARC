@@ -38,7 +38,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from harness.baseline import BaselineNode
-from harness.simworld import NMAC_H_M, NMAC_V_M, T0, Sim, SimAircraft
+from harness.simworld import NMAC_H_M, NMAC_V_M, T0, Sim, SimAircraft, apply_deviation
 from node.geometry import FT, KT, build_patterns, hvec
 from node.node import Node
 from node.predict import PatternFollower
@@ -46,7 +46,12 @@ from node.predict import PatternFollower
 KINDS = {
     "overtake_downwind": True, "base_cutoff": True, "base_vs_straight_in": True, "head_on_crosswind": True,
     "spaced_pattern": False, "vertical_cross": False, "lateral_pass": False,
+    # pattern-breaking pilots (the predictor's pattern model does not know): the straight-in is timed to the
+    # turn A REALLY flies, so prediction from motion alone sees the merge late / at the wrong time
+    "early_base_cutoff": True, "extended_downwind_cutoff": True,
+    "extended_downwind_spaced": False,       # A extends and falls in BEHIND the straight-in: nominal prediction cries wolf
 }
+DEVIATING_KINDS = ("early_base_cutoff", "extended_downwind_cutoff", "extended_downwind_spaced")
 DURATION_S = 150.0
 DT = 0.2
 
@@ -64,14 +69,21 @@ def _on_leg(pat, leg, rng, offset_m, kt, jitter_m=12.0):
 
 
 def _eta_to_final_entry(pat, leg, x, y, z, v_ms, hdg, bank, lead) -> float:
+    return _final_entry(pat, leg, x, y, z, v_ms, hdg, bank, lead)[0]
+
+
+def _final_entry(pat, leg, x, y, z, v_ms, hdg, bank, lead, dev=None) -> tuple[float, float]:
+    """(time, along-runway s) where this pilot rolls out on final - deviations included."""
     f = PatternFollower(pat, leg, x, y, z, v_ms, hdg, bank_deg=bank, lead_scale=lead)
     t = 0.0
     while t < 300.0:
+        if dev is not None and apply_deviation(f, dev):
+            dev = None
         f.step(0.5)
         t += 0.5
         if f.leg == "FINAL" and not f.turning:
-            return t
-    return t
+            break
+    return t, pat.xy_to_sl(f.x, f.y)[0]
 
 
 def make_encounter(kind: str, seed: int, pats: dict) -> list[SimAircraft]:
@@ -83,9 +95,10 @@ def make_encounter(kind: str, seed: int, pats: dict) -> list[SimAircraft]:
     dw = pat.legs["DOWNWIND"]
     bs = pat.legs["BASE"]
 
-    def ac(ac_id, leg, x, y, z, h, kt, p, flock=True):
+    def ac(ac_id, leg, x, y, z, h, kt, p, flock=True, dev=None):
         return SimAircraft(ac_id, pat, leg, x, y, z, h, kt, ap=p["ap"], flock=flock, human=True,
-                           pilot_bank=p["pilot_bank"], lead_scale=p["lead_scale"], comply=p["comply"], react_s=p["react_s"])
+                           pilot_bank=p["pilot_bank"], lead_scale=p["lead_scale"], comply=p["comply"], react_s=p["react_s"],
+                           deviation=dev)
 
     if kind == "overtake_downwind":
         off = rng.uniform(1800, 3200)
@@ -107,6 +120,24 @@ def make_encounter(kind: str, seed: int, pats: dict) -> list[SimAircraft]:
         zb = pat.elev_m + 15.0 + math.tan(math.radians(3.0)) * (-sb) + rng.uniform(-15, 15)
         zb = min(zb, pat.tpa_msl_m + 15.0)
         out = [ac("N101", leg_a, xa, ya, za, ha, ka, pa), ac("N204", "STRAIGHT_IN", xb, yb, zb, pat.heading, kb, pb)]
+    elif kind in DEVIATING_KINDS:
+        if kind == "early_base_cutoff":                                 # base 0.9-1.7 km before the normal turn
+            dev = {"kind": "early", "leg": "DOWNWIND", "frac": rng.uniform(0.7, 0.85)}
+            off_a = dw.length * rng.uniform(0.45, 0.55)
+        else:                                                             # 20-40 s past the normal turn
+            dev = {"kind": "extend", "leg": "DOWNWIND", "s": rng.uniform(20.0, 40.0)}
+            off_a = dw.length - rng.uniform(1800, 3000)
+        xa, ya, za, ha = _on_leg(pat, "DOWNWIND", rng, off_a, ka)
+        eta, s_entry = _final_entry(pat, "DOWNWIND", xa, ya, za, ka * KT, ha, pa["pilot_bank"], pa["lead_scale"], dict(dev))
+        kb = rng.uniform(88, 104)
+        jit = rng.uniform(-9, 9)
+        if kind == "extended_downwind_spaced":
+            jit = -rng.uniform(30, 45)                                    # B passes A's turn-in point well before A
+        sb = s_entry - kb * KT * (eta + jit)
+        xb, yb = pat.sl_to_xy(sb, rng.uniform(-40, 40))
+        zb = pat.elev_m + 15.0 + math.tan(math.radians(3.0)) * (-sb) + rng.uniform(-15, 15)
+        zb = min(zb, pat.tpa_msl_m + 15.0)
+        out = [ac("N101", "DOWNWIND", xa, ya, za, ha, ka, pa, dev=dev), ac("N204", "STRAIGHT_IN", xb, yb, zb, pat.heading, kb, pb)]
     elif kind == "head_on_crosswind":
         L = pat.legs["CROSSWIND"]
         U = pat.legs["UPWIND"]

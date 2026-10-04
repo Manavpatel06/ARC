@@ -9,6 +9,7 @@ Everything random lives here (and in montecarlo.py): the nodes themselves are de
 """
 from __future__ import annotations
 
+import copy
 import heapq
 import json
 import math
@@ -30,6 +31,25 @@ T0 = 1_759_500_000.0
 RADIO_RANGE_M = 4828.0
 NMAC_H_M, NMAC_V_M = 500 * FT, 100 * FT
 ROLL_RATE = 15.0
+TSS_BUG_LEAD_S = float(os.environ.get("FLOCK_TSS_LEAD_S", "6.0"))   # AP heading bug moves this long before a turn
+
+
+def apply_deviation(f: PatternFollower, dev: Optional[dict]) -> bool:
+    """A pilot breaking the standard pattern (the predictor's model does not know):
+         {"kind": "extend", "leg": "DOWNWIND", "s": 30}   fly on s seconds past the normal turn point (spacing)
+         {"kind": "early",  "leg": "DOWNWIND", "frac": .5} turn to the next leg once this far along the leg
+    Returns True once applied (call every step until then)."""
+    if dev is None or f.leg != dev["leg"] or f.turning:
+        return False
+    if dev["kind"] == "extend":
+        f.extend_s = float(dev["s"])
+        return True
+    L = f.pat.legs[f.leg]
+    along, _, _ = L.along_cross(f.x, f.y)
+    if along >= dev["frac"] * L.length:
+        f.turn_at = (f.pat.next_leg(f.leg), f.t)
+        return True
+    return False
 
 
 def _ground_m(x: float, y: float, fallback: float) -> float:
@@ -53,8 +73,10 @@ class Maneuver:
 class SimAircraft:
     def __init__(self, ac_id: str, pat: Pattern, leg: Optional[str], x: float, y: float, z: float, hdg: float,
                  v_kt: float, ap: bool = False, flock: bool = True, human: bool = True, pilot_bank: float = 20.0,
-                 lead_scale: float = 1.0, comply: float = 0.7, react_s: float = 5.0, gps_sigma_m: float = 3.0):
+                 lead_scale: float = 1.0, comply: float = 0.7, react_s: float = 5.0, gps_sigma_m: float = 3.0,
+                 deviation: Optional[dict] = None):
         self.id, self.pat = ac_id, pat
+        self.deviation = deviation                   # apply_deviation(); dropped once flown or a maneuver replaces the plan
         self.x, self.y, self.z, self.hdg, self.v = x, y, z, hdg, v_kt * KT
         self.bank, self.vs = 0.0, 0.0
         self.ap, self.flock, self.human = ap, flock, human
@@ -84,11 +106,34 @@ class SimAircraft:
         return {"type": "OWNSHIP", "ac_id": self.id, "t": t, "lat": lat, "lon": lon, "alt_msl_ft": msl,
                 "alt_press_ft": msl - 10.0, "agl_ft": (self.z - _ground_m(self.x, self.y, self.pat.elev_m)) / FT, "gs_kt": self.v / KT,
                 "track_deg": self.hdg, "hdg_deg": self.hdg, "bank_deg": self.bank, "vs_fpm": self.vs / FT * 60.0,
-                "ias_kt": self.v / KT, "ap_equipped": self.ap, "stick_active": self.stick_active, "flaps": 0}
+                "ias_kt": self.v / KT, "ap_equipped": self.ap, "stick_active": self.stick_active, "flaps": 0,
+                **(self.autopilot_targets() if self.ap else {})}
+
+    def autopilot_targets(self) -> dict:
+        """What this aircraft's autopilot is really commanding (ADS-B Target State & Status source): the heading bug
+        is on the next leg from TSS_BUG_LEAD_S before the turn the pilot actually flies, deviations included."""
+        f = self.follower
+        if f is None or self.maneuver is not None or f.landed:
+            return {}
+        hdg = f.turn_target if f.turning else None
+        if hdg is None:
+            g, dev = copy.copy(f), self.deviation
+            for _ in range(int(TSS_BUG_LEAD_S)):
+                if dev is not None and apply_deviation(g, dev):
+                    dev = None
+                g.step(1.0)
+                if g.turning:
+                    hdg = g.turn_target
+                    break
+        out = {"sel_hdg_deg": round((hdg if hdg is not None else f.hdg) % 360.0, 1)}
+        if f.leg in ("UPWIND", "CROSSWIND", "DOWNWIND"):
+            out["sel_alt_ft"] = round(f.pat.tpa_msl_m / FT - 10.0, -1)        # pressure alt (sim: MSL - 10 ft)
+        return out
 
     def start_maneuver(self, m: Maneuver) -> None:
         self.maneuver = m
         self.follower = None
+        self.deviation = None
 
     def end_maneuver(self, predictor: Predictor) -> None:
         was = self.maneuver
@@ -137,6 +182,8 @@ class SimAircraft:
             m = None
         if m is None and self.follower is not None and self.stick_until < 0:
             f = self.follower
+            if self.deviation is not None and apply_deviation(f, self.deviation):
+                self.deviation = None
             h0 = f.hdg
             if self.slow_until > 0 and t >= self.slow_until:
                 self.slow_until, self.v_cmd = -1.0, None

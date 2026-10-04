@@ -27,3 +27,32 @@ Required margin (`FLOCK_MARGIN_OK`, default 2.0 NMAC boxes): 1.5 gave 7 % NMAC a
 Live end-to-end on one laptop (real `world/world_server.py`, `radio/channel.py`, one `node/node.py` per aircraft, `harness/e2e_check.py`):
 - `head_on_judges.json`, nobody on the sticks: SEQUENCE -> TRAFFIC -> RESOLVE -> TAKEOVER (both) -> RELEASE -> CLEAR, 954 ft, 0 NMAC.
 - `three_on_final.json`: without ARC 3 NMAC pairs (48 ft / 262 ft / 388 ft); with ARC 4 runs gave 0, 0, 0 and 1 NMAC pair (463 ft, N204-N399).
+
+## Intent without a link: ADS-B Target State & Status (`FLOCK_INTENT`)
+
+Question: how much does ARC lose if the peer's declared leg and `BASE_IN_12S` intent (ARC-link only fields) are not
+available, and does the intent real ADS-B v2 already carries help? `FLOCK_INTENT=link` (default, unchanged) uses
+the link fields; `adsb` ignores them and reads Target State & Status selected heading / selected altitude
+(AP-equipped aircraft only, ~half; the heading bug moves to the next leg 6 s before the turn, `FLOCK_TSS_LEAD_S`);
+`none` uses position / velocity only. Intent is never believed from a SUSPICIOUS / QUARANTINED target.
+Run: `FLOCK_INTENT=<mode> python harness/montecarlo.py --n 60 [--kinds ...]`.
+
+Standard pattern (the 7 kinds above, 154 NMAC / 183 benign): identical in all three modes - 3 % NMAC, 1,169-1,177 ft
+median min separation, 55 s detect lead, 3 % nuisance. The sim's pilots fly the predictor's own pattern model, so
+being told the turn adds nothing; dropping the link costs nothing here.
+
+Pattern-breaking pilots (new kinds, 60 each: `early_base_cutoff` base 0.9-1.7 km early, `extended_downwind_cutoff`
+20-40 s past the turn point, `extended_downwind_spaced` the extension puts A behind the straight-in):
+
+| | early base: detect lead / NMAC | extended downwind: detect lead | spaced extension: nuisance alerts |
+|---|---|---|---|
+| baseline (straight-line) | 62 s / 2 of 26 | 37 s | 0 of 60 |
+| ARC, link intent | 64 s / 3 of 26 | 77 s | 6 of 60 |
+| ARC, ADS-B target state | **67 s** / 3 of 26 | 77 s | 6 of 60 |
+| ARC, no intent | 64 s / 3 of 26 | 77 s | 6 of 60 |
+
+- ADS-B target state helps only the early base: +3 s median detection (paired: earlier in 9 of 35 conflicts, later in
+  none), NMAC unchanged. A selected heading cannot say "I will turn later", so extensions are invisible to it.
+- The bigger finding: with pattern-breaking pilots ARC's turn-aware prediction is a liability - 6 of 60 nuisance
+  alerts on spaced extensions (baseline 0) and early-base median min separation 1,180 ft vs baseline 1,730 ft.
+  Fix under test: fall back to straight-line when the observed motion leaves the pattern model.
