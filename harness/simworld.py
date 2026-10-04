@@ -47,6 +47,7 @@ class Maneuver:
     vs_fpm: float
     until: float
     src: str                           # "cmd" | "pilot"
+    go_around: bool = False            # after it the pilot is on the upwind leg, not back on the same final
 
 
 class SimAircraft:
@@ -90,7 +91,15 @@ class SimAircraft:
         self.follower = None
 
     def end_maneuver(self, predictor: Predictor) -> None:
+        was = self.maneuver
         self.maneuver = None
+        if was is not None and was.go_around:
+            st = KState(self.x, self.y, self.z, self.v, self.hdg, self.vs, 0.0, self.z - self.pat.elev_m)
+            cls = predictor.classify(st)
+            if cls.runway:
+                self.follower = PatternFollower(self.patterns_for(cls.runway), "UPWIND", self.x, self.y, self.z, self.v,
+                                                self.hdg, bank_deg=self.pilot_bank, lead_scale=self.lead_scale)
+                return
         st = KState(self.x, self.y, self.z, self.v, self.hdg, self.vs, 0.0, self.z - self.pat.elev_m)
         st.turn_rate = self.bank_rate_dps()
         cls = predictor.classify(st)
@@ -236,7 +245,8 @@ class Sim:
                 self.res.commands.append((self.t, a.id, f))
                 if f["mode"] == "TAKEOVER" and a.ap and not a.stick_active:
                     a.start_maneuver(Maneuver(max(-30.0, min(30.0, f["bank_cmd_deg"])), f["vs_cmd_fpm"],
-                                              self.t + min(f["hold_s"], 10.0), "cmd"))
+                                              self.t + min(f["hold_s"], 10.0), "cmd",
+                                              go_around=f.get("reason", {}).get("chosen") == "GO_AROUND"))
                     self._note_bank(a.id, f["bank_cmd_deg"])
                 elif f["mode"] == "RELEASE" and a.maneuver is not None and a.maneuver.src == "cmd":
                     a.end_maneuver(self.predictor)
@@ -272,9 +282,13 @@ class Sim:
             vs = 500.0
         elif chosen == "DESCEND":
             vs = -500.0
+        elif chosen == "GO_AROUND":
+            vs = 500.0
         else:
             return
-        a.pending = (self.t + a.react_s, Maneuver(max(-45.0, min(45.0, bank)), vs, float(adv.get("reason", {}).get("hold_s", 10.0)), "pilot"))
+        a.pending = (self.t + a.react_s, Maneuver(max(-45.0, min(45.0, bank)), vs,
+                                                  20.0 if chosen == "GO_AROUND" else float(adv.get("reason", {}).get("hold_s", 10.0)),
+                                                  "pilot", go_around=(chosen == "GO_AROUND")))
 
     # --- main loop
     def run(self, duration: float) -> Result:

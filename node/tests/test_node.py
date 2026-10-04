@@ -366,3 +366,35 @@ def test_bounds_blocked_candidate_is_rejected_with_reason():
     own, hold, peers, terr = _head_on(terrain=100.0)
     r = escape.evaluate(own, hold, peers, terr, blocked={"R20": "bounds: test", "L20": "bounds: test"})
     assert r.rejected["R20"] == "bounds: test" and r.chosen.cand.name not in ("R20", "L20")
+
+
+# ---- go-around, kept sequencing, head-on ordering
+def test_go_around_candidate_only_on_the_approach():
+    assert "GO_AROUND" not in [c.name for c in escape.candidates(500.0)]
+    ga = [c for c in escape.candidates(500.0, 0.0, go_around=True) if c.name == "GO_AROUND"][0]
+    assert ga.bank == 0.0 and ga.vs_fpm == 500.0 and ga.sense == "CLIMB"
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, go_around=True)
+    assert "GO_AROUND" in [e.cand.name for e in r.evals]
+    assert layers.maneuver_text("GO_AROUND", "N204", None)[0].startswith("GO AROUND - CLIMB STRAIGHT AHEAD")
+
+
+def test_head_on_both_aircraft_take_over_in_the_same_sense():
+    import json
+    for seed in (15, 20):                              # two seeds where the takeover used to flip one aircraft to the left
+        ac = load_scenario("harness/scenarios/head_on_judges.json", PATS, comply=0.0)
+        res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=0.1, seed=seed,
+                  follow_sequence=False).run(130)
+        banks = {i: f["bank_cmd_deg"] for _, i, f in res.commands if f["mode"] == "TAKEOVER"}
+        assert len(banks) == 2 and all(b > 0 for b in banks.values()), (seed, banks)
+        assert res.min_h_m / FT > 700, (seed, res.min_h_m / FT)
+
+
+def test_sequencing_is_kept_after_a_maneuver_cleared_the_conflict():
+    from harness.montecarlo import make_encounter, DT, DURATION_S
+    kept = 0
+    for seed in (2009, 2011, 2015, 2022):
+        ac = make_encounter("base_vs_straight_in", seed, PATS)
+        res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=DT, seed=seed).run(DURATION_S)
+        kept += sum(1 for _, _, f in res.advisories if f["reason"].get("kept_after") == "maneuver")
+    assert kept > 0

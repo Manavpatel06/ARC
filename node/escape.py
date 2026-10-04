@@ -35,6 +35,7 @@ OBSTACLE_CLEARANCE_M = 100 * FT   # data.obstacles.top_at() is already conservat
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
 MIN_IAS_KT = 62.0
+GO_AROUND_S = 20.0               # a go-around keeps climbing past the 10 s a bounded takeover may hold
 SIMILAR_MARGIN = 0.3             # margins this close count as "similar" for the tie-breakers
 SIMILAR_SEVERITY = 0.25          # ... and so do maneuvers within one bank step of the least severe one
 PATTERN_FLOOR_BELOW_TPA_M = 300 * FT
@@ -58,13 +59,15 @@ class Candidate:
     def sense(self) -> str:
         if self.kind == "turn":
             return "R" if self.bank > 0 else "L"
-        return {"climb": "CLIMB", "descend": "DESCEND", "hold": "HOLD"}[self.kind]
+        return {"climb": "CLIMB", "descend": "DESCEND", "hold": "HOLD", "goaround": "CLIMB"}[self.kind]
 
 
 def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
     """Shared fuel/time cost (cost.py, Lane D) of flying this candidate; zero-cost fallback if cost.py is absent."""
     try:
-        from cost import candidate_cost
+        from cost import candidate_cost, action_cost
+        if c.kind == "goaround":
+            return action_cost("GO_AROUND")
         return candidate_cost(c.name, bank_deg=abs(c.bank), vs_fpm=c.vs_fpm, hold_s=hold_s, kt=max(own.gs / KT, 40.0))
     except Exception:
         return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
@@ -101,7 +104,7 @@ def _hits_terrain(path, xs, ys, hold, terrain_fn) -> bool:
     return False
 
 
-def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
+def candidates(climb_fpm: float, cur_bank: float = 0.0, go_around: bool = False) -> list[Candidate]:
     """Climb/descend keep the bank the aircraft already has (a turn in progress continues), so the command is
     never 'wings level' by accident."""
     keep = max(-MAX_AUTH_BANK, min(MAX_AUTH_BANK, cur_bank))
@@ -111,6 +114,8 @@ def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
         out.append(Candidate(f"R{b}", "turn", float(b), severity=b / 45.0))
     out.append(Candidate("CLIMB", "climb", keep, climb_fpm, 0.35))
     out.append(Candidate("DESCEND", "descend", keep, -DESCEND_FPM, 0.30))
+    if go_around:        # on base/final: wings level, straight ahead, full-power climb at Vy, leave the circuit
+        out.append(Candidate("GO_AROUND", "goaround", 0.0, climb_fpm, 0.50))
     return out
 
 
@@ -237,21 +242,21 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
              exclude: tuple = (), require_maneuver: bool = False,
-             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None) -> EscapeResult:
+             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None, go_around: bool = False) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
     evals: list[Evaluation] = []
     rejected: dict[str, str] = {}
     pattern_floor = (own.tpa_msl_m - PATTERN_FLOOR_BELOW_TPA_M) if own.tpa_msl_m is not None else None
-    for c in candidates(climb, own.bank):
+    for c in candidates(climb, own.bank, go_around):
         if c.name in exclude:
             continue
         if c.kind == "hold":
             path = hold_path
         else:
             path = simulate_maneuver(own.x, own.y, own.z, own.hdg, own.gs, own.bank, own.vs,
-                                     c.bank, c.vs_fpm, hold_s)
+                                     c.bank, c.vs_fpm, max(hold_s, GO_AROUND_S) if c.kind == "goaround" else hold_s)
         margin, mh, mv = _margin(path, peers, sigmas)
         if peers_alt:                          # also safe if a pilot-only peer flies its own advised maneuver
             margin = min(margin, _margin(path, {**peers, **peers_alt}, sigmas)[0])
@@ -260,7 +265,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
             reason = f"exceeds {max_bank:.0f} deg authority bound"
         elif c.kind == "turn" and own.ias_kt < MIN_IAS_KT + 3.0:
             reason = f"speed margin {own.ias_kt:.0f} kt"
-        elif c.kind == "climb" and (own.ias_kt < MIN_IAS_KT + 3.0 or climb < 250.0):
+        elif c.kind in ("climb", "goaround") and (own.ias_kt < MIN_IAS_KT + 3.0 or climb < 250.0):
             reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft"
         elif c.kind != "hold":
             zs = path[:, 2]
@@ -276,7 +281,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         if reason is None and blocked and c.name in blocked:
             reason = blocked[c.name]                  # e.g. the bounds monitor would refuse to fly it
         if reason is None and c.kind != "hold" and margin < MARGIN_MIN:
-            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind == "climb" else "traffic"
+            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind in ("climb", "goaround") else "traffic"
         ev = Evaluation(c, reason is None, reason, margin, mh, mv, path)
         evals.append(ev)
         if reason is not None:
