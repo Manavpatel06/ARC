@@ -1,5 +1,12 @@
 Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_model.py, traffic.py, scenario.py. Views live in `web/index.html`.
 
+**FLOCK is now advisory only** (`FLOCK_claude_code_prompt.md`): the world rejects every COMMAND
+(`rejected_by_world: "advisory_only"`); `--allow-takeover` / `run_demo.ps1 -Legacy` keeps the old
+collision-avoidance demo. `sensors.py` simulates what each judge aircraft's own equipment receives (ADS-B,
+TCAS, Mode S, ground radar) for the onboard verification unit (`verify/`, role `avionics:<id>`);
+`attacks.py` injects spoofing (god view **+ Ghost**, `SET_ATTACK`, or scenario `"attacks": [{"type":"ghost","at_s":60}]`).
+Ground truth goes to god + log only (`GROUND_TRUTH`). See `verify/README.md`.
+
 - `world_server.py` — physics + WebSocket hub (INTERFACE.md v1.2), serves `web/` on :8080. Scenario weather is
   pinned: `load_metar(scenario.weather)` (`cached` = committed sample, `live` = fetched METAR). ENV (density altitude)
   goes to god and every node; LIVE_TRAFFIC (real ADS-B, data/live_traffic.py) to god + log only.

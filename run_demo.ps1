@@ -6,11 +6,14 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
   .\run_demo.ps1 -Spoof                            # add GHOST7 spoofer
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
+  .\run_demo.ps1 -Legacy                          # old collision-avoidance demo (radio nodes, takeover allowed)
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json            # free flight + live traffic
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json -Seed 11   # same, different (repeatable) traffic
 
-Starts, in order: METAR fetch -> world (ws :8765, web :8080) -> radio channel -> one node per
-FLOCK aircraft -> spoofer (optional) -> opens the log page. Each process gets its own window
+Starts, in order: METAR fetch -> world (ws :8765, web :8080, advisory only) -> one FLOCK onboard
+verification unit per judge aircraft (verify/unit.py, receive only) -> opens the log page. Inject a spoofed
+ghost from the god view (+ Ghost). -Legacy instead starts the radio channel + one collision-avoidance
+node per aircraft (+ spoofer) and lets nodes take the controls. Each process gets its own window
 titled with its role so you can see its output. PIDs go to .demo_pids for -Stop.
 Scenarios with "traffic" (live_kdvt.json): the world also starts a background node for every AI
 aircraft it spawns (logs in harness\out\nodes\), and data/live_traffic.py if "live_seed" is on.
@@ -27,6 +30,7 @@ param(
   [int]$ChanPort = 8766,
   [int]$HttpPort = 8080,
   [switch]$NoBrowser,
+  [switch]$Legacy,
   [switch]$Spoof,
   [switch]$Stubs,
   [switch]$Stop
@@ -74,8 +78,9 @@ $sc = Get-Content $Scenario -Raw | ConvertFrom-Json
 # 1. world (+ web on 8080)
 if (Test-Path "world\world_server.py") {
   $wArgs = @("world/world_server.py", "--scenario", $Scenario, "--port", $WorldPort, "--http", $HttpPort)
-  if ($sc.traffic) {                     # live traffic: the world starts a node per AI aircraft it spawns
-    if (-not $Stubs) { $wArgs += @("--traffic-nodes", $Chan, "--pidfile", (Split-Path $PidFile -Leaf)) }
+  if ($Legacy) { $wArgs += "--allow-takeover" }      # old collision-avoidance demo: nodes may fly the aircraft
+  if ($sc.traffic) {
+    if ($Legacy -and -not $Stubs) { $wArgs += @("--traffic-nodes", $Chan, "--pidfile", (Split-Path $PidFile -Leaf)) }
     if ($Seed -ge 0) { $wArgs += @("--seed", $Seed) }
   }
   Start-Role "world" $wArgs
@@ -83,28 +88,34 @@ if (Test-Path "world\world_server.py") {
 else { Start-Role "world(stub)" @("stubs/fake_world.py", "--scenario", $Scenario, "--port", $WorldPort); Start-Role "web" @("-m", "http.server", $HttpPort, "-d", "web") }
 if (-not (Wait-Port $WorldPort)) { Write-Host "World did not open port $WorldPort - check its window." -ForegroundColor Red; exit 1 }
 
-# 2. radio channel
-if ((Test-Path "radio\channel.py") -and -not $Stubs) { Start-Role "channel" @("radio/channel.py", "--world", $World, "--ws-port", $ChanPort, "--loss", $Loss, "--latency", $Latency); Start-Sleep -Seconds 2 }
-else {
-  $chArgs = @("stubs/fake_channel.py", "--world", $World, "--loss", $Loss)
-  if ($Spoof) { $chArgs += "--spoof" }            # stub channel injects GHOST7 itself
-  Start-Role "channel(stub)" $chArgs
-}
-
-# 3. one node per FLOCK aircraft
-$flock = $sc.aircraft | Where-Object { $_.flock -ne $false } | ForEach-Object { $_.id }
-if ((Test-Path "node\node.py") -and -not $Stubs) {
-  foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
+$judges = $sc.aircraft | Where-Object { $_.human -eq $true -and $_.flock -ne $false } | ForEach-Object { $_.id }
+if (-not $Legacy) {
+  # 2. FLOCK onboard verification unit per judge aircraft: receive only, advisory only (verify/unit.py)
+  foreach ($id in $judges) { Start-Role "FLOCK $id" @("verify/unit.py", "--id", $id, "--world", $World) }
 } else {
-  $first = ($sc.aircraft | Where-Object { $_.human -eq $true } | Select-Object -First 1).id
-  if (-not $first) { $first = $flock[0] }
-  Start-Role "node $first(stub)" @("stubs/fake_node.py", "--id", $first, "--world", $World)
-}
+  # 2. radio channel (legacy collision-avoidance demo)
+  if ((Test-Path "radio\channel.py") -and -not $Stubs) { Start-Role "channel" @("radio/channel.py", "--world", $World, "--ws-port", $ChanPort, "--loss", $Loss, "--latency", $Latency); Start-Sleep -Seconds 2 }
+  else {
+    $chArgs = @("stubs/fake_channel.py", "--world", $World, "--loss", $Loss)
+    if ($Spoof) { $chArgs += "--spoof" }            # stub channel injects GHOST7 itself
+    Start-Role "channel(stub)" $chArgs
+  }
 
-# 4. spoofer
-if ($Spoof) {
-  if (Test-Path "radio\spoofer.py") { Start-Role "spoofer" @("radio/spoofer.py", "--mode", "unsigned", "--via-channel", $Chan) }
-  elseif ((Test-Path "radio\channel.py") -and -not $Stubs) { Write-Host "  (no radio/spoofer.py yet - use .\run_demo.ps1 -Stubs -Spoof)" -ForegroundColor Yellow }
+  # 3. one node per FLOCK aircraft
+  $flock = $sc.aircraft | Where-Object { $_.flock -ne $false } | ForEach-Object { $_.id }
+  if ((Test-Path "node\node.py") -and -not $Stubs) {
+    foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
+  } else {
+    $first = ($sc.aircraft | Where-Object { $_.human -eq $true } | Select-Object -First 1).id
+    if (-not $first) { $first = $flock[0] }
+    Start-Role "node $first(stub)" @("stubs/fake_node.py", "--id", $first, "--world", $World)
+  }
+
+  # 4. spoofer
+  if ($Spoof) {
+    if (Test-Path "radio\spoofer.py") { Start-Role "spoofer" @("radio/spoofer.py", "--mode", "unsigned", "--via-channel", $Chan) }
+    elseif ((Test-Path "radio\channel.py") -and -not $Stubs) { Write-Host "  (no radio/spoofer.py yet - use .\run_demo.ps1 -Stubs -Spoof)" -ForegroundColor Yellow }
+  }
 }
 
 # 5. live sky (real ADS-B) when the scenario seeds AI arrivals from it
@@ -117,8 +128,9 @@ Write-Host "  cockpit A  http://$($Ip):$HttpPort/index.html?role=cockpitA"
 Write-Host "  cockpit B  http://$($Ip):$HttpPort/index.html?role=cockpitB"
 Write-Host "  god view   http://$($Ip):$HttpPort/index.html?role=god"
 Write-Host "  comms log  http://$($Ip):$HttpPort/log.html"
-Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):$WorldPort --via-channel ws://$($Ip):$ChanPort"
+if ($Legacy) { Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):$WorldPort --via-channel ws://$($Ip):$ChanPort" }
+else { Write-Host "  FLOCK verification: one onboard unit per judge (verify/unit.py) - god view + Ghost injects a spoofed aircraft" }
 Write-Host "  live sky:   python data/live_traffic.py --world ws://localhost:$WorldPort"
-if ($sc.traffic) { Write-Host "  live traffic: AI nodes log to harness\out\nodes\ - god view RESET DEMO puts the judges back at their starts" }
+if ($sc.traffic) { Write-Host "  live traffic: god view RESET DEMO puts the judges back at their starts" }
 Write-Host "Stop everything:  .\run_demo.ps1 -Stop$(if ($WorldPort -ne 8765) { " -WorldPort $WorldPort" })"
 Write-Host "Firewall (once, admin PowerShell):  New-NetFirewallRule -DisplayName 'FLOCK demo' -Direction Inbound -Protocol TCP -LocalPort 8765,8766,8080 -Action Allow"

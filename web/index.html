@@ -50,6 +50,7 @@
           <div id="ck-bounds-body"></div>
         </aside>
         <ul id="ck-trust" class="ck-trust"></ul>
+        <section id="ck-detail" class="ck-detail" hidden></section>
       </div>
     </section>
     <footer class="ck-foot">
@@ -73,6 +74,15 @@
         <button id="god-reset-demo" type="button" title="Both judge aircraft back to their scenario start points (Shift+R). Click twice.">⟲ Reset demo</button>
         <span id="god-traffic" class="muted"></span>
       </div>
+      <h2>Verification (FLOCK onboard)</h2>
+      <div class="demo-row">
+        <button id="god-ghost" type="button" title="Inject / remove a spoofed ADS-B ghost near judge A (simulated radio only)">+ Ghost</button>
+        <span id="god-verify-sum" class="muted">no onboard unit connected</span>
+      </div>
+      <table class="god-table god-verify">
+        <thead><tr><th>Target</th><th>Truth</th><th>FLOCK</th><th>Trust</th><th></th></tr></thead>
+        <tbody id="god-verify"></tbody>
+      </table>
       <h2>Weather</h2>
       <p class="muted wx-src">METAR (what nodes know): <span id="god-metar" class="mono"></span></p>
       <p id="god-wx-line" class="mono wx-line"></p>

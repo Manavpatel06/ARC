@@ -18,6 +18,16 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH) /
                    {"type":"RESET_DEMO"}: every judge aircraft back to its scenario start, AI traffic on
                    those starts removed (WORLD_EVENT RESET per judge + RESET_DEMO).
+FLOCK verification (advisory only, receive only - FLOCK_claude_code_prompt.md):
+  avionics:<id>    the onboard unit (verify/unit.py) of judge aircraft <id>. Gets ONLY what that aircraft's
+                   own equipment receives (world/sensors.py): {"type":"SENSORS","t","ac_id","msgs":[...]} at
+                   10 Hz - ADS-B it hears, own TCAS tracks, Mode S replies, 1030 interrogations, own-ship
+                   state, band stats. Sends back VERIFY (trust per target) -> own cockpit + god + log.
+  god              also gets GROUND_TRUTH (1 Hz: every emitter with its label real/ghost, attack list -
+                   simulation truth, never to units or cockpits) and may send SET_ATTACK
+                   {"attack":"ghost","on":true|false,"victim"?}. Scenario key "attacks": [{"type","at_s",...}].
+  COMMAND          rejected (rejected_by_world "advisory_only"): FLOCK never flies the aircraft. The legacy
+                   collision-avoidance demo can still be run with --allow-takeover.
 Live traffic (scenario "traffic", world/traffic.py TrafficGenerator): AI aircraft come and go; each
   gets WORLD_EVENT SPAWN / DESPAWN (log; god prunes TRUTH). With --traffic-nodes ws://<channel> the
   world starts a FLOCK node (node/node.py) for every new AI aircraft and stops it when it leaves; logs
@@ -56,6 +66,8 @@ from world.scenario import World
 from world.flight_model import HARD_LANDING_FPM
 from world.separation import SeparationMonitor
 from world.taws import Taws
+from world.sensors import SensorSim
+from verify.schema import Verify
 
 PHYS_HZ = 20
 VALIDATE = {"ADVISORY": schemas.Advisory, "COMMAND": schemas.Command, "TRUST": schemas.Trust,
@@ -95,9 +107,14 @@ class NodeLauncher:
             self.stop(i)
 
 class Hub:
-    def __init__(self, world: World, nodes: NodeLauncher | None = None):
+    def __init__(self, world: World, nodes: NodeLauncher | None = None, advisory_only: bool = True):
         self.w = world
         self.nodes = nodes
+        self.advisory_only = advisory_only                 # FLOCK never flies the aircraft (spec hard constraint 1)
+        self.sensors = SensorSim(world)                    # what each judge aircraft's own equipment receives
+        self.sensor_buf: dict[str, list] = defaultdict(list)
+        self.scripted = sorted(world.raw.get("attacks", []), key=lambda a: a.get("at_s", 0))   # scenario attacks
+        self.sim_start = None
         self.roles: dict[str, set] = defaultdict(set)      # role -> websockets
         self.latest: dict[str, dict] = {}                  # "<TYPE>:<ac_id>" -> last frame (replayed to new cockpits)
         self.t0 = time.time()
@@ -128,6 +145,10 @@ class Hub:
         if raw.startswith("node:"):
             ac_id = raw[5:]
             return (raw, ac_id) if ac_id in self.w.fleet else (None, f"unknown aircraft {ac_id}; fleet={list(self.w.fleet)}")
+        if raw.startswith("avionics:"):                    # FLOCK onboard unit (verify/unit.py) of a judge aircraft
+            ac_id = raw[9:]
+            ok = ac_id in self.w.fleet and self.w.fleet[ac_id].human
+            return (raw, ac_id) if ok else (None, f"no judge aircraft {ac_id}; humans={self.w.humans}")
         if raw in ("god", "log", "channel", "camera", "data"):
             return raw, None
         return None, f"unknown role {raw}"
@@ -150,7 +171,7 @@ class Hub:
         if role.startswith("node:"):
             await ws.send(dumps(self.env_frame()))         # current density altitude for climb capability
         if role.startswith("cockpit:"):
-            for k in ("ADVISORY", "TRUST"):
+            for k in ("ADVISORY", "TRUST", "VERIFY"):
                 if f"{k}:{ac_id}" in self.latest:
                     await ws.send(dumps(self.latest[f"{k}:{ac_id}"]))
         self.roles[role].add(ws)
@@ -185,6 +206,19 @@ class Hub:
         t = m.get("type")
         self.check(role, m)
 
+        if role.startswith("avionics:"):                   # onboard unit: it may only report what it concluded
+            if t == "VERIFY":
+                try:
+                    Verify.model_validate(m)
+                except ValidationError as e:
+                    print(f"[world] VERIFY schema warning from {role}: {str(e).splitlines()[0]}")
+                m = dict(m, ac_id=own_id)
+                self.latest[f"VERIFY:{own_id}"] = m
+                self.send(f"cockpit:{own_id}", m)
+                self.send("god", m)
+                self.log(own_id, "decision", m)
+            return
+
         if role.startswith("node:"):
             if own_id not in self.w.fleet:                 # its aircraft has left (live traffic)
                 return
@@ -204,8 +238,11 @@ class Hub:
                     self.ai_pilot_hears(ac_id, m)
             elif t == "COMMAND":
                 ac = self.w.fleet[ac_id]
-                applied = ac.apply_command(m, self.now())
-                why = None if applied else ("not ap_equipped" if not ac.ap_equipped else "stick active")
+                if self.advisory_only:                     # advisory only: FLOCK never takes the controls
+                    applied, why = False, "advisory_only"
+                else:
+                    applied = ac.apply_command(m, self.now())
+                    why = None if applied else ("not ap_equipped" if not ac.ap_equipped else "stick active")
                 m2 = dict(m, applied=applied, **({"rejected_by_world": why} if why else {}))
                 self.send(cockpit, m2)
                 self.send("god", m2)
@@ -275,6 +312,8 @@ class Hub:
                 print(f"[world] weather: {', '.join(what) or 'no change'} -> {self.w.env.wx.metar_style()}")
             elif t == "RESET_DEMO":
                 self.reset_demo()
+            elif t == "SET_ATTACK":
+                self.set_attack(m)
             return
 
         if role == "data" and t == "LIVE_TRAFFIC":
@@ -322,6 +361,47 @@ class Hub:
         self.send("god", ev)
         self.log("god", "world", ev)
         print(f"[world] RESET_DEMO judges {[a.id for a in reset]} back at their starts; removed traffic {removed}")
+
+    # ---------- spoofing attacks (simulated radio environment only) ----------
+    def set_attack(self, m: dict) -> None:
+        """God view SET_ATTACK {"attack": "ghost", "on": true|false, "victim"?: id, params...}."""
+        kind, on = str(m.get("attack", "ghost")), m.get("on", True) is not False
+        if on:
+            victim = self.w.fleet.get(m.get("victim") or (self.w.humans[0] if self.w.humans else ""))
+            if victim is None:
+                print(f"[world] SET_ATTACK: no victim aircraft")
+                return
+            params = {k: v for k, v in m.items() if k not in ("type", "attack", "on", "victim")}
+            try:
+                a = self.sensors.attacks.start(kind, victim, self.now(), **params)
+            except (KeyError, TypeError) as e:
+                print(f"[world] SET_ATTACK refused: {e}")
+                return
+            ev = {"type": "WORLD_EVENT", "event": "ATTACK_ON", "t": round(self.now(), 3), "attack": a.public(), "a": victim.id}
+        else:
+            ids = self.sensors.attacks.stop(kind=kind if kind != "all" else None)
+            ev = {"type": "WORLD_EVENT", "event": "ATTACK_OFF", "t": round(self.now(), 3), "stopped": ids}
+        self.send("god", ev)
+        self.log("god", "world", ev)
+        print(f"[world] {ev['event']} {kind} {ev.get('attack', ev.get('stopped'))}")
+
+    def sensor_step(self, now: float, tick: int) -> None:
+        """Feed every connected onboard unit what its aircraft's equipment received (10 Hz frames)."""
+        if self.sim_start is None:
+            self.sim_start = now
+        while self.scripted and now - self.sim_start >= float(self.scripted[0].get("at_s", 0)):
+            a = self.scripted.pop(0)
+            self.set_attack({"attack": a.get("type", "ghost"), **{k: v for k, v in a.items() if k not in ("type", "at_s")}})
+        listening = [r[9:] for r, s in self.roles.items() if r.startswith("avionics:") and s]
+        for own_id, msgs in self.sensors.step(now, own_ids=listening).items():
+            self.sensor_buf[own_id] += msgs
+        if tick % 2 == 0:
+            for own_id in listening:
+                msgs = self.sensor_buf.pop(own_id, [])
+                self.send(f"avionics:{own_id}", {"type": "SENSORS", "t": round(now, 3), "ac_id": own_id, "msgs": msgs})
+        if tick % PHYS_HZ == 0 and self.roles.get("god"):          # 1 Hz: who is real, who is an attack (truth)
+            self.send("god", {"type": "GROUND_TRUTH", "t": round(now, 3), "emitters": self.sensors.truth(now),
+                              "attacks": self.sensors.attacks.public()})
 
     # ---------- live traffic ----------
     def ai_pilot_hears(self, ac_id: str, m: dict) -> None:
@@ -456,6 +536,7 @@ class Hub:
                     ac.step(sim_dt / n, self.w.env, now)
             now = self.now()
             tick = self.stats["ticks"]
+            self.sensor_step(now, tick)                         # onboard units: what their equipment received
             if tick % 4 == 0:                                   # 5 Hz: autopilot landers / departures check the runway
                 for ev in self.w.runway_watch(now):
                     for role in (f"cockpit:{ev['a']}", "god"):
@@ -528,10 +609,11 @@ async def main():
     ap.add_argument("--traffic-nodes", metavar="CHANNEL_WS", help="start a FLOCK node for every live-traffic aircraft, "
                     "radio via this channel (e.g. ws://localhost:8766)")
     ap.add_argument("--pidfile", help="append node PIDs here (run_demo.ps1 .demo_pids)")
+    ap.add_argument("--allow-takeover", action="store_true", help="legacy collision-avoidance demo: let nodes fly the aircraft (COMMAND). Off by default: FLOCK is advisory only")
     a = ap.parse_args()
     world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather, seed=a.seed)
     nodes = NodeLauncher(f"ws://localhost:{a.port}", a.traffic_nodes, a.pidfile) if a.traffic_nodes and world.traffic else None
-    hub = Hub(world, nodes)
+    hub = Hub(world, nodes, advisory_only=not a.allow_takeover)
     if a.http:
         serve_http(a.http)
     async with serve(hub.handler, "0.0.0.0", a.port, compression=None):

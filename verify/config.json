@@ -1,0 +1,56 @@
+{
+  "_doc": "FLOCK verification thresholds and weights. Every number the checks / fusion use lives here (docs/checks.md explains each). JSON, not YAML: no extra dependency on the demo laptop.",
+
+  "track_timeout_s": 30.0,
+  "evaluate_hz": 1.0,
+
+  "kinematics": {
+    "window_s": 15.0,
+    "min_reports": 3,
+    "max_gs_kt": 600.0,
+    "max_vs_fpm": 6000.0,
+    "max_turn_dps": 8.0,
+    "max_pos_residual_m": 250.0,
+    "residual_per_s_m": 15.0,
+    "ok_score": 0.7, "ok_conf": 0.3,
+    "bad_score": 0.05, "bad_conf": 0.8,
+    "_note": "Plausible motion is weak evidence (a careful ghost also moves plausibly); impossible motion is strong."
+  },
+
+  "tcas": {
+    "range_nm": 12.0,
+    "alt_window_ft": 9900.0,
+    "expect_inside_frac": 0.85,
+    "fresh_s": 3.0,
+    "grace_s": 4.0,
+    "range_tol_m": 300.0,
+    "range_tol_frac": 0.03,
+    "bearing_tol_deg": 25.0,
+    "alt_tol_ft": 400.0,
+    "match_score": 0.97, "match_conf": 0.9,
+    "mismatch_score": 0.03, "mismatch_conf": 0.9,
+    "absent_score": 0.05, "absent_conf": 0.75,
+    "_note": "TCAS range is accurate (round-trip timing); TCAS bearing is poor (several degrees, worse near the wingtips), hence the wide bearing tolerance. Values are our estimates, not from a TCAS MOPS - see docs/limitations.md."
+  },
+
+  "modes": {
+    "window_s": 20.0,
+    "reply_range_nm": 60.0,
+    "radar_active_s": 15.0,
+    "present_score": 0.85, "present_conf": 0.6,
+    "absent_score": 0.1, "absent_conf": 0.6
+  },
+
+  "fusion": {
+    "weights": {"tcas_consistency": 1.5, "modes_presence": 1.0, "kinematics": 1.0},
+    "prior_trust": 50,
+    "score_clip": 0.02,
+    "smooth_alpha": 0.35,
+    "fast_alpha": 0.8,
+    "fast_jump": 3.0,
+    "verified_min": 70,
+    "suspect_max": 30,
+    "strong_conf": 0.7,
+    "evidence_conf": 0.5
+  }
+}

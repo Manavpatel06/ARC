@@ -116,11 +116,61 @@ def test_advisory_goes_to_own_cockpit_god_and_log_only_and_id_is_enforced(world)
     assert any(x["type"] == "ADVISORY" for x in god)
     assert any(x["type"] == "LOG" and x["payload"].get("type") == "ADVISORY" for x in log)
 
-def test_command_refused_for_aircraft_without_autopilot(world):
+def test_command_always_refused_flock_is_advisory_only(world):
     cmd = {"type": "COMMAND", "ac_id": "N102", "t": 0, "mode": "TAKEOVER", "bank_cmd_deg": -20, "hold_s": 5}
     ck102, _, god, _ = run(_node_and_watchers(world, [cmd]))
     c = [x for x in god if x["type"] == "COMMAND"]
-    assert c and c[0]["applied"] is False and c[0].get("rejected_by_world") == "not ap_equipped"
+    assert c and c[0]["applied"] is False and c[0].get("rejected_by_world") == "advisory_only"
+    last = [x for x in god if x["type"] == "TRUTH"][-1]
+    assert all(a["mode"] != "COMMAND" for a in last["aircraft"])
+
+# ------------------------------------------------------------------ FLOCK onboard unit (avionics role)
+def test_avionics_gets_only_own_sensor_data_and_no_ground_truth(world):
+    frames = run(collect(world, "avionics:N101", 2.0))
+    assert frames[0]["type"] == "HELLO" and "static" not in frames[0]
+    sens = [f for f in frames if f["type"] == "SENSORS"]
+    assert len(sens) >= 10 and all(f["ac_id"] == "N101" for f in sens)          # ~10 Hz
+    msgs = [m for f in sens for m in f["msgs"]]
+    kinds = {m["kind"] for m in msgs}
+    assert {"ADSB_POSITION", "ADSB_VELOCITY", "OWNSHIP_STATE", "TCAS_TRACK"} <= kinds, kinds
+    assert all("label" not in m for m in msgs)                                   # truth never reaches the unit
+    assert not {"TRUTH", "GROUND_TRUTH", "ADVISORY", "TRUST"} & types(frames)
+    from world.sensors import icao_of
+    assert icao_of("N101") not in {m.get("icao") for m in msgs}                   # never hears itself
+    assert run(collect(world, "avionics:N201", 1.0))[0]["type"] == "ERROR"        # AI aircraft carry no FLOCK unit
+
+def test_verify_goes_to_own_cockpit_god_and_log_only(world):
+    v = {"type": "VERIFY", "ac_id": "N999", "t": 0, "targets": [
+        {"icao": "a1b2c3", "id": "N204", "trust": 97, "state": "VERIFIED", "reasons": ["TCAS confirms it"], "checks": {}}]}
+    async def go():
+        async def unit():
+            async with websockets.connect(f"{world}/?role=avionics:N101") as ws:
+                await asyncio.sleep(0.4); await ws.send(json.dumps(v)); await asyncio.sleep(1.0)
+        return await asyncio.gather(unit(), collect(world, "cockpitA", 1.8), collect(world, "cockpitB", 1.8),
+                                    collect(world, "god", 1.8), collect(world, "log", 1.8))
+    _, a, b, god, log = run(go())
+    va = [x for x in a if x["type"] == "VERIFY"]
+    assert va and va[0]["ac_id"] == "N101" and va[0]["targets"][0]["state"] == "VERIFIED"   # id enforced
+    assert "VERIFY" not in types(b)
+    assert any(x["type"] == "VERIFY" for x in god)
+    assert any(x["type"] == "LOG" and x["payload"].get("type") == "VERIFY" for x in log)
+
+def test_ghost_attack_from_god_shows_in_ground_truth_and_the_victims_adsb(world):
+    async def go():
+        god = asyncio.create_task(collect(world, "god", 3.0, send=[{"type": "SET_ATTACK", "attack": "ghost", "on": True}]))
+        av = asyncio.create_task(collect(world, "avionics:N101", 3.0))
+        return await god, await av
+    god, av = run(go())
+    on = [x for x in god if x.get("event") == "ATTACK_ON"]
+    assert on and on[0]["attack"]["kind"] == "ghost"
+    icao = on[0]["attack"]["icao"]
+    gt = [x for x in god if x["type"] == "GROUND_TRUTH"][-1]
+    assert any(e["icao"] == icao and e["label"] == "ghost" for e in gt["emitters"])
+    msgs = [m for f in av if f["type"] == "SENSORS" for m in f["msgs"]]
+    assert any(m["kind"] == "ADSB_POSITION" and m["icao"] == icao for m in msgs)          # it broadcasts ADS-B ...
+    assert not any(m["kind"] in ("TCAS_TRACK", "MODES_REPLY") and m["icao"] == icao for m in msgs)  # ... and nothing else
+    off = run(collect(world, "god", 1.5, send=[{"type": "SET_ATTACK", "attack": "ghost", "on": False}]))
+    assert any(x.get("event") == "ATTACK_OFF" for x in off)
 
 def test_live_traffic_reaches_god_and_log_never_nodes_or_cockpits(world):
     lt = {"type": "LIVE_TRAFFIC", "t": time.time(), "source": "test", "radius_nm": 25,
