@@ -99,7 +99,7 @@ export function startCockpit(role) {
   });
   s.hap = hap;
 
-  // reset own aircraft: hold L2 + R2 / R / on-screen RESET for 5 s (input.js) -> RESET to the world
+  // reset own aircraft: hold L2 + R2 / R / on-screen RESET for 1 s (input.js) -> RESET to the world
   addEventListener("arc:reset", () => s.acId && link.send({ type: "RESET", ac_id: s.acId }));
   const rb = $("ck-reset-btn");
   const hold = (on) => (e) => { inp.resetButton = on; if (on) rb.setPointerCapture && e.pointerId != null && rb.setPointerCapture(e.pointerId); };
@@ -169,7 +169,7 @@ function renderReset(inp) {
   const el = $("ck-reset"), p = inp.resetProgress || 0;
   el.hidden = !(p > 0.04 && p < 1);
   if (el.hidden) return;
-  el.querySelector("span").textContent = `RESET AIRCRAFT · keep holding ${(5 * (1 - p)).toFixed(1)} s`;
+  el.querySelector("span").textContent = `RESET AIRCRAFT · keep holding ${(1 - p).toFixed(1)} s`;
   el.querySelector("i").style.setProperty("--p", p.toFixed(3));
 }
 

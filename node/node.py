@@ -47,6 +47,16 @@ OWN_HORIZON_S = 105.0
 COMMIT_RESEND_S = 2.0
 ALERT_REPEAT_S = 60.0          # a target that flaps is announced at most once a minute (quarantine always)
 AIRWITNESS_ON = os.environ.get("ARC_AIRWITNESS", "1") != "0"   # 0 = A/B comparison only
+# Where a peer's intent comes from (A/B comparison):
+#   link  peer's declared leg + "BASE_IN_12S" intent over the ARC link (default, unchanged)
+#   adsb  plain ADS-B only: no declared leg / link intent; Target State & Status selected heading / altitude
+#         (AP-equipped aircraft) -> an imminent turn and a level-off. Believed only from non-SUSPICIOUS targets.
+#   none  plain ADS-B position / velocity only: leg and turns inferred from motion
+INTENT_SOURCE = os.environ.get("ARC_INTENT", "link")
+TSS_BUG_LEAD_S = float(os.environ.get("ARC_TSS_LEAD_S", "6.0"))   # autopilot heading bug set this long before the turn
+TSS_TURN_DEG = 15.0            # selected heading this far off the track = a turn is coming
+TSS_MATCH_DEG = 30.0           # ...to the next pattern leg if it is within this of that leg's heading
+TSS_MAX_AGE_S = 3.0
 SEQ_HOLD_S = 150.0
 SEQ_HOLD_RANGE_M = 6000.0
 PILOT_MAX_BANK = 45.0
@@ -90,6 +100,8 @@ class PeerTrack:
     prev_rx: float = 0.0
     turn_rate: float = 0.0
     intent_turn: Optional[tuple] = None          # (leg, absolute node-clock time)
+    sel_hdg: Optional[float] = None              # ADS-B Target State & Status (ARC_INTENT=adsb)
+    sel_alt_ft: Optional[float] = None
     pred: Optional[Prediction] = None
     pred_key: tuple = ()
     z: float = 0.0                               # metres MSL, set from baro offset at prediction time
@@ -215,10 +227,15 @@ class Node:
             tr.vs = body.get("vs_fpm", 0.0) * FT / 60.0
             tr.leg, tr.ap_equipped = body.get("leg", "UNKNOWN"), bool(body.get("ap_equipped", False))
             tr.seq, tr.rx_t = int(env.get("seq", 0)), now
-            self._set_intent(tr, body.get("intent", ""), now)
+            if INTENT_SOURCE == "link":
+                self._set_intent(tr, body.get("intent", ""), now)
+            else:                                        # leg / intent are not in ADS-B
+                tr.leg = "UNKNOWN"
+                if INTENT_SOURCE == "adsb":
+                    tr.sel_hdg, tr.sel_alt_ft = body.get("sel_hdg_deg"), body.get("sel_alt_ft")
         elif tr is None:
             return
-        elif msg == "INTENT":
+        elif msg == "INTENT" and INTENT_SOURCE == "link":
             self._set_intent(tr, body.get("intent", ""), now, body.get("valid_for_s", 20.0))
             tr.pred_key = ()
         elif msg == "SEQ_PROPOSE":
@@ -252,6 +269,45 @@ class Node:
             return {"mean": round(sum(v) / len(v) * k, 3), "max": round(max(v) * k, 3), "n": len(v)} if v else None
         return {"packet_guard_ms": mm(self.aw.stats["guard_us"], 1e-3), "trust_update_ms": mm(self.aw.stats["assess_us"], 1e-3),
                 "collision_loop_ms": mm(self.tick_ms)}
+
+    def _target_state(self, cls, nt) -> dict:
+        """What our autopilot would put in ADS-B Target State & Status: selected heading (the bug moves to the next
+        leg TSS_BUG_LEAD_S before the turn, else it holds the track) and selected altitude (pattern altitude while
+        climbing to / flying it; none on base / final, where the pilot flies the descent). When the avionics report the
+        autopilot's real targets in OWNSHIP (sel_hdg_deg / sel_alt_ft), those are broadcast as they are."""
+        o = self.own
+        if "sel_hdg_deg" in o:
+            return {k: o[k] for k in ("sel_hdg_deg", "sel_alt_ft") if o.get(k) is not None}
+        pat = self.patterns.get(cls.runway) if cls and cls.conf >= CONF_MIN else None
+        hdg = o["track_deg"]
+        if pat is not None and nt and nt[1] <= TSS_BUG_LEAD_S and nt[0] in pat.legs:
+            hdg = pat.legs[nt[0]].heading
+        out = {"sel_hdg_deg": round(hdg % 360.0, 1)}
+        if pat is not None and cls.leg in ("UPWIND", "CROSSWIND", "DOWNWIND"):
+            out["sel_alt_ft"] = round(pat.tpa_msl_m / FT - (o["alt_msl_ft"] - o["alt_press_ft"]), -1)   # pressure alt
+        return out
+
+    def _adsb_intent(self, tr: PeerTrack, cls, t0: float) -> Optional[str]:
+        """ARC_INTENT=adsb: a selected heading well off the track and near the next leg's heading = that turn now."""
+        if tr.sel_hdg is None or self.now - tr.rx_t > TSS_MAX_AGE_S or cls.runway is None:
+            return None
+        pat = self.patterns[cls.runway]
+        nxt = pat.next_leg("UPWIND" if cls.leg == "GO_AROUND" else cls.leg)
+        if nxt is None or nxt not in pat.legs:
+            return None
+        if abs(wrap180(tr.sel_hdg - tr.track)) > TSS_TURN_DEG and abs(wrap180(tr.sel_hdg - pat.legs[nxt].heading)) < TSS_MATCH_DEG:
+            return f"{nxt}_IN_0.0S"
+        return None
+
+    def _clamp_to_sel_alt(self, tr: PeerTrack, pred: Prediction) -> None:
+        """ARC_INTENT=adsb: a climb / descent toward the selected altitude levels off there."""
+        if tr.sel_alt_ft is None or self.now - tr.rx_t > TSS_MAX_AGE_S:
+            return
+        z_sel, z0 = tr.sel_alt_ft * FT + self.baro_offset_m, pred.pts[0, 3]
+        if tr.vs > 0.5 and z_sel > z0:
+            np.minimum(pred.pts[:, 3], z_sel, out=pred.pts[:, 3])
+        elif tr.vs < -0.5 and z_sel < z0:
+            np.maximum(pred.pts[:, 3], z_sel, out=pred.pts[:, 3])
 
     def _set_intent(self, tr: PeerTrack, intent: str, now: float, valid_for: float = 20.0) -> None:
         pi = Predictor.parse_intent(intent)
@@ -321,11 +377,14 @@ class Node:
         intent = f"{nt[0]}_IN_{int(round(nt[1]))}S" if nt else ""
         if now - self._last["state"] >= STATE_PERIOD_S:
             self._last["state"] = now
-            self._emit_radio("STATE", {"lat": o["lat"], "lon": o["lon"], "alt_press_ft": o["alt_press_ft"],
-                                       "gs_kt": o["gs_kt"], "track_deg": o["track_deg"], "vs_fpm": o.get("vs_fpm", 0.0),
-                                       "leg": leg, "intent": intent, "ap_equipped": bool(o.get("ap_equipped")),
-                                       "alt_geo_ft": round(o["alt_msl_ft"]),    # extra field: baro/GNSS cross-check
-                                       "sid": self.sid})                        # extra field: session id (packet guard)
+            body = {"lat": o["lat"], "lon": o["lon"], "alt_press_ft": o["alt_press_ft"],
+                    "gs_kt": o["gs_kt"], "track_deg": o["track_deg"], "vs_fpm": o.get("vs_fpm", 0.0),
+                    "leg": leg, "intent": intent, "ap_equipped": bool(o.get("ap_equipped")),
+                    "alt_geo_ft": round(o["alt_msl_ft"]),    # extra field: baro/GNSS cross-check
+                    "sid": self.sid}                         # extra field: session id (packet guard)
+            if o.get("ap_equipped"):
+                body.update(self._target_state(cls, nt))
+            self._emit_radio("STATE", body)
         if nt and nt[1] <= 20.0 and nt[0] != self._last_intent_leg:
             self._last_intent_leg = nt[0]
             self._emit_radio("INTENT", {"leg": leg, "intent": intent, "valid_for_s": 20.0})
@@ -444,8 +503,12 @@ class Node:
                 rel = tr.intent_turn[1] - t0
                 if rel > -6.0:
                     intent = f"{tr.intent_turn[0]}_IN_{max(0.0, rel):.1f}S"
+            elif INTENT_SOURCE == "adsb":
+                intent = self._adsb_intent(tr, cls, t0)
             tr.pred = self.predictor.predict(st, t0, cls, horizon=PEER_HORIZON_S, intent=intent,
                                              age_s=max(0.0, age - 1.0))        # >1 s silent: widen sigma
+            if INTENT_SOURCE == "adsb":
+                self._clamp_to_sel_alt(tr, tr.pred)
             scale = self.trust.sigma_scale(tr.id)              # UNVERIFIED: conservative tube
             if scale != 1.0:
                 tr.pred.pts[:, 4] *= scale
@@ -702,7 +765,8 @@ class Node:
         # 14 CFR 91.113 right-of-way for this pair (deterministic; both nodes compute it from the same shared data)
         row_me, row_peer, row_first = rightofway.pair(
             {"x": o.x, "y": o.y, "trk": self.own["track_deg"], "gs": o.gs, "alt_ft": o.z / FT, "leg": self.own_cls.leg},
-            {"x": tr.x, "y": tr.y, "trk": tr.track, "gs": tr.gs, "alt_ft": peer_state["z"] / FT, "leg": tr.leg})
+            {"x": tr.x, "y": tr.y, "trk": tr.track, "gs": tr.gs, "alt_ft": peer_state["z"] / FT,
+             "leg": tr.pred.leg if INTENT_SOURCE != "link" and tr.pred is not None else tr.leg})   # no link: inferred leg
 
         def evaluate(peer_commit):
             pp = dict(peers)

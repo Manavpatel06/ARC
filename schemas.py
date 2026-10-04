@@ -194,6 +194,10 @@ class StateBody(BaseModel):
     leg: Leg = "UNKNOWN"
     intent: str = ""
     ap_equipped: bool = False
+    # ADS-B v2 Target State & Status (DO-260B): what a real transponder can broadcast, AP-equipped aircraft only.
+    # leg / intent above are ARC-link only; ARC_INTENT=adsb predicts from these two instead.
+    sel_hdg_deg: Optional[float] = None
+    sel_alt_ft: Optional[float] = None
 
 class IntentBody(BaseModel):
     leg: Leg

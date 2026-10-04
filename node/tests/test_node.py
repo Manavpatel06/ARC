@@ -404,3 +404,47 @@ def test_right_of_way_prefers_a_right_turn_over_a_free_vertical_maneuver():
     own, hold, peers, terr = _head_on(own_z=300.0, peer_z=300.0, terrain=100.0)
     r = escape.evaluate(own, hold, peers, terr, prefer_right=True)
     assert r.chosen.cand.kind == "turn" and r.chosen.cand.bank > 0, r.chosen.cand.name
+
+
+# ---- ARC_INTENT=adsb: ADS-B Target State & Status (selected heading / altitude) instead of link intent
+def _peer_on(node, leg, along_m, sel_hdg=None, sel_alt_ft=None):
+    from node.node import PeerTrack
+    st = st_on(leg, along_m)
+    tr = PeerTrack("P1", x=st.x, y=st.y, alt_press_ft=st.z / FT, gs=st.gs, track=st.track,
+                   rx_t=node.now, sel_hdg=sel_hdg, sel_alt_ft=sel_alt_ft)
+    return tr, st
+
+
+def test_adsb_intent_turn_from_selected_heading():
+    n = Node("N1", patterns=PATS, record=False)
+    nxt = P25L.next_leg("DOWNWIND")
+    tr, st = _peer_on(n, "DOWNWIND", P25L.legs["DOWNWIND"].length - 300.0, sel_hdg=P25L.legs[nxt].heading)
+    cls = PRED.classify(st)
+    assert n._adsb_intent(tr, cls, 0.0) == f"{nxt}_IN_0.0S"
+    tr.sel_hdg = st.track                                   # bug on the current track: no turn announced
+    assert n._adsb_intent(tr, cls, 0.0) is None
+    tr.sel_hdg = (P25L.legs[nxt].heading + 180.0) % 360.0  # far off but not toward the next leg: ignored
+    assert n._adsb_intent(tr, cls, 0.0) is None
+    tr.sel_hdg, n.now = P25L.legs[nxt].heading, 10.0       # stale target state is not believed
+    assert n._adsb_intent(tr, cls, 0.0) is None
+
+
+def test_adsb_selected_altitude_levels_off_a_climb():
+    n = Node("N1", patterns=PATS, record=False)
+    tr, st = _peer_on(n, "UPWIND", 200.0)
+    tr.vs = 3.0
+    pred = PRED.straight_line(KState(st.x, st.y, st.z, st.gs, st.track, tr.vs), 0.0, 60.0, 1.0, 1.0, "UPWIND", "25L")
+    tr.sel_alt_ft = st.z / FT + 300.0
+    n._clamp_to_sel_alt(tr, pred)
+    assert pred.pts[:, 3].max() <= tr.sel_alt_ft * FT + 1e-6 and pred.pts[5, 3] > st.z
+
+
+def test_target_state_moves_bug_to_next_leg_before_the_turn():
+    n = Node("N1", patterns=PATS, record=False)
+    st = st_on("DOWNWIND", P25L.legs["DOWNWIND"].length - 50.0)
+    n.own = {"track_deg": st.track, "alt_msl_ft": st.z / FT, "alt_press_ft": st.z / FT}
+    cls = PRED.classify(st)
+    nxt = P25L.next_leg("DOWNWIND")
+    assert n._target_state(cls, (nxt, 3.0))["sel_hdg_deg"] == round(P25L.legs[nxt].heading % 360, 1)
+    far = n._target_state(cls, (nxt, 30.0))
+    assert far["sel_hdg_deg"] == round(st.track % 360, 1) and "sel_alt_ft" in far
