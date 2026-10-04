@@ -161,9 +161,16 @@ def test_escape_head_on_picks_a_turn_and_explains():
 
 
 def test_escape_terrain_floor_blocks_everything_low():
+    # a ridge 120 m high ahead (y > -800): holding course meets it too, so nothing straight or lateral is acceptable
+    own, hold, peers, _ = _head_on(own_z=450 + 80, peer_z=450 + 80)
+    r = escape.evaluate(own, hold, peers, lambda x, y: 450.0 + (120.0 if y > -800.0 else 0.0))
+    assert r.chosen is None and r.rejected["L30"] == "terrain floor"
+
+
+def test_low_aircraft_may_climb_but_not_descend_toward_the_ground():
     own, hold, peers, terr = _head_on(own_z=450 + 80, peer_z=450 + 80)
-    r = escape.evaluate(own, hold, peers, terr)
-    assert r.chosen is None and r.rejected["DESCEND"] == "terrain floor"
+    r = escape.evaluate(own, hold, peers, lambda x, y: 450.0)
+    assert r.rejected["DESCEND"] == "terrain floor" and r.rejected.get("CLIMB") != "terrain floor"
 
 
 # ---- negotiate
@@ -316,13 +323,13 @@ def test_obstacle_fn_is_used_when_data_obstacles_exists(monkeypatch):
     import sys
     import types
     mod = types.ModuleType("data.obstacles")
-    mod.top_at = lambda lat, lon: 9000.0                       # every point has a 9,000 ft MSL obstacle
+    mod.obstacle_fn_enu = lambda to_latlon: (lambda x, y: 2743.0 if abs(x) > 150.0 else None)   # tall obstacles either side
     monkeypatch.setitem(sys.modules, "data.obstacles", mod)
     n = Node("N101", patterns=PATS)
-    assert n.obstacle_fn is not None and abs(n.obstacle_fn(0.0, 0.0) - 9000.0 * FT) < 1e-6
+    assert n.obstacle_fn is not None and n.obstacle_fn(500.0, 0.0) == 2743.0 and n.obstacle_fn(0.0, 0.0) is None
     own, hold, peers, terr = _head_on(terrain=100.0)
     r = escape.evaluate(own, hold, peers, terr, obstacle_fn=n.obstacle_fn)
-    assert r.rejected.get("L30") == "obstacle" and r.chosen is None
+    assert r.rejected.get("L30") == "obstacle" and r.rejected.get("R30") == "obstacle"
 
 
 def test_peer_prediction_frames_are_published_for_the_god_view():
@@ -337,3 +344,63 @@ def test_peer_prediction_frames_are_published_for_the_god_view():
     for f in peer[-3:]:
         schemas.Prediction.model_validate(f)
     assert peer[-1]["ac_id"] == "N101" and peer[-1]["path"][0]["t"] == 0.0 and len(peer[-1]["path"]) == 19
+
+
+def test_resolve_advice_matches_what_takeover_flies():
+    """AP-equipped: a maneuver the bounds monitor would refuse (descent below TPA-300) is never advised or committed."""
+    ac = load_scenario("harness/scenarios/base_cutoff_conflict.json", PATS, comply=0.0)
+    sim = Sim(PATS, ac, lambda i: Node(i, patterns=PATS), loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
+    res = sim.run(175)
+    for aid in ("N101",):                                       # the AP-equipped aircraft
+        advised = [f["reason"].get("chosen") for _, i, f in res.advisories if i == aid and f["level"] == "RESOLVE"]
+        flown = [f["reason"].get("chosen") for _, i, f in res.commands if i == aid and f["mode"] == "TAKEOVER"]
+        assert advised and flown
+        cmd = next(f for _, i, f in res.commands if i == aid and f["mode"] == "TAKEOVER")
+        # same maneuver, or the log says exactly what changed between the advice and the takeover
+        assert flown[0] in advised or "changed_from" in cmd["reason"], (advised, flown)
+        if "changed_from" in cmd["reason"]:
+            assert cmd["reason"]["changed_from"]["advised"] in advised and cmd["reason"]["changed_from"]["why"]
+
+
+def test_bounds_blocked_candidate_is_rejected_with_reason():
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, blocked={"R20": "bounds: test", "L20": "bounds: test"})
+    assert r.rejected["R20"] == "bounds: test" and r.chosen.cand.name not in ("R20", "L20")
+
+
+# ---- go-around, kept sequencing, head-on ordering
+def test_go_around_candidate_only_on_the_approach():
+    assert "GO_AROUND" not in [c.name for c in escape.candidates(500.0)]
+    ga = [c for c in escape.candidates(500.0, 0.0, go_around=True) if c.name == "GO_AROUND"][0]
+    assert ga.bank == 0.0 and ga.vs_fpm == 500.0 and ga.sense == "CLIMB"
+    own, hold, peers, terr = _head_on(terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, go_around=True)
+    assert "GO_AROUND" in [e.cand.name for e in r.evals]
+    assert layers.maneuver_text("GO_AROUND", "N204", None)[0].startswith("GO AROUND - CLIMB STRAIGHT AHEAD")
+
+
+def test_head_on_both_aircraft_take_over_in_the_same_sense():
+    import json
+    for seed in (15, 20):                              # two seeds where the takeover used to flip one aircraft to the left
+        ac = load_scenario("harness/scenarios/head_on_judges.json", PATS, comply=0.0)
+        res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=0.1, seed=seed,
+                  follow_sequence=False).run(130)
+        banks = {i: f["bank_cmd_deg"] for _, i, f in res.commands if f["mode"] == "TAKEOVER"}
+        assert len(banks) == 2 and all(b > 0 for b in banks.values()), (seed, banks)
+        assert res.min_h_m / FT > 700, (seed, res.min_h_m / FT)
+
+
+def test_sequencing_is_kept_after_a_maneuver_cleared_the_conflict():
+    from harness.montecarlo import make_encounter, DT, DURATION_S
+    kept = 0
+    for seed in (2009, 2011, 2015, 2022):
+        ac = make_encounter("base_vs_straight_in", seed, PATS)
+        res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=DT, seed=seed).run(DURATION_S)
+        kept += sum(1 for _, _, f in res.advisories if f["reason"].get("kept_after") == "maneuver")
+    assert kept > 0
+
+
+def test_right_of_way_prefers_a_right_turn_over_a_free_vertical_maneuver():
+    own, hold, peers, terr = _head_on(own_z=300.0, peer_z=300.0, terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, prefer_right=True)
+    assert r.chosen.cand.kind == "turn" and r.chosen.cand.bank > 0, r.chosen.cand.name

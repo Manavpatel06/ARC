@@ -15,6 +15,7 @@ Brief: `lanes/C-radio-mansi.md`. Acceptance: `python radio/accept_c.py` → **14
 | `faults.py` | Drop a MANEUVER_COMMIT, silence a node for 5 s, latency spike to 2 s. |
 | `rf.py`, `wire.py` | Shared RF model (915 MHz, 20 dBm, free space) and transport plumbing. |
 | `accept_c.py` | Lane C acceptance checks. |
+| `watch.py` | Live colour-coded terminal view of all communication (packets, drops, rejections, links, trust, advisories). |
 
 ## Run
 ```bash
@@ -25,6 +26,15 @@ python radio/faults.py drop-commit --from N101    # or: kill-link N204 --for 5  
 python radio/accept_c.py                      # all Lane C checks locally (~70 s)
 python radio/slots.py                         # collision-rate table for the slide
 ```
+
+## Watch all communication live (terminal)
+```bash
+python radio/watch.py --world ws://<WORLD_IP>:8765               # every packet, drop, rejection, link, trust change, advisory
+python radio/watch.py --world ws://<WORLD_IP>:8765 --no-state    # hide routine STATE/HEARTBEAT — negotiation, trust, advisories stand out
+python radio/watch.py --world ws://<WORLD_IP>:8765 --only GHOST7 # one aircraft
+python radio/watch.py --world ws://<WORLD_IP>:8765 --drops       # only drops, rejections, faults
+```
+Radio lines appear only while `radio/channel.py` runs against that world. Reconnects by itself; summary line every 10 s.
 
 ## Transports (board task C3: test on the hotspot)
 - **Default — UDP multicast** through the channel: uplink `239.1.1.1:5005`, downlink `:5006`. Needs multicast to pass the hotspot.

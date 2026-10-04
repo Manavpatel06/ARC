@@ -37,8 +37,9 @@ Live traffic (scenario "traffic", world/traffic.py TrafficGenerator): AI aircraf
   ENV              {"type":"ENV","t","da_field_ft"} to god AND every node on connect and whenever density
                    altitude changes (SET_DA / SET_WX) - nodes use it for climb capability. Density altitude
                    only: nodes never get the world's internal wind / turbulence model.
-  LIVE_TRAFFIC     (v1.2) from role data (data/live_traffic.py): real ADS-B around KDVT -> god + log ONLY,
-                   never to nodes or cockpits, never acted on.
+  LIVE_TRAFFIC     (v1.2) from role data (data/live_traffic.py): real ADS-B around KDVT -> god + log
+                   (+ cockpits in the live demo, v1.3: display only, ADS-B In style). Never to nodes,
+                   never acted on.
                    (incl. WORLD_EVENT NMAC / COLLISION / NMAC_END from world/separation.py)
   channel          TRUTH at 10 Hz (radio emulator decides delivery from it)
   camera, data     accepted; frames mirrored to log
@@ -325,6 +326,10 @@ class Hub:
             if self.w.traffic is not None:
                 self.w.traffic.live = m                    # live_seed: real inbound aircraft become AI arrivals
             self.send("god", m)
+            if self.w.traffic is not None or self.w.raw.get("live_sky_in_cockpit"):
+                # live demo (live_kdvt): judges see the real aircraft on their radar + 3D view too (ADS-B In style)
+                for r in [r for r in self.roles if r.startswith("cockpit:")]:
+                    self.send(r, m)
             self.log("live", "world", m)
             return
 

@@ -7,6 +7,7 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
   .\run_demo.ps1 -Legacy                          # old collision-avoidance demo (radio nodes, takeover allowed)
+  .\run_demo.ps1 -NoLive                           # without the real-ADS-B "live sky" window (on by default)
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json            # free flight + live traffic
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json -Seed 11   # same, different (repeatable) traffic
 
@@ -16,7 +17,7 @@ ghost from the god view (+ Ghost). -Legacy instead starts the radio channel + on
 node per aircraft (+ spoofer) and lets nodes take the controls. Each process gets its own window
 titled with its role so you can see its output. PIDs go to .demo_pids for -Stop.
 Scenarios with "traffic" (live_kdvt.json): the world also starts a background node for every AI
-aircraft it spawns (logs in harness\out\nodes\), and data/live_traffic.py if "live_seed" is on.
+aircraft it spawns (logs in harness\out\nodes\).
 Other laptops open:  http://<this-ip>:8080/index.html?role=cockpitA | cockpitB | god   and  /log.html
 A second copy on other ports (testing next to a running demo):  -WorldPort 8795 -ChanPort 8796 -HttpPort 8097 -NoBrowser
 If PowerShell blocks the script once:  Set-ExecutionPolicy -Scope Process Bypass
@@ -31,6 +32,7 @@ param(
   [int]$HttpPort = 8080,
   [switch]$NoBrowser,
   [switch]$Legacy,
+  [switch]$NoLive,
   [switch]$Spoof,
   [switch]$Stubs,
   [switch]$Stop
@@ -40,14 +42,53 @@ Set-Location $PSScriptRoot
 $env:PYTHONIOENCODING = "utf-8"        # data/metar.py prints arrows; the Windows console codepage can't
 $PidFile = Join-Path $PSScriptRoot $(if ($WorldPort -eq 8765) { ".demo_pids" } else { ".demo_pids_$WorldPort" })
 
+# Leftovers from an earlier run (closed windows, a crashed script, the old -Stop) keep ports 8765/8766/8080 bound
+# and the next start dies with WinError 10048. These two clean them up.
+function Stop-PortOwners([int[]]$Ports) {
+  foreach ($port in $Ports) {
+    Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.OwningProcess -gt 4) { cmd /c "taskkill /T /F /PID $($_.OwningProcess) >nul 2>&1" }
+    }
+  }
+}
+function Stop-StaleFlock {      # every python running a FLOCK role (nodes hold no port, so ports alone miss them)
+  Get-CimInstance Win32_Process -Filter "Name LIKE 'python%'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'world[\\/]world_server\.py|radio[\\/]channel\.py|node[\\/]node\.py|stubs[\\/]fake_|data[\\/]live_traffic\.py|radio[\\/]spoofer\.py|verify[\\/]unit\.py' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+function Test-PortBusy([int]$Port) {
+  return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+}
+
 if ($Stop) {
   if (Test-Path $PidFile) {
     # /T: the whole tree - the role window, the venv python launcher AND the real python it starts
     Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" }
     Remove-Item $PidFile
   }
+  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  Stop-PortOwners @($WorldPort, $ChanPort, $HttpPort)
   Write-Host "FLOCK demo stopped."
   exit 0
+}
+
+# start clean: if an earlier run is still holding our ports, stop it first
+$busy = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
+if ($busy) {
+  Write-Host "Ports $($busy -join ', ') still in use from an earlier run - stopping it first." -ForegroundColor Yellow
+  if (Test-Path $PidFile) { Get-Content $PidFile | Where-Object { $_ -match '^\d+$' } | ForEach-Object { cmd /c "taskkill /T /F /PID $_ >nul 2>&1" } }
+  if ($WorldPort -eq 8765) { Stop-StaleFlock }
+  Stop-PortOwners $busy
+  Start-Sleep -Seconds 2
+  $still = @($WorldPort, $ChanPort, $HttpPort) | Where-Object { Test-PortBusy $_ }
+  if ($still) {
+    foreach ($port in $still) {
+      $o = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+      $n = (Get-Process -Id $o.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+      Write-Host "Port $port is held by '$n' (PID $($o.OwningProcess)). Close it, or run as admin, then start again." -ForegroundColor Red
+    }
+    exit 1
+  }
 }
 
 $Py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
@@ -118,8 +159,9 @@ if (-not $Legacy) {
   }
 }
 
-# 5. live sky (real ADS-B) when the scenario seeds AI arrivals from it
-if ($sc.traffic -and $sc.traffic.live_seed) { Start-Role "live sky" @("data/live_traffic.py", "--world", $World) }
+# 5. live sky: REAL ADS-B aircraft around KDVT on the god view + log (display only, never sent to nodes).
+#    Always on unless -NoLive. Frames are recorded to harness\out\live_*.jsonl; with no internet it replays the newest one.
+if (-not $NoLive) { Start-Role "live sky" @("data/live_traffic.py", "--world", $World, "--record") }
 
 if (-not $NoBrowser) { Start-Process "http://localhost:$HttpPort/log.html" }
 Write-Host ""

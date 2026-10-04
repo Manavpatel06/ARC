@@ -519,12 +519,9 @@ function draw(cv, s) {
       const col = css("var(--live)");
       ctx.globalAlpha = age > LIVE_STALE_MS ? 0.35 : 0.95;
       for (const a of s.live.m.aircraft || []) {
-        const [x, y] = LL(a.lat, a.lon), sz = 5.5 * k;
-        ctx.save(); ctx.translate(x, y); ctx.rotate((a.track_deg || 0) * D2R);
-        ctx.fillStyle = col; ctx.strokeStyle = "#000"; ctx.lineWidth = 1 * k;
-        ctx.beginPath(); ctx.moveTo(0, -sz * 1.4); ctx.lineTo(sz, sz); ctx.lineTo(0, sz * 0.4); ctx.lineTo(-sz, sz); ctx.closePath();
-        a.on_ground ? ctx.stroke() : ctx.fill();
-        ctx.restore();
+        const [x, y] = LL(a.lat, a.lon);
+        ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.2 * k;
+        drawPlane(ctx, x, y, (a.track_deg || 0) * D2R, 8 * k, !a.on_ground);   // real ADS-B: same symbol, cyan
         if (show.labels && v.scale > 0.03) {
           const alt = a.on_ground ? "GND" : String(Math.round(a.alt_msl_ft / 100)).padStart(3, "0");
           const leg = a.in_pattern && a.leg ? ` ${a.leg.slice(0, 2)}` : "";

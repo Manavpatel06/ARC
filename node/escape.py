@@ -13,6 +13,7 @@ the physical limits, so a candidate that is physically fine but out of bounds is
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -27,12 +28,17 @@ VS_RATE_MS2 = 1.0                # ~200 fpm per second
 HOLD_S = 10.0
 NMAC_H_M = 500 * FT
 NMAC_V_M = 100 * FT
-MARGIN_OK = 1.5                  # NMAC-box multiples considered "clear with margin"
+# NMAC-box multiples a maneuver must achieve to count as "clear with margin".  2.0 balances safety and severity in the
+# Monte Carlo (1.5: NMAC 7 %; 2.0: 3 %, mean bank 22 deg; 2.5: 2 %, mean bank 27 deg, close to the 30 deg cap).
+MARGIN_OK = float(os.environ.get("FLOCK_MARGIN_OK", "2.0"))
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
+TERRAIN_FLOOR_MIN_M = 50 * FT      # even on short final no maneuver may go below this over the ground
+OBSTACLE_CLEARANCE_M = 100 * FT   # data.obstacles.top_at() is already conservative (surveyed accuracy + footprint)
 MAX_AUTH_BANK = 30.0
 DESCEND_FPM = 500.0
 MIN_IAS_KT = 62.0
+GO_AROUND_S = 20.0               # a go-around keeps climbing past the 10 s a bounded takeover may hold
 SIMILAR_MARGIN = 0.3             # margins this close count as "similar" for the tie-breakers
 SIMILAR_SEVERITY = 0.25          # ... and so do maneuvers within one bank step of the least severe one
 PATTERN_FLOOR_BELOW_TPA_M = 300 * FT
@@ -56,19 +62,52 @@ class Candidate:
     def sense(self) -> str:
         if self.kind == "turn":
             return "R" if self.bank > 0 else "L"
-        return {"climb": "CLIMB", "descend": "DESCEND", "hold": "HOLD"}[self.kind]
+        return {"climb": "CLIMB", "descend": "DESCEND", "hold": "HOLD", "goaround": "CLIMB"}[self.kind]
 
 
 def _cost(c: "Candidate", own: "OwnState", hold_s: float) -> dict:
     """Shared fuel/time cost (cost.py, Lane D) of flying this candidate; zero-cost fallback if cost.py is absent."""
     try:
-        from cost import candidate_cost
+        from cost import candidate_cost, action_cost
+        if c.kind == "goaround":
+            return action_cost("GO_AROUND")
         return candidate_cost(c.name, bank_deg=abs(c.bank), vs_fpm=c.vs_fpm, hold_s=hold_s, kt=max(own.gs / KT, 40.0))
     except Exception:
         return {"extra_s": 0.0, "fuel_gal": 0.0, "usd": 0.0, "co2_lb": 0.0}
 
 
-def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
+def _hits_obstacle(path, xs, ys, hold, obstacle_fn) -> bool:
+    """Below top + 100 ft inside an obstacle's protection cylinder, but only if the maneuver is worse than the
+    flight we are already on (HOLD): it is >12 m lower at that instant, or meets an obstacle taller than HOLD does."""
+    for i in range(len(xs)):
+        top = obstacle_fn(float(xs[i]), float(ys[i]))
+        if top is None:
+            continue
+        z = path[i * 4, 2]
+        if z >= top + OBSTACLE_CLEARANCE_M:
+            continue
+        hx, hy, hz = hold[min(i * 4, len(hold) - 1)]
+        hold_top = obstacle_fn(float(hx), float(hy))
+        hold_top = -1e9 if hold_top is None else hold_top
+        if top > hold_top + 1.0 or z < hz - 12.0:
+            return True
+    return False
+
+
+def _hits_terrain(path, xs, ys, hold, terrain_fn) -> bool:
+    """Below 300 ft over terrain, but never judged against a stricter floor than the flight we are already on:
+    the floor is min(300 ft, HOLD's own clearance at that instant - 12 m).  A short final that lands 15 m below
+    rising ground ahead must still be able to climb; a descent or a turn that gets closer to the ground cannot."""
+    for i in range(len(xs)):
+        k = min(i * 4, len(hold) - 1)
+        hold_clear = hold[k, 2] - terrain_fn(float(hold[k, 0]), float(hold[k, 1]))
+        floor = min(TERRAIN_CLEARANCE_M, max(TERRAIN_FLOOR_MIN_M, hold_clear - 12.0))
+        if path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < floor:
+            return True
+    return False
+
+
+def candidates(climb_fpm: float, cur_bank: float = 0.0, go_around: bool = False) -> list[Candidate]:
     """Climb/descend keep the bank the aircraft already has (a turn in progress continues), so the command is
     never 'wings level' by accident."""
     keep = max(-MAX_AUTH_BANK, min(MAX_AUTH_BANK, cur_bank))
@@ -78,6 +117,8 @@ def candidates(climb_fpm: float, cur_bank: float = 0.0) -> list[Candidate]:
         out.append(Candidate(f"R{b}", "turn", float(b), severity=b / 45.0))
     out.append(Candidate("CLIMB", "climb", keep, climb_fpm, 0.35))
     out.append(Candidate("DESCEND", "descend", keep, -DESCEND_FPM, 0.30))
+    if go_around:        # on base/final: wings level, straight ahead, full-power climb at Vy, leave the circuit
+        out.append(Candidate("GO_AROUND", "goaround", 0.0, climb_fpm, 0.50))
     return out
 
 
@@ -203,45 +244,48 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              terrain_fn: Callable[[float, float], float], obstacle_fn: Optional[Callable] = None,
              sigmas: Optional[dict[str, tuple]] = None, max_bank: float = MAX_AUTH_BANK,
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
-             exclude: tuple = (), require_maneuver: bool = False) -> EscapeResult:
+             exclude: tuple = (), require_maneuver: bool = False,
+             blocked: Optional[dict] = None, peers_alt: Optional[dict] = None, go_around: bool = False,
+             prefer_hold: bool = False, prefer_right: bool = False) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
     evals: list[Evaluation] = []
     rejected: dict[str, str] = {}
     pattern_floor = (own.tpa_msl_m - PATTERN_FLOOR_BELOW_TPA_M) if own.tpa_msl_m is not None else None
-    for c in candidates(climb, own.bank):
+    for c in candidates(climb, own.bank, go_around):
         if c.name in exclude:
             continue
         if c.kind == "hold":
             path = hold_path
         else:
             path = simulate_maneuver(own.x, own.y, own.z, own.hdg, own.gs, own.bank, own.vs,
-                                     c.bank, c.vs_fpm, hold_s)
+                                     c.bank, c.vs_fpm, max(hold_s, GO_AROUND_S) if c.kind == "goaround" else hold_s)
         margin, mh, mv = _margin(path, peers, sigmas)
+        if peers_alt:                          # also safe if a pilot-only peer flies its own advised maneuver
+            margin = min(margin, _margin(path, {**peers, **peers_alt}, sigmas)[0])
         reason = None
         if c.kind == "turn" and abs(c.bank) > max_bank:
             reason = f"exceeds {max_bank:.0f} deg authority bound"
         elif c.kind == "turn" and own.ias_kt < MIN_IAS_KT + 3.0:
             reason = f"speed margin {own.ias_kt:.0f} kt"
-        elif c.kind == "climb" and (own.ias_kt < MIN_IAS_KT + 3.0 or climb < 250.0):
+        elif c.kind in ("climb", "goaround") and (own.ias_kt < MIN_IAS_KT + 3.0 or climb < 250.0):
             reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft"
         elif c.kind != "hold":
             zs = path[:, 2]
             xs, ys = path[::4, 0], path[::4, 1]
-            # keep >= 300 ft over terrain; an aircraft already lower than that (short final) only has to not lose height
-            clear = min(TERRAIN_CLEARANCE_M, max(0.0, own.agl - 12.0))
-            if any(path[i * 4, 2] - terrain_fn(float(xs[i]), float(ys[i])) < clear for i in range(len(xs))):
+            if _hits_terrain(path, xs, ys, hold_path, terrain_fn):
                 reason = "terrain floor"
-            elif obstacle_fn and any(path[i * 4, 2] < (obstacle_fn(float(xs[i]), float(ys[i])) or -1e9) + TERRAIN_CLEARANCE_M
-                                     for i in range(len(xs))):
+            elif obstacle_fn and _hits_obstacle(path, xs, ys, hold_path, obstacle_fn):
                 reason = "obstacle"
             elif c.kind == "descend" and pattern_floor is not None and zs.min() < pattern_floor:
                 reason = "pattern altitude floor"
             elif ceiling_msl_m is not None and zs.max() > ceiling_msl_m:
                 reason = "airspace ceiling"
+        if reason is None and blocked and c.name in blocked:
+            reason = blocked[c.name]                  # e.g. the bounds monitor would refuse to fly it
         if reason is None and c.kind != "hold" and margin < MARGIN_MIN:
-            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind == "climb" else "traffic"
+            reason = f"performance {climb:.0f} fpm at DA {own.da_ft:,.0f} ft" if c.kind in ("climb", "goaround") else "traffic"
         ev = Evaluation(c, reason is None, reason, margin, mh, mv, path)
         evals.append(ev)
         if reason is not None:
@@ -259,10 +303,20 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         c0 = good[0]
         group = [e for e in good if e.cand.severity <= c0.cand.severity + SIMILAR_SEVERITY
                  and e.margin >= c0.margin - SIMILAR_MARGIN]
-        group.sort(key=lambda e: (1 if (e.cand.kind == "turn" and e.cand.bank < 0) else 0,
-                                  round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
+        def side(e):                  # right-of-way role says "alter course to the right": R turn, then anything else, then L
+            if e.cand.kind == "turn":
+                return (0 if e.cand.bank > 0 else 2) if prefer_right else (1 if e.cand.bank < 0 else 0)
+            return 1 if prefer_right else 0
+        group.sort(key=lambda e: (side(e), round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
         good = group + [e for e in good if e not in group]
     ranked = good + marginal
+    if prefer_hold:
+        # 14 CFR 91.113 stand-on aircraft: keep course and speed if that is ALREADY safe with full margin
+        # (hold is only in `good` when it is feasible and margin >= MARGIN_OK); otherwise act like anyone else
+        h = next((e for e in ranked if e.cand.kind == "hold"), None)
+        if h is not None:
+            ranked = [h] + [e for e in ranked if e is not h]
+            require_maneuver = False
     if require_maneuver:
         # complementary = our maneuver must add separation on top of what the peer's maneuver already gives
         adds = [e for e in ranked if e.cand.kind != "hold" and e.margin >= base + 0.15]

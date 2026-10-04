@@ -38,6 +38,29 @@ class TrustTable:
         self.default_score = default_score
         self._ev: dict[str, tuple[float, list, bool]] = {}
         self._scorer: Optional[Callable] = None
+        self._aw: dict = {}               # peer -> node.airwitness.TrustResult (wins over the default, not over update())
+
+    # ---- AirWitness (node/airwitness.py): four states mapped onto the frozen TRUST wire states
+    def set_result(self, peer: str, result) -> None:
+        self._aw[peer] = result
+
+    def result(self, peer: str):
+        return None if peer in self._ev else self._aw.get(peer)
+
+    def aw_state(self, peer: str) -> str:
+        r = self.result(peer)
+        if r is not None:
+            return r.state
+        return {"TRUSTED": "VERIFIED", "SUSPICIOUS": "SUSPICIOUS", "FAKE": "QUARANTINED",
+                "CAMERA_ONLY": "UNVERIFIED"}[self.state(peer)]
+
+    def sigma_scale(self, peer: str) -> float:
+        r = self.result(peer)
+        return 1.0 if r is None else r.sigma_scale
+
+    def use_claimed_intent(self, peer: str) -> bool:
+        r = self.result(peer)
+        return True if r is None else r.use_claimed_intent
 
     def set_scorer(self, fn: Callable) -> None:
         self._scorer = fn
@@ -56,16 +79,28 @@ class TrustTable:
             self.update(peer, score, ev, cam)
 
     def get(self, peer: str) -> tuple[float, list, bool]:
+        r = self.result(peer)
+        if r is not None:
+            return r.score, r.evidence_strings(), False
         return self._ev.get(peer, (self.default_score, ["plausible"] if self._scorer is None else [], False))
 
     def state(self, peer: str) -> str:
+        r = self.result(peer)
+        if r is not None:
+            return r.wire_state
         score, _, cam = self.get(peer)
         return state_for(score, cam)
 
     def cap(self, peer: str) -> Optional[str]:
+        r = self.result(peer)
+        if r is not None:
+            return r.cap
         return LEVEL_CAP[self.state(peer)]
 
     def may_negotiate(self, peer: str) -> bool:
+        r = self.result(peer)
+        if r is not None:
+            return r.may_coordinate
         return self.state(peer) == "TRUSTED"
 
     def frame(self, ac_id: str, now: float, peers: list[str], rels: Optional[dict] = None) -> dict:
@@ -73,7 +108,7 @@ class TrustTable:
         targets = []
         for pid in peers:
             score, ev, cam = self.get(pid)
-            t = {"id": pid, "score": round(score, 2), "state": state_for(score, cam), "evidence": ev}
+            t = {"id": pid, "score": round(score, 2), "state": self.state(pid), "evidence": ev}
             if rels and pid in rels:
                 t["rel"] = rels[pid]
             targets.append(t)

@@ -1,6 +1,7 @@
 // web/cockpit.js — Lane A. Cockpit view (?role=cockpitA | cockpitB | cockpit:<id>).
 // Knows only what the world sends a cockpit: its own aircraft's state and its own node's
 // ADVISORY / TRUST / COMMAND / STICK. No other aircraft's truth ever reaches this page.
+// Live demo only: REAL ADS-B aircraft (LIVE_TRAFFIC) as display-only cyan targets (livesky.js).
 
 import { connect, css, drawPlane, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
@@ -10,6 +11,7 @@ import { startHaptics } from "./haptics.js";
 import { MAP_ATTRIBUTION, startMapLayer } from "./maplayer.js";
 import { AIRCRAFT_MODEL, aircraftHeightM, EYE_M, gpuInfo, Interp, loadCesium, makeViewer, MODEL_SCALE, MODEL_WHEELS_M,
          offsetLL, surfaceM, TrafficTrack } from "./cesium3d.js";
+import { drawLiveOnMap, livePositions, liveState, onLive, updateLive3D } from "./livesky.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -18,7 +20,7 @@ export function startCockpit(role) {
   document.body.classList.add("is-cockpit");
   $("cockpit").hidden = false;
   const s = { own: null, acId: null, adv: null, advT: 0, trust: null, cmd: null, stickT: -Infinity, link: "connecting",
-              fieldElevFt: 1478, interp: new Interp(), v3: null, static: null, map: mapState() };
+              fieldElevFt: 1478, interp: new Interp(), v3: null, static: null, map: mapState(), live: liveState() };
 
   const link = connect(role, (m) => {
     switch (m.type) {
@@ -38,11 +40,15 @@ export function startCockpit(role) {
         break;
       case "TRUST":                                   // legacy node; the FLOCK unit's VERIFY wins when present
         if (!s.verify || performance.now() - s.verifyAt > VERIFY_STALE_MS) { s.trust = m; trackTraffic(s, m); }
+        // AirWitness (Lane B): one alert when a target turns SUSPICIOUS / QUARANTINED or our GNSS goes inconsistent
+        for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
         break;
       case "VERIFY":
         s.verify = m; s.verifyAt = performance.now();
         s.trust = verifyAsTrust(m); trackTraffic(s, s.trust);
+        for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
         break;
+      case "LIVE_TRAFFIC": onLive(s.live, m); break;        // real ADS-B (live demo), display only
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); hap.bump(); break;
       case "AP_STATUS":
@@ -290,6 +296,8 @@ function update3D(s) {
     e.label.fillColor = col;
   }
   for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
+
+  updateLive3D(s.v3, livePositions(s.live, p), p, h);      // real ADS-B aircraft (live demo), display only
 }
 
 // Each TRUST frame: where the node says every target is, made absolute from our position right now,
@@ -720,6 +728,9 @@ function drawNavMap(cv, s) {
     const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
     label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${(rel.rng_m / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
   }
+
+  // real ADS-B aircraft (live demo), display only - under own aircraft, over the charts
+  drawLiveOnMap(ctx, livePositions(s.live, o), { fromLL, cx, cy, R, up, k, label, footerY: H - 28 * k });
 
   // own aircraft
   ctx.fillStyle = css("var(--own)");

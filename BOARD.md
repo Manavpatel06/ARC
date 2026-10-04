@@ -76,7 +76,7 @@ Stubs to run while building: `stubs/fake_world.py` (TRUTH feed for the channel),
 | C8 | *Phase 2:* `radio/evidence.py`: plausibility, emulated RSSI/Doppler consistency, peer corroboration, signature → score + evidence strings. | 9:00 PM | [x] |
 | C9 | *Phase 2:* `radio/faults.py`: drop a specific COMMIT, kill heartbeat 5 s, latency spike 2 s. | 10:00 PM | [x] |
 | C10 | *After 7 PM go/no-go only:* ESP32-C6 node over Wi-Fi UDP speaking the envelope; "over the air" tag in log. | optional | [ ] |
-| C11 | *Queue:* one-page BOM + band/link budget for the pitch (judge ask #9). | queue | [ ] |
+| C11 | *Queue:* one-page BOM + band/link budget for the pitch (judge ask #9). | queue | [x] radio/LINK_BUDGET.md: 915 MHz ISM, 22 dB margin at 3 mi, ~$136 BOM |
 
 ## Lane D — Integration, data, log, pitch · Manav · branch `lane-d-integration`
 Stubs to run while building: `stubs/fake_world.py` + `stubs/fake_node.py --speed 4` (gives the log page real frames). No camera/CV work in this lane — see Parking lot.
