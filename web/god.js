@@ -195,6 +195,9 @@ function onWorldEvent(s, m) {
     s.sepMarks.push(m);
     if (m.counts) s.sepCounts = m.counts;
     pushEvent(s, m.t, `${m.a}/${m.b}`, m.event, `${m.event} ${m.h_ft} ft / ${m.v_ft} ft · ${(m.legs || []).join("/").toLowerCase()}`);
+  } else if (m.event === "GO_AROUND" || m.event === "HOLD_SHORT") {
+    pushEvent(s, m.t, m.a, "TRAFFIC", `${m.event === "GO_AROUND" ? `go-around at ${m.agl_ft} ft` : "holding short"} · ${m.runway} · ${m.reason}`);
+    return;
   } else if (m.event === "STOPPED") {
     pushEvent(s, m.t, m.a, m.runway ? "CLEAR" : "TRAFFIC", m.runway ? `stopped on runway ${m.runway}` : "stopped OFF runway");
     return;

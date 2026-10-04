@@ -65,6 +65,8 @@ export function startCockpit(role) {
           if (m.runway) { toast(`STOPPED · RUNWAY ${m.runway} · throttle up + pull to take off, or AP`, "ap", 6000); say(`stopped, runway ${m.runway.split("").join(" ")}`); }
           else { toast("STOPPED OFF RUNWAY · hold L2 + R2 (or R) to reset", "warn", 8000); say("stopped off runway"); }
         }
+        else if (m.event === "GO_AROUND") { toast(`GO AROUND · ${m.reason}`, "warn"); say("going around, runway occupied"); }
+        else if (m.event === "HOLD_SHORT") { toast(`HOLDING SHORT · ${m.reason}`, "info"); say("holding short"); }
         else if (m.event === "AP_DISCONNECT") { toast("AUTOPILOT DISCONNECT · stick", "warn"); say("autopilot disconnect"); hap.bump(); }
         break;
     }
