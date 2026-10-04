@@ -1,0 +1,178 @@
+{
+ "version": "20261004-0418",
+ "adopted": false,
+ "note": "Fitted offline from real KDVT ADS-B; review the report, run accept_b + montecarlo, then set adopted=true.",
+ "data": {
+  "files": [
+   "live_1791061538.jsonl",
+   "live_1791083869.jsonl"
+  ],
+  "sha256": "e202660d71d3955c",
+  "aircraft": 116,
+  "samples": 1935,
+  "from": "2026-10-03 14:05",
+  "to": "2026-10-04 03:43",
+  "legs_classified": {
+   "UNKNOWN": 1044,
+   "DOWNWIND": 233,
+   "STRAIGHT_IN": 219,
+   "FINAL": 211,
+   "UPWIND": 161,
+   "CROSSWIND": 37,
+   "BASE": 26,
+   "GO_AROUND": 4
+  }
+ },
+ "current": {
+  "line_sigma_k": 2.5,
+  "turn_sigma_a": 0.8,
+  "turn_sigma_b": 1.5,
+  "conf_min": 0.6
+ },
+ "fitted": {
+  "line_sigma_k": 14.91,
+  "line_n": 13246,
+  "turn_sigma_a": 0.0,
+  "turn_sigma_b": 112.15,
+  "turn_k_conf_ge_0.8": 9.91,
+  "n_hi": 3622,
+  "turn_k_conf_lt_0.8": 32.34,
+  "n_lo": 790,
+  "conf_min": 0.3,
+  "turn_aware_legs": [
+   "CROSSWIND",
+   "DOWNWIND",
+   "FINAL",
+   "STRAIGHT_IN"
+  ]
+ },
+ "per_leg_30s": [
+  {
+   "leg": "UPWIND",
+   "n": 102,
+   "turn_aware_30s_m": 943,
+   "straight_30s_m": 124,
+   "use": "straight-line until the turn is seen"
+  },
+  {
+   "leg": "CROSSWIND",
+   "n": 16,
+   "turn_aware_30s_m": 600,
+   "straight_30s_m": 1032,
+   "use": "turn-aware"
+  },
+  {
+   "leg": "DOWNWIND",
+   "n": 74,
+   "turn_aware_30s_m": 493,
+   "straight_30s_m": 676,
+   "use": "turn-aware"
+  },
+  {
+   "leg": "BASE",
+   "n": 4,
+   "turn_aware_30s_m": 198,
+   "straight_30s_m": 1014,
+   "use": "turn-aware (too few samples)"
+  },
+  {
+   "leg": "FINAL",
+   "n": 122,
+   "turn_aware_30s_m": 74,
+   "straight_30s_m": 124,
+   "use": "turn-aware"
+  },
+  {
+   "leg": "STRAIGHT_IN",
+   "n": 134,
+   "turn_aware_30s_m": 67,
+   "straight_30s_m": 90,
+   "use": "turn-aware"
+  }
+ ],
+ "error_table": [
+  {
+   "h_s": 10,
+   "n": 1526,
+   "flock_median_m": 37.5,
+   "line_median_m": 31.6,
+   "turn_aware_n": 526,
+   "turn_aware_median_m": 50.6,
+   "same_samples_line_median_m": 31.1
+  },
+  {
+   "h_s": 20,
+   "n": 1470,
+   "flock_median_m": 84.9,
+   "line_median_m": 71.8,
+   "turn_aware_n": 504,
+   "turn_aware_median_m": 105.3,
+   "same_samples_line_median_m": 67.2
+  },
+  {
+   "h_s": 30,
+   "n": 1368,
+   "flock_median_m": 188.9,
+   "line_median_m": 159.5,
+   "turn_aware_n": 455,
+   "turn_aware_median_m": 202.2,
+   "same_samples_line_median_m": 139.5
+  },
+  {
+   "h_s": 45,
+   "n": 1218,
+   "flock_median_m": 384.9,
+   "line_median_m": 369.6,
+   "turn_aware_n": 405,
+   "turn_aware_median_m": 371.7,
+   "same_samples_line_median_m": 336.1
+  },
+  {
+   "h_s": 60,
+   "n": 1135,
+   "flock_median_m": 687.4,
+   "line_median_m": 743.3,
+   "turn_aware_n": 360,
+   "turn_aware_median_m": 624.3,
+   "same_samples_line_median_m": 692.2
+  }
+ ],
+ "conf_threshold_scan_30s": [
+  {
+   "conf_min": 0.3,
+   "n": 582,
+   "turn_aware_median_m": 241.8,
+   "line_median_m": 168.6
+  },
+  {
+   "conf_min": 0.4,
+   "n": 545,
+   "turn_aware_median_m": 233.0,
+   "line_median_m": 160.6
+  },
+  {
+   "conf_min": 0.5,
+   "n": 509,
+   "turn_aware_median_m": 229.5,
+   "line_median_m": 157.9
+  },
+  {
+   "conf_min": 0.6,
+   "n": 455,
+   "turn_aware_median_m": 202.2,
+   "line_median_m": 139.5
+  },
+  {
+   "conf_min": 0.7,
+   "n": 420,
+   "turn_aware_median_m": 175.7,
+   "line_median_m": 133.0
+  },
+  {
+   "conf_min": 0.8,
+   "n": 379,
+   "turn_aware_median_m": 148.2,
+   "line_median_m": 126.0
+  }
+ ]
+}
