@@ -6,6 +6,7 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
   .\run_demo.ps1 -Spoof                            # add GHOST7 spoofer
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
+  .\run_demo.ps1 -NoLive                           # without the real-ADS-B "live sky" window (on by default)
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json            # free flight + live traffic
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json -Seed 11   # same, different (repeatable) traffic
 
@@ -13,7 +14,7 @@ Starts, in order: METAR fetch -> world (ws :8765, web :8080) -> radio channel ->
 FLOCK aircraft -> spoofer (optional) -> opens the log page. Each process gets its own window
 titled with its role so you can see its output. PIDs go to .demo_pids for -Stop.
 Scenarios with "traffic" (live_kdvt.json): the world also starts a background node for every AI
-aircraft it spawns (logs in harness\out\nodes\), and data/live_traffic.py if "live_seed" is on.
+aircraft it spawns (logs in harness\out\nodes\).
 Other laptops open:  http://<this-ip>:8080/index.html?role=cockpitA | cockpitB | god   and  /log.html
 A second copy on other ports (testing next to a running demo):  -WorldPort 8795 -ChanPort 8796 -HttpPort 8097 -NoBrowser
 If PowerShell blocks the script once:  Set-ExecutionPolicy -Scope Process Bypass
@@ -27,6 +28,7 @@ param(
   [int]$ChanPort = 8766,
   [int]$HttpPort = 8080,
   [switch]$NoBrowser,
+  [switch]$NoLive,
   [switch]$Spoof,
   [switch]$Stubs,
   [switch]$Stop
@@ -146,8 +148,9 @@ if ($Spoof) {
   elseif ((Test-Path "radio\channel.py") -and -not $Stubs) { Write-Host "  (no radio/spoofer.py yet - use .\run_demo.ps1 -Stubs -Spoof)" -ForegroundColor Yellow }
 }
 
-# 5. live sky (real ADS-B) when the scenario seeds AI arrivals from it
-if ($sc.traffic -and $sc.traffic.live_seed) { Start-Role "live sky" @("data/live_traffic.py", "--world", $World) }
+# 5. live sky: REAL ADS-B aircraft around KDVT on the god view + log (display only, never sent to nodes).
+#    Always on unless -NoLive. Frames are recorded to harness\out\live_*.jsonl; with no internet it replays the newest one.
+if (-not $NoLive) { Start-Role "live sky" @("data/live_traffic.py", "--world", $World, "--record") }
 
 if (-not $NoBrowser) { Start-Process "http://localhost:$HttpPort/log.html" }
 Write-Host ""

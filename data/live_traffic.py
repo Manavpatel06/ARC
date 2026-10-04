@@ -167,32 +167,94 @@ def table(f: dict) -> str:
     return "\n".join(rows)
 
 # ---------------- main ----------------
-async def run(args):
-    ws = None
-    if args.world:
+FAILS_BEFORE_FALLBACK = 3      # consecutive failed polls before replaying a recording
+LIVE_RETRY_S = 30.0            # while replaying, try the live feeds again this often
+
+def newest_recording() -> str | None:
+    d = os.path.join(ROOT, "harness", "out")
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.startswith("live_") and f.endswith(".jsonl")]
+    except OSError:
+        return None
+    files = [f for f in files if os.path.getsize(f) > 0]
+    return max(files, key=os.path.getmtime) if files else None
+
+class WorldLink:
+    """Connection to the world as role `data` that survives the world restarting (run_demo -Stop / start)."""
+    def __init__(self, url: str | None):
+        self.url, self.ws, self.warned = url, None, False
+
+    async def send(self, f: dict) -> bool:
+        if not self.url:
+            return False
         import websockets
-        ws = await websockets.connect(f"{args.world}?role=data")
-        print(f"[live] connected to {args.world} as data")
+        for attempt in (1, 2):
+            if self.ws is None:
+                try:
+                    self.ws = await websockets.connect(f"{self.url}?role=data", open_timeout=3)
+                    print(f"[live] connected to {self.url} as data", flush=True)
+                    self.warned = False
+                except Exception as e:
+                    if not self.warned:
+                        print(f"[live] world not reachable at {self.url} ({type(e).__name__}) - will keep retrying", flush=True)
+                        self.warned = True
+                    return False
+            try:
+                await self.ws.send(json.dumps(f))
+                return True
+            except Exception:
+                self.ws = None          # world restarted: reconnect once and resend
+        return False
+
+async def run(args):
+    link = WorldLink(args.world)
     rec = None
     if args.record:
         os.makedirs(os.path.join(ROOT, "harness", "out"), exist_ok=True)
         rec = open(os.path.join(ROOT, "harness", "out", f"live_{int(time.time())}.jsonl"), "a")
-    replay = [json.loads(l) for l in open(args.replay)] if args.replay else None
-    i = 0
+    replay_path = args.replay
+    replay, i = None, 0
+    fails, last_live_try = 0, 0.0
     while True:
-        try:
-            if replay:
-                f = replay[i % len(replay)]; f = dict(f, t=time.time(), source=f"replay:{f.get('source')}"); i += 1
-            else:
+        f = None
+        # 1. live feeds (unless a replay was asked for); while in automatic fallback, retry live every LIVE_RETRY_S
+        if not args.replay and (replay is None or time.time() - last_live_try >= LIVE_RETRY_S):
+            last_live_try = time.time()
+            try:
                 src, raw = await asyncio.to_thread(fetch, args.radius)
                 f = frame(src, args.radius, raw)
-            if rec:
-                rec.write(json.dumps(f) + "\n"); rec.flush()
-            if ws:
-                await ws.send(json.dumps(f))
-            print(table(f) if (args.print or not ws) else f"[live] {len(f['aircraft'])} aircraft, {sum(a['in_pattern'] for a in f['aircraft'])} in pattern ({f['source']})")
-        except Exception as e:
-            print(f"[live] fetch failed: {e} — retrying (use --replay <file> for an offline demo)")
+                if replay is not None:
+                    print("[live] live feed is back - stopped replaying", flush=True)
+                fails, replay = 0, None
+                if rec:
+                    rec.write(json.dumps(f) + "\n"); rec.flush()
+            except Exception as e:
+                fails += 1
+                print(f"[live] fetch failed ({fails}x): {e}", flush=True)
+                if replay is None and fails >= FAILS_BEFORE_FALLBACK and args.fallback != "off":
+                    replay_path = args.fallback if args.fallback not in (None, "auto") else newest_recording()
+                    if replay_path and os.path.exists(replay_path):
+                        print(f"[live] no internet feed - replaying {os.path.basename(replay_path)} (labelled 'replay' on the god view)", flush=True)
+                        replay = [json.loads(l) for l in open(replay_path) if l.strip()]
+                    elif fails == FAILS_BEFORE_FALLBACK:
+                        print("[live] no recording to fall back to yet (run once with internet: frames are recorded to harness/out/)", flush=True)
+                if replay is None:
+                    # tell the god view WHY there is nothing, instead of a silent "no feed"
+                    f = {"type": "LIVE_TRAFFIC", "t": time.time(), "source": f"offline - {str(e)[:80]}",
+                         "radius_nm": args.radius, "aircraft": []}
+        # 2. replay (asked for with --replay, or automatic fallback)
+        if f is None:
+            if replay is None and args.replay:
+                replay = [json.loads(l) for l in open(args.replay) if l.strip()]
+            if replay:
+                g = replay[i % len(replay)]; i += 1
+                f = dict(g, t=time.time(), source=f"replay:{g.get('source')}")
+        if f is not None:
+            sent = await link.send(f)
+            if args.print or not args.world:
+                print(table(f), flush=True)
+            elif sent:
+                print(f"[live] {len(f['aircraft'])} aircraft, {sum(a.get('in_pattern', False) for a in f['aircraft'])} in pattern ({f['source']})", flush=True)
         await asyncio.sleep(args.every)
 
 if __name__ == "__main__":
@@ -203,6 +265,8 @@ if __name__ == "__main__":
     ap.add_argument("--print", action="store_true", help="print the full table even when sending to the world")
     ap.add_argument("--record", action="store_true", help="append every frame to harness/out/live_<ts>.jsonl")
     ap.add_argument("--replay", help="replay a recorded live_*.jsonl instead of fetching (offline fallback)")
+    ap.add_argument("--fallback", default="auto", help="when the live feeds fail 3x: 'auto' = replay the newest "
+                    "harness/out/live_*.jsonl, a file path, or 'off'")
     try:
         asyncio.run(run(ap.parse_args()))
     except KeyboardInterrupt:
