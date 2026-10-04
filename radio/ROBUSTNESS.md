@@ -1,5 +1,41 @@
 # FLOCK under a bad radio: robustness table
 
+## Latest: `integration` 022f36d (Reya's R/R preference + commit at RESOLVE), radio ccc5c9c, Sat 3:45 PM
+
+### head_on_judges (120 s, 4 runs per row)
+
+| Radio condition | Runs with NMAC | Worst min separation | Median min separation | STATE loss measured |
+|---|---|---|---|---|
+| **No FLOCK** | **1 of 1** | **12 ft** | 12 ft | – |
+| Perfect radio (0 % loss) | **0 of 4** | 805 ft | 829 ft | 0–3 % |
+| Loss 10 % | **0 of 4** | 800 ft | 814 ft | 9–13 % |
+| Loss 30 % | 2 of 4 | 161 ft | 547 ft | 27–36 % |
+
+**Slide line that is true now:** "FLOCK turns a 12 ft head-on into 800+ ft of separation, with 0 NMACs in 8 of 8 runs from a perfect radio to 10 % packet loss."
+**Not yet true:** "0 NMAC at 30 % loss." In both failures one aircraft committed a maneuver (N102 DESCEND), then at takeover switched to a different sense (LEFT 30) without re-committing, while the peer kept its compatible turn (RIGHT 20). With 30 % loss its picture of the peer is staler. Fix for Lane B: at takeover keep the committed sense, or re-commit and pick the side compatible with the peer's last commit (head-on: both RIGHT).
+
+### Update 5:50 PM: Reya's `lane-b-node` 4a53fc9 ("agreed turn sense kept through takeover")
+
+| Radio condition | Runs with NMAC | Min separation |
+|---|---|---|
+| Loss 30 % | **0 of 4** | 831–850 ft |
+
+The 30 % failure above is fixed on Lane B's branch. Not yet in `integration`: merging it hits a conflict in `node/node.py` with Manav's right-of-way change (151c951), which Reya and Manav need to resolve. With it, the slide line becomes "0 NMAC in 12 of 12 head-on runs from a perfect radio to 30 % loss."
+
+### three_on_final, retuned by Lane A (180 s, 2 runs per row)
+
+| Radio condition | Runs with NMAC | Min separation |
+|---|---|---|
+| No FLOCK | 0 of 1 | 701 ft (N101-N204); N101-N399 2,262 ft |
+| Loss 10 % | 0 of 2 | 688 ft |
+| Loss 30 % | 0 of 2 | 688 ft |
+
+The retune predicts N101-N399 at 179 ft offline (`find_conflict.py`), but the live world flies them 2,262 ft apart. Offline and live disagree, so this scenario still doesn't produce a conflict to avoid. Lane A to check.
+
+---
+
+## Earlier run (before Reya's fix), `integration` 91725c5, 41 runs
+
 Measured with `harness/e2e_check.py` (truth from the world) on `integration` 91725c5 plus the latest `radio/`, one node per FLOCK aircraft over `radio/channel.py`. Run it again with `python radio/robustness.py` (use `--scenarios three_on_final --seconds 180`, because that conflict happens at t ≈ 125 s). Min separation = closest pair that came within 100 ft vertically. NMAC = < 500 ft horizontal and < 100 ft vertical.
 
 ## head_on_judges (two judge aircraft head-on on opposite downwinds, 120 s, 2–6 runs per row)

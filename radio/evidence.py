@@ -4,7 +4,8 @@ radio/evidence.py — trust EVIDENCE per radio target (Lane C, task C8), consume
 
 Four independent checks, each producing evidence strings:
   1. signature        "signed" | "unsigned" | "unknown_key"     (unsigned -> score capped at 0.55 = SUSPICIOUS)
-  2. kinematics       speed <= 200 kt, accel <= 0.5 g, turn rate <= 10 deg/s, climb/descent <= 2,000 fpm,
+  2. kinematics       speed <= 200 kt, accel <= 0.5 g, turn rate <= what a 60 deg bank allows at the claimed
+                      speed (+20 %, min 10 deg/s), climb/descent <= 2,000 fpm,
                       and each position must follow from the last one + its claimed velocity ("position_jump")
                       -> "plausible" | "kinematics_violation:<which>"
   3. RF consistency   the channel attaches an emulated RSSI + Doppler measured from the TRUE transmitter;
@@ -49,6 +50,14 @@ NB_FRESH_S = 5.0
 STALE_S = 5.0
 POS_RESIDUAL_M = 300.0
 BEARING_SEP_DEG = 30.0
+
+
+def max_turn_deg_s(gs_kt: float) -> float:
+    """Physically possible turn rate: 60 deg bank (beyond any normal GA manoeuvre) at the claimed speed,
+    +20 % margin, never below the 10 deg/s rule of thumb. 90 kt -> ~25 deg/s; a 45 deg judge turn (~12 deg/s)
+    is plausible, a spoofer's instant 90 deg heading flip is not."""
+    v = max(gs_kt, 40.0) * rf.KT
+    return max(MAX_TURN_DEG_S, math.degrees(9.80665 * math.tan(math.radians(60)) / v) * 1.2)
 
 
 class _Track:
@@ -133,7 +142,7 @@ class TrustEvidence:
         if abs(b1.get("gs_kt", 0) - b0.get("gs_kt", 0)) / dt_eff > MAX_ACCEL_KT_S * 1.2:
             tr.flags["accel"] = now
         dtrk = (b1.get("track_deg", 0) - b0.get("track_deg", 0) + 540) % 360 - 180
-        if abs(dtrk) / dt_eff > MAX_TURN_DEG_S * 1.2:
+        if abs(dtrk) / dt_eff > max_turn_deg_s(max(b0.get("gs_kt", 0), b1.get("gs_kt", 0))):
             tr.flags["turn_rate"] = now
         dalt_fpm = (b1.get("alt_press_ft", 0) - b0.get("alt_press_ft", 0)) / dt_eff * 60
         if abs(dalt_fpm) > MAX_VS_FPM * 1.5 + 300:
