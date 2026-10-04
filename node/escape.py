@@ -13,6 +13,7 @@ the physical limits, so a candidate that is physically fine but out of bounds is
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -27,7 +28,9 @@ VS_RATE_MS2 = 1.0                # ~200 fpm per second
 HOLD_S = 10.0
 NMAC_H_M = 500 * FT
 NMAC_V_M = 100 * FT
-MARGIN_OK = 1.5                  # NMAC-box multiples considered "clear with margin"
+# NMAC-box multiples a maneuver must achieve to count as "clear with margin".  2.0 balances safety and severity in the
+# Monte Carlo (1.5: NMAC 7 %; 2.0: 3 %, mean bank 22 deg; 2.5: 2 %, mean bank 27 deg, close to the 30 deg cap).
+MARGIN_OK = float(os.environ.get("FLOCK_MARGIN_OK", "2.0"))
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
 TERRAIN_FLOOR_MIN_M = 50 * FT      # even on short final no maneuver may go below this over the ground
@@ -243,7 +246,7 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
              ceiling_msl_m: Optional[float] = None, hold_s: float = HOLD_S,
              exclude: tuple = (), require_maneuver: bool = False,
              blocked: Optional[dict] = None, peers_alt: Optional[dict] = None, go_around: bool = False,
-             prefer_hold: bool = False) -> EscapeResult:
+             prefer_hold: bool = False, prefer_right: bool = False) -> EscapeResult:
     """require_maneuver: the peer is already maneuvering; prefer a complementary maneuver of our own (TCAS-style)
     that adds separation on top of the peer's, and fall back to holding only if nothing adds any."""
     climb = climb_rate_fpm(own.da_ft)
@@ -300,8 +303,11 @@ def evaluate(own: OwnState, hold_path: np.ndarray, peers: dict[str, np.ndarray],
         c0 = good[0]
         group = [e for e in good if e.cand.severity <= c0.cand.severity + SIMILAR_SEVERITY
                  and e.margin >= c0.margin - SIMILAR_MARGIN]
-        group.sort(key=lambda e: (1 if (e.cand.kind == "turn" and e.cand.bank < 0) else 0,
-                                  round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
+        def side(e):                  # right-of-way role says "alter course to the right": R turn, then anything else, then L
+            if e.cand.kind == "turn":
+                return (0 if e.cand.bank > 0 else 2) if prefer_right else (1 if e.cand.bank < 0 else 0)
+            return 1 if prefer_right else 0
+        group.sort(key=lambda e: (side(e), round(costs[e.cand.name]["fuel_gal"], 3), e.cand.severity, -e.margin))
         good = group + [e for e in good if e not in group]
     ranked = good + marginal
     if prefer_hold:

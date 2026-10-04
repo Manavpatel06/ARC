@@ -398,3 +398,9 @@ def test_sequencing_is_kept_after_a_maneuver_cleared_the_conflict():
         res = Sim(PATS, ac, lambda i: Node(i, patterns=PATS, record=False), loss=0.1, latency_s=0.3, dt=DT, seed=seed).run(DURATION_S)
         kept += sum(1 for _, _, f in res.advisories if f["reason"].get("kept_after") == "maneuver")
     assert kept > 0
+
+
+def test_right_of_way_prefers_a_right_turn_over_a_free_vertical_maneuver():
+    own, hold, peers, terr = _head_on(own_z=300.0, peer_z=300.0, terrain=100.0)
+    r = escape.evaluate(own, hold, peers, terr, prefer_right=True)
+    assert r.chosen.cand.kind == "turn" and r.chosen.cand.bank > 0, r.chosen.cand.name

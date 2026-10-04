@@ -568,7 +568,7 @@ class Node:
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
             return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=hold_s,
                                    require_maneuver=comp, blocked=blocked, peers_alt=alt, go_around=go_around,
-                                   prefer_hold=row_me.stands_on,
+                                   prefer_hold=row_me.stands_on, prefer_right=(row_me.prefer == "R"),
                                    max_bank=PILOT_MAX_BANK if pilot_mode else 30.0)
 
         def expected_peer():
