@@ -39,7 +39,7 @@ class BaselineNode(Node):
                 self.auth.grant(v.command, now)
                 self._takeover_target = pid
                 self._emit_world(v.command)
-                self._advise("TAKEOVER", "FLOCK HAS THE AIRCRAFT - RIGHT 30", "flock has the aircraft", pid, c.ttc_s, why, force=True)
+                self._advise("TAKEOVER", "ARC HAS THE AIRCRAFT - RIGHT 30", "arc has the aircraft", pid, c.ttc_s, why, force=True)
                 return
         if self.auth.engaged:
             return

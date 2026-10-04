@@ -668,7 +668,7 @@ function draw(cv, s) {
       ctx.strokeStyle = css("var(--lvl-takeover)"); ctx.lineWidth = 2 * k;
       ctx.strokeRect(x - b, y - b, 2 * b, 2 * b);
       const bank = +c.bank_cmd_deg || 0;
-      text(ctx, x, y + b + 14 * k, `FLOCK ${bank < 0 ? "L" : "R"}${Math.abs(bank).toFixed(0)} · ${Math.max(0, c.until - s.t).toFixed(1)} s`, 11 * k, "center", css("var(--lvl-takeover)"), true);
+      text(ctx, x, y + b + 14 * k, `ARC ${bank < 0 ? "L" : "R"}${Math.abs(bank).toFixed(0)} · ${Math.max(0, c.until - s.t).toFixed(1)} s`, 11 * k, "center", css("var(--lvl-takeover)"), true);
     }
     const st = s.stick.get(a.ac_id);
     if (st != null && s.t - st < STICK_FLASH_S) {

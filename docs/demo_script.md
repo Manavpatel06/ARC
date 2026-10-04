@@ -1,3 +1,19 @@
+# ARC — one-minute live demo (both layers in one run)
+
+Setup: `.\run_demo.ps1 -Arc -Scenario harness\scenarios\head_on_judges.json` (world with takeover allowed, radio
+channel, one ARC node per aircraft, and one verification unit per judge in the same run). Laptops: cockpit A,
+cockpit B, god view. Reset between runs: god view **⟲ Reset demo** and **Stop all**.
+
+| t (s) | Do | Judges see (cloud test, 4 Oct) |
+|---|---|---|
+| 0 | Start both cockpits, hands off. | Both on downwind, opposite directions, same altitude. Cockpit: **TRAFFIC VERIFIED · 1 of 1**. |
+| ~10 | God: **Ghost flock**. | Four red targets within 2-5 s: **SUSPECT TRAFFIC · ...** "TCAS sees nothing where it claims to be". The other judge stays VERIFIED 100. |
+| ~25 | Nothing. | **SEQUENCE** both cockpits - ARC agrees who goes where, 90 s out. Fakes are never a target. |
+| ~35 | Nothing. | **TRAFFIC** (35 s). |
+| ~50 | Nothing. | **RESOLVE** - both told to turn right (20 s). |
+| ~62 | Nothing. | **ARC HAS THE AIRCRAFT - RIGHT 20** on both, bounds panel (30 deg, 1.3 Vs, 300 ft AGL, 10 s). |
+| ~71 | Touch the stick (optional). | **YOUR AIRCRAFT** - released. Closest approach 962 ft, 0 NMAC; every advisory targeted the real aircraft. |
+
 # FLOCK — demo script (verification)
 
 Setup: `.\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json` (world + one FLOCK onboard unit per judge;

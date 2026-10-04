@@ -27,7 +27,7 @@ export function startCockpit(role) {
       case "HELLO":
         s.acId = m.ac_id;
         $("ck-id").textContent = m.ac_id;
-        document.title = `FLOCK cockpit ${m.ac_id}`;
+        document.title = `ARC cockpit ${m.ac_id}`;
         if (m.static && m.static.airport) s.fieldElevFt = m.static.airport.elev_ft;
         if (m.static && m.static.wx) s.wx = m.static.wx;
         if (m.static) s.static = m.static;
@@ -352,7 +352,7 @@ function renderBanner(s) {
   const el = $("ck-adv"), now = performance.now();
   let level = "NONE", text = "NO ADVISORY", sub = "";
   if (now - s.stickT < 4000) {
-    level = "RELEASE"; text = "YOUR AIRCRAFT"; sub = "stick input - FLOCK released control";
+    level = "RELEASE"; text = "YOUR AIRCRAFT"; sub = "stick input - ARC released control";
   } else if (s.adv && !(s.adv.level === "CLEAR" && now - s.advT > 6000)) {
     level = s.adv.level; text = s.adv.text;
     const bits = [];
@@ -422,7 +422,7 @@ function renderTrust(s) {
     const key = t.icao || t.id;
     return `<li data-state="${t.state}" data-key="${key}" data-open="${s.detail === key ? 1 : 0}" title="click: why">`
       + `<b>${t.id}</b><i>${nm}</i><span>${t.state.replace("_", " ")}</span><em>${score}</em></li>`;
-  }).join("") || `<li class="muted">${s.verify ? "no traffic received" : "no traffic heard on the FLOCK radio"}</li>`;
+  }).join("") || `<li class="muted">${s.verify ? "no traffic received" : "no traffic heard on the ARC link"}</li>`;
   if (el.innerHTML !== html) el.innerHTML = html;
   renderDetail(s, targets);
 }
@@ -438,12 +438,12 @@ function atcReport(s, icao) {
   const alt = Math.round((o.alt_ind_ft ?? o.alt_msl_ft) + (r.dalt_ft || 0));
   const when = new Date().toISOString().replace(/\.\d+Z$/, "Z");
   return [
-    "FLOCK SPOOFING REPORT  (advisory - generated on board, NOT transmitted)",
+    "ARC SPOOFING REPORT  (advisory - generated on board, NOT transmitted)",
     `Time        ${when}`,
     `Reporting   ${s.acId}  ${o.lat.toFixed(4)}N ${Math.abs(o.lon).toFixed(4)}W  ${Math.round(o.alt_ind_ft ?? o.alt_msl_ft)} ft  hdg ${String(Math.round(o.hdg_deg)).padStart(3, "0")}`,
     `Suspect     ${v.id}  ICAO ${v.icao.split("~")[0].toUpperCase()}`,
     `Claimed     ${nm} NM at ${clock} o'clock (bearing ${String(Math.round(r.brg_deg ?? 0)).padStart(3, "0")}), ${alt} ft, track ${r.trk_deg != null ? String(Math.round(r.trk_deg)).padStart(3, "0") : "?"}`,
-    `FLOCK       ${v.state}, trust ${v.trust}/100  (sources heard: ${(v.sources || []).join(", ") || "none"})`,
+    `ARC         ${v.state}, trust ${v.trust}/100  (sources heard: ${(v.sources || []).join(", ") || "none"})`,
     "Evidence",
     ...(v.reasons || []).map((x) => `  - ${x}`),
     ...((s.verify.banners || []).length ? ["Picture", ...s.verify.banners.map((b) => `  - ${b}`)] : []),
@@ -489,7 +489,7 @@ function renderDetail(s, targets) {
   const html = `<header data-state="${v.state}"><b>${v.id}</b><span>${v.state}</span><em>trust ${v.trust}/100</em>`
     + `<i>${(v.sources || []).join(" · ")}${v.icao ? ` · ICAO ${v.icao.toUpperCase()}` : ""}</i></header>`
     + `<ul>${(v.reasons || []).map((r) => `<li>${r}</li>`).join("")}</ul>`
-    + `<table>${rows}</table><p class="muted">Advisory only - FLOCK scores traffic, it never tells you to maneuver. Follow ATC and TCAS.</p>`
+    + `<table>${rows}</table><p class="muted">Verification is advisory only - ARC scores traffic and never maneuvers because of it. Follow ATC and TCAS.</p>`
     + (v.state === "SUSPECT" ? `<button type="button" class="report-btn" data-report="${v.icao}">Report to ATC…</button>` : "");
   if (box.innerHTML !== html) box.innerHTML = html;
   box.hidden = false;

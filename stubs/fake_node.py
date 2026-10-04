@@ -7,7 +7,7 @@ ladder on a timer (no real conflict logic):
   t+5   SEQUENCE  "NUMBER 2 - EXTEND DOWNWIND 15 S"      ttc 84
   t+20  TRAFFIC   "TRAFFIC - 2 O'CLOCK - 1 MILE - SAME ALT" ttc 33
   t+32  RESOLVE   "TURN LEFT 30 - N204 TURNING RIGHT"      ttc 19
-  t+42  TAKEOVER  COMMAND bank -28 for 8 s + ADVISORY "FLOCK HAS THE AIRCRAFT"
+  t+42  TAKEOVER  COMMAND bank -28 for 8 s + ADVISORY "ARC HAS THE AIRCRAFT"
   t+50  RELEASE   "YOUR AIRCRAFT - CONTINUE LEFT TURN"
   t+58  CLEAR     "CLEAR OF CONFLICT"
   then loops. TRUST frame every 1 s with N204 TRUSTED and GHOST7 FAKE, each with a v1.1 `rel` radar position.
@@ -23,7 +23,7 @@ LADDER = [
     (5,  "SEQUENCE", 1, "NUMBER 2 - EXTEND DOWNWIND 15 S", "number two, extend downwind fifteen seconds", 84),
     (20, "TRAFFIC",  2, "TRAFFIC - 2 O'CLOCK - 1 MILE - SAME ALTITUDE", "traffic, two o'clock, one mile, same altitude", 33),
     (32, "RESOLVE",  3, "TURN LEFT 30 - N204 TURNING RIGHT", "turn left three zero, november two zero four turning right", 19),
-    (42, "TAKEOVER", 4, "FLOCK HAS THE AIRCRAFT - LEFT 28", "flock has the aircraft", 7.6),
+    (42, "TAKEOVER", 4, "ARC HAS THE AIRCRAFT - LEFT 28", "arc has the aircraft", 7.6),
     (50, "RELEASE",  4, "YOUR AIRCRAFT - CONTINUE LEFT TURN", "your aircraft, continue left turn", None),
     (58, "CLEAR",    0, "CLEAR OF CONFLICT", "clear of conflict", None),
 ]

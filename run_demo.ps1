@@ -8,15 +8,19 @@ run_demo.ps1 — start the whole FLOCK demo on the world laptop (Windows PowerSh
   .\run_demo.ps1 -Spoof -SpoofArgs "--sybil 3"      # extra spoofer flags passed through as-is
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
-  .\run_demo.ps1 -Legacy                          # old collision-avoidance demo (radio nodes, takeover allowed)
+  .\run_demo.ps1 -Arc -Scenario harness\scenarios\head_on_judges.json   # ARC: collision avoidance (radio nodes, takeover)
+                                                   #   + verification units in the same run (god view attacks)
+  .\run_demo.ps1 -Legacy                          # same as -Arc (old name)
+  .\run_demo.ps1 -Arc -NoVerify                   # collision avoidance only, no verification units
   .\run_demo.ps1 -NoLive                           # without the real-ADS-B "live sky" window (on by default)
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json            # free flight + live traffic
   .\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json -Seed 11   # same, different (repeatable) traffic
 
 Starts, in order: METAR fetch -> world (ws :8765, web :8080, advisory only) -> one FLOCK onboard
 verification unit per judge aircraft (verify/unit.py, receive only) -> opens the log page. Inject a spoofed
-ghost from the god view (+ Ghost). -Legacy instead starts the radio channel + one collision-avoidance
-node per aircraft (+ spoofer) and lets nodes take the controls. Each process gets its own window
+ghost from the god view (+ Ghost). -Arc (= -Legacy) also starts the radio channel + one collision-avoidance
+node per aircraft (+ spoofer) and lets nodes take the controls; the verification units still run (unless
+-NoVerify), so one run shows coordination, takeover and fakes flagged. Each process gets its own window
 titled with its role so you can see its output. PIDs go to .demo_pids for -Stop.
 Scenarios with "traffic" (live_kdvt.json): the world also starts a background node for every AI
 aircraft it spawns (logs in harness\out\nodes\).
@@ -33,7 +37,8 @@ param(
   [int]$ChanPort = 8766,
   [int]$HttpPort = 8080,
   [switch]$NoBrowser,
-  [switch]$Legacy,
+  [Alias("Arc")][switch]$Legacy,
+  [switch]$NoVerify,
   [switch]$NoLive,
   [switch]$Spoof,
   [string]$SpoofMode = "unsigned",
@@ -134,10 +139,11 @@ else { Start-Role "world(stub)" @("stubs/fake_world.py", "--scenario", $Scenario
 if (-not (Wait-Port $WorldPort)) { Write-Host "World did not open port $WorldPort - check its window." -ForegroundColor Red; exit 1 }
 
 $judges = $sc.aircraft | Where-Object { $_.human -eq $true -and $_.flock -ne $false } | ForEach-Object { $_.id }
-if (-not $Legacy) {
-  # 2. FLOCK onboard verification unit per judge aircraft: receive only, advisory only (verify/unit.py)
-  foreach ($id in $judges) { Start-Role "FLOCK $id" @("verify/unit.py", "--id", $id, "--world", $World) }
-} else {
+if (-not $NoVerify) {
+  # 2. onboard verification unit per judge aircraft: receive only, advisory only (verify/unit.py)
+  foreach ($id in $judges) { Start-Role "verify $id" @("verify/unit.py", "--id", $id, "--world", $World) }
+}
+if ($Legacy) {
   # 2. radio channel (legacy collision-avoidance demo)
   if ((Test-Path "radio\channel.py") -and -not $Stubs) { Start-Role "channel" @("radio/channel.py", "--world", $World, "--ws-port", $ChanPort, "--loss", $Loss, "--latency", $Latency); Start-Sleep -Seconds 2 }
   else {
@@ -178,7 +184,7 @@ Write-Host "  cockpit A  http://$($Ip):$HttpPort/index.html?role=cockpitA"
 Write-Host "  cockpit B  http://$($Ip):$HttpPort/index.html?role=cockpitB"
 Write-Host "  god view   http://$($Ip):$HttpPort/index.html?role=god"
 Write-Host "  comms log  http://$($Ip):$HttpPort/log.html"
-if ($Legacy) { Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):$WorldPort --via-channel ws://$($Ip):$ChanPort" }
+if ($Legacy) { Write-Host "  ARC: collision avoidance + takeover$(if (-not $NoVerify) { ' + verification units (god view attacks)' })"; Write-Host "  nodes on another laptop:  python node/node.py --id <ID> --world ws://$($Ip):$WorldPort --via-channel ws://$($Ip):$ChanPort" }
 else { Write-Host "  FLOCK verification: one onboard unit per judge (verify/unit.py) - god view + Ghost injects a spoofed aircraft" }
 Write-Host "  live sky:   python data/live_traffic.py --world ws://localhost:$WorldPort"
 if ($sc.traffic) { Write-Host "  live traffic: god view RESET DEMO puts the judges back at their starts" }

@@ -805,9 +805,9 @@ class Node:
             self._emit_world(cmd)
             side = "LEFT" if cmd["bank_cmd_deg"] < 0 else "RIGHT"
             if ev.cand.kind == "turn":
-                text, speak = f"FLOCK HAS THE AIRCRAFT - {side} {abs(cmd['bank_cmd_deg']):.0f}", "flock has the aircraft"
+                text, speak = f"ARC HAS THE AIRCRAFT - {side} {abs(cmd['bank_cmd_deg']):.0f}", "arc has the aircraft"
             else:
-                text, speak = f"FLOCK HAS THE AIRCRAFT - {ev.cand.name.replace('_', ' ')}", "flock has the aircraft"
+                text, speak = f"ARC HAS THE AIRCRAFT - {ev.cand.name.replace('_', ' ')}", "arc has the aircraft"
             self._advise("TAKEOVER", text, speak, pid, c.ttc_s, cmd["reason"], force=True)
             return
         res.rejected.update(rejected_by_auth)

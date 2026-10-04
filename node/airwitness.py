@@ -877,11 +877,11 @@ class AirWitness:
 
         # --- packet guard
         if tr.auth == "ok":
-            ev.append(Evidence("signature", PASS, "valid FLOCK signature"))
+            ev.append(Evidence("signature", PASS, "valid ARC signature"))
         elif tr.auth in (None, "n/a") and not self.signed_radio:
             ev.append(Evidence("signature", UNKNOWN, "transport carries no signatures"))
         else:
-            ev.append(Evidence("signature", CONFLICT, f"no valid FLOCK signature ({tr.auth or 'none'}) - legacy or forged"))
+            ev.append(Evidence("signature", CONFLICT, f"no valid ARC signature ({tr.auth or 'none'}) - legacy or forged"))
         pkt = sorted(active & {"replay", "duplicate", "stale", "expired_session", "seq_jump", "session_churn"})
         ev.append(Evidence("packet", CONFLICT, "dropped: " + ",".join(pkt)) if pkt else Evidence("packet", UNKNOWN, "clean"))
 
@@ -969,7 +969,7 @@ class AirWitness:
             strikes += 1
             gates.append("replayed / duplicate / stale / expired-session packets dropped -> cannot be VERIFIED")
         if sig_fail:
-            gates.append("no valid FLOCK signature -> cannot be VERIFIED (still tracked)")
+            gates.append("no valid ARC signature -> cannot be VERIFIED (still tracked)")
         for k in ("motion", "identity", "sybil", "rf_location", "tcas", "multi_observer", "baro_geo"):
             if by.get(k) and by[k].verdict == CONFLICT:
                 strikes += 1

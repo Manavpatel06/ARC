@@ -95,7 +95,7 @@ def four_pm() -> None:
     for lv, tx in adv:
         txt.setdefault(lv, tx)                                    # first text seen at each level
     good = (txt.get("SEQUENCE", "").startswith("NUMBER") and txt.get("TRAFFIC", "").startswith("TRAFFIC - ")
-            and any("FLOCK HAS THE AIRCRAFT" in tx for lv, tx in adv if lv == "TAKEOVER"))
+            and any("HAS THE AIRCRAFT" in tx for lv, tx in adv if lv == "TAKEOVER"))
     check("advisory text per layer", good, "; ".join(f"{k}: {v}" for k, v in txt.items() if k in order))
     commits = {}
     for tt, i, b in rf.commits:

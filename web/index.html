@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FLOCK</title>
+  <title>ARC</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- Click/press to start: unlocks speechSynthesis (browsers require a gesture) -->
   <div id="start" class="start">
     <div class="start-card">
-      <h1>FLOCK</h1>
+      <h1>ARC</h1>
       <p id="start-role"></p>
       <button id="start-btn" type="button">Start</button>
       <p class="muted">Click, press a key or a controller button. Enables voice advisories.</p>
@@ -46,7 +46,7 @@
           <canvas id="ck-traffic" class="ck-traffic"></canvas>
         </div>
         <aside id="ck-bounds" class="ck-bounds" hidden>
-          <h2>FLOCK HAS THE AIRCRAFT · bounds</h2>
+          <h2>ARC HAS THE AIRCRAFT · bounds</h2>
           <div id="ck-bounds-body"></div>
         </aside>
         <ul id="ck-trust" class="ck-trust"></ul>
@@ -68,13 +68,13 @@
   <main id="god" class="god" hidden>
     <canvas id="god-map" class="god-map"></canvas>
     <aside class="god-panel">
-      <header><h1>FLOCK · KDVT</h1><span id="god-link" class="pill" data-state="connecting">…</span></header>
+      <header><h1>ARC · KDVT</h1><span id="god-link" class="pill" data-state="connecting">…</span></header>
       <p id="god-scn" class="muted"></p>
       <div class="demo-row">
         <button id="god-reset-demo" type="button" title="Both judge aircraft back to their scenario start points (Shift+R). Click twice.">⟲ Reset demo</button>
         <span id="god-traffic" class="muted"></span>
       </div>
-      <h2>Verification (FLOCK onboard)</h2>
+      <h2>Verification (ARC onboard)</h2>
       <div id="god-attacks" class="attack-row" title="Spoofing attacks on judge A's equipment - simulated radio only, never broadcast">
         <button type="button" data-attack="ghost" title="one ADS-B-only aircraft that does not exist">Ghost</button>
         <button type="button" data-attack="flock" title="four ghosts from one transmitter">Ghost flock</button>
@@ -88,7 +88,7 @@
       </div>
       <p id="god-verify-sum" class="muted">no onboard unit connected</p>
       <table class="god-table god-verify">
-        <thead><tr><th>Target</th><th>Truth</th><th>FLOCK</th><th>Trust</th><th></th></tr></thead>
+        <thead><tr><th>Target</th><th>Truth</th><th>ARC</th><th>Trust</th><th></th></tr></thead>
         <tbody id="god-verify"></tbody>
       </table>
       <h2>Weather</h2>
@@ -115,9 +115,9 @@
       <h2>Legend</h2>
       <ul class="legend">
         <li><i style="--c: var(--own)"></i>judge aircraft</li>
-        <li><i style="--c: var(--ai)"></i>AI with FLOCK node</li>
-        <li><i class="hollow" style="--c: var(--noflock)"></i>no FLOCK node</li>
-        <li><i style="--c: var(--lvl-takeover)"></i>under FLOCK takeover</li>
+        <li><i style="--c: var(--ai)"></i>AI with ARC</li>
+        <li><i class="hollow" style="--c: var(--noflock)"></i>no ARC</li>
+        <li><i style="--c: var(--lvl-takeover)"></i>under ARC takeover</li>
         <li><i class="ring" style="--c: var(--lvl-seq)"></i>sequence</li>
         <li><i class="ring" style="--c: var(--lvl-traffic)"></i>traffic</li>
         <li><i class="ring" style="--c: var(--lvl-resolve)"></i>resolve</li>
@@ -132,7 +132,7 @@
 
   <!-- ===== minimal log (?role=log) — Lane D builds web/log.html on the same feed ===== -->
   <main id="log" class="log" hidden>
-    <header><h1>FLOCK log (minimal)</h1><span id="log-link" class="pill">…</span></header>
+    <header><h1>ARC log (minimal)</h1><span id="log-link" class="pill">…</span></header>
     <table><thead><tr><th>time</th><th>kind</th><th>src</th><th>frame</th></tr></thead><tbody id="log-rows"></tbody></table>
   </main>
 
