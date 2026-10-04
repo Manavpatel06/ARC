@@ -1,0 +1,62 @@
+{
+ "ghost": {
+  "detection": 1.0,
+  "false_alarm_aircraft": 0.0,
+  "false_alarm_time": 0.0,
+  "real_verified_time": 0.9972458688032048,
+  "ttd_median": 21.0,
+  "ttd_max": 21.0,
+  "n_fake": 4,
+  "n_real": 31
+ },
+ "swarm": {
+  "detection": 1.0,
+  "false_alarm_aircraft": 0.0,
+  "false_alarm_time": 0.0,
+  "real_verified_time": 0.9979969954932398,
+  "ttd_median": 2.0,
+  "ttd_max": 17.0,
+  "n_fake": 16,
+  "n_real": 31
+ },
+ "drift": {
+  "detection": 0.0,
+  "false_alarm_aircraft": 0.0,
+  "false_alarm_time": 0.0,
+  "real_verified_time": 0.9954428937624609,
+  "ttd_median": null,
+  "ttd_max": null,
+  "n_fake": 4,
+  "n_real": 31
+ },
+ "replay": {
+  "detection": 1.0,
+  "false_alarm_aircraft": 0.0,
+  "false_alarm_time": 0.0,
+  "real_verified_time": 0.9967451176765147,
+  "ttd_median": 32.0,
+  "ttd_max": 32.0,
+  "n_fake": 4,
+  "n_real": 31
+ },
+ "masquerade": {
+  "detection": 1.0,
+  "false_alarm_aircraft": 0.0967741935483871,
+  "false_alarm_time": 0.015022533800701052,
+  "real_verified_time": 0.9769654481722584,
+  "ttd_median": 1.0,
+  "ttd_max": 21.0,
+  "n_fake": 4,
+  "n_real": 31
+ },
+ "none": {
+  "detection": null,
+  "false_alarm_aircraft": 0.0,
+  "false_alarm_time": 0.0,
+  "real_verified_time": 0.9972458688032048,
+  "ttd_median": null,
+  "ttd_max": null,
+  "n_fake": 0,
+  "n_real": 31
+ }
+}
