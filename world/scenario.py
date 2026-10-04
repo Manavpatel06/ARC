@@ -36,6 +36,23 @@ STALE_BARO_PRESETS = {"pressure_drop"}
 FLOW_RUNWAYS = {"07": {"NORTH": "07L", "SOUTH": "07R", "ACTIVE": "07R"},
                 "25": {"NORTH": "25R", "SOUTH": "25L", "ACTIVE": "25L"}}
 RESET_CLEAR_NM, RESET_CLEAR_FT = 2.0, 1500.0     # demo reset removes AI traffic this close to a judge's start
+RECIP = {"07R": "25L", "25L": "07R", "07L": "25R", "25R": "07L"}   # the two ends of one strip
+OCCUPIED_HALF_W_M = 40.0          # on the strip: within this of the centreline (runways 75-100 ft wide)
+LANDING_CHECK_FT = 400.0          # autopilot landers decide here whether the runway is clear
+DEPART_WATCH_NM = 1.5             # takeoff holds while someone lands inside this, on this strip
+
+def scenario_flow(raw: dict, wx: dict) -> str:
+    """Landing direction for the whole airport: scenario "runway_flow" ("auto" = METAR wind), else the
+    direction most of the scenario's aircraft are set up for (tuned scenarios), else the wind."""
+    want = str(raw.get("runway_flow", "")).strip()
+    if want:
+        return runway_flow(wx, want)
+    idents = [str((a.get("start") or {}).get("runway", "")) for a in raw.get("aircraft", [])]
+    n07 = sum(i.startswith("07") for i in idents)
+    n25 = sum(i.startswith("25") for i in idents)
+    if n07 or n25:
+        return "07" if n07 > n25 else "25"
+    return runway_flow(wx)
 
 def runway_flow(wx: dict, want: str = "auto") -> str:
     """'07' or '25': the end with a headwind (true wind vs the 086/266 true runways); calm -> 25."""
@@ -85,7 +102,7 @@ class World:
         self.env.runway_at = self.runways.on_runway
         self.da_pinned = da_override is not None
         self.set_preset(weather or raw.get("weather_preset", "metar"))
-        self.flow = runway_flow(self.metar, str(raw.get("runway_flow", "auto")))
+        self.flow = scenario_flow(raw, self.metar)
         self.patterns: dict[str, Pattern] = {}
         self.fleet: dict[str, Aircraft] = {}
         self.specs = {spec.id: spec for spec in self.scenario.aircraft}
@@ -110,6 +127,76 @@ class World:
         if rwy not in self.patterns:
             self.patterns[rwy] = Pattern(rwy)
         return self.patterns[rwy]
+
+    def with_flow(self, rwy: str) -> str:
+        """The end of this strip that is in use: everyone lands the same way on one runway."""
+        return rwy if rwy[:2] == self.flow else RECIP.get(rwy, rwy)
+
+    # ---------- autopilot: one landing direction, runway must be clear ----------
+    def engage_ap(self, ac_id: str, on: bool) -> tuple[bool, str]:
+        """Cockpit AP button. The autopilot always flies the strip's active end (never lands against the
+        flow, whatever runway the scenario started the aircraft on)."""
+        ac = self.fleet[ac_id]
+        pl = ac.autopilot
+        if on and pl is not None and hasattr(pl, "p") and pl.p.ident[:2] != self.flow:
+            pl.p = self.pattern(self.with_flow(pl.p.ident))
+            pl.over.clear()
+        return ac.engage_ap(on)
+
+    def _on_strip(self, R, o) -> tuple[float, float] | None:
+        """(along, xtrk) if aircraft o is on the runway strip R (either direction), else None."""
+        along, xtrk = R.project(P.to_enu(o.lat, o.lon))
+        if -30.0 < along < R.length + 30.0 and abs(xtrk) < OCCUPIED_HALF_W_M:
+            return along, xtrk
+        return None
+
+    def runway_watch(self, now: float) -> list[dict]:
+        """Every aircraft the autopilot is flying (AI, judges on AP or untouched):
+        - landing below 400 ft with anything on the strip - stopped, taxiing, rolling out, lifting off - goes around
+        - waiting to take off holds short while the strip ahead is occupied or someone is on short final.
+        Returns GO_AROUND / HOLD_SHORT world events."""
+        events = []
+        for ac in list(self.fleet.values()):
+            pl = ac.autopilot
+            if pl is None or not hasattr(pl, "p") or ac.mode != "AUTOPILOT":
+                continue
+            R = pl.p.legs["RUNWAY"]
+            if not ac.on_ground and ac.agl_ft < LANDING_CHECK_FT and (
+                    (pl.phase == "PATTERN" and (pl.leg in ("FINAL", "STRAIGHT_IN") or (pl.leg == "UPWIND" and not pl.touched)))
+                    or pl.phase == "ROLLOUT"):
+                for o in self.fleet.values():
+                    if o is ac or not (o.on_ground or (o.agl_ft < 50 and o.vs_fpm < 100)):
+                        continue
+                    if self._on_strip(R, o):
+                        pl.go_around()
+                        events.append({"event": "GO_AROUND", "a": ac.id, "b": o.id, "runway": pl.p.ident,
+                                       "reason": f"runway occupied by {o.id}", "agl_ft": round(ac.agl_ft)})
+                        break
+            elif pl.phase == "TAKEOFF" and ac.on_ground:
+                me = R.project(P.to_enu(ac.lat, ac.lon))[0]
+                why = None
+                for o in self.fleet.values():
+                    if o is ac:
+                        continue
+                    on = self._on_strip(R, o)
+                    if on and on[0] > me - 30 and (o.on_ground or o.agl_ft < 50):
+                        why = f"{o.id} on the runway ahead"
+                    else:
+                        along, xtrk = R.project(P.to_enu(o.lat, o.lon))
+                        if (not o.on_ground and o.agl_ft < 600 and abs(xtrk) < 150 and o.vs_fpm < 0
+                                and -DEPART_WATCH_NM * NM_M < along < R.length + DEPART_WATCH_NM * NM_M):
+                            why = f"{o.id} landing"
+                    if why:
+                        break
+                if why and ac.ias_kt < 5.0:                        # never abort a takeoff already rolling
+                    if not pl.hold_short:
+                        events.append({"event": "HOLD_SHORT", "a": ac.id, "runway": pl.p.ident, "reason": why})
+                    pl.hold_short = True
+                elif not why:
+                    pl.hold_short = False
+        for e in events:
+            e.update(type="WORLD_EVENT", t=round(now, 3))
+        return events
 
     # ---------- live traffic (world/traffic.py TrafficGenerator) ----------
     def add_traffic(self, ac_id: str, lat: float, lon: float, alt_msl_ft: float, hdg: float, ias: float,

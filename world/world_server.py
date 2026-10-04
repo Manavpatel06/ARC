@@ -239,7 +239,7 @@ class Hub:
                 ac = self.w.fleet[own_id]
                 want = m.get("engage")
                 want = (not ac.ap_engaged) if want is None else bool(want)
-                ok, why = ac.engage_ap(want)
+                ok, why = self.w.engage_ap(own_id, want)       # always lands with the active runway flow
                 st = {"type": "AP_STATUS", "ac_id": own_id, "t": round(self.now(), 3), "ok": ok,
                       "engaged": ac.ap_engaged, "phase": ac.ap_phase, "reason": why}
                 self.send(f"cockpit:{own_id}", st)
@@ -456,6 +456,12 @@ class Hub:
                     ac.step(sim_dt / n, self.w.env, now)
             now = self.now()
             tick = self.stats["ticks"]
+            if tick % 4 == 0:                                   # 5 Hz: autopilot landers / departures check the runway
+                for ev in self.w.runway_watch(now):
+                    for role in (f"cockpit:{ev['a']}", "god"):
+                        self.send(role, ev)
+                    self.log(ev["a"], "world", ev)
+                    print(f"[world] {ev['event']} {ev['a']} {ev['runway']}: {ev['reason']}")
             if self.w.traffic is not None and tick % PHYS_HZ == 0:      # 1 Hz: live traffic comes and goes
                 self.traffic_step(now)
             for ac in self.w.fleet.values():                    # 20 Hz to cockpits
