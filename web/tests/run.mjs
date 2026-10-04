@@ -89,5 +89,53 @@ run(0.5);
   check("input: stick inside the deadzone sends roll 0", sent[sent.length - 1].roll === 0);
 }
 
+// ---------- radio altimeter callouts ----------
+{
+  const { createCallouts, raDisplay } = await import("../callouts.js");
+  const fly = (u, from, to, vs, step = 3) => {           // 20 Hz-ish samples from `from` to `to` ft
+    const said = [];
+    for (let a = from; vs < 0 ? a >= to : a <= to; a += vs < 0 ? -step : step) { const w = u(a, vs, false); if (w) said.push(w); }
+    return said;
+  };
+  let u = createCallouts();
+  const descent = fly(u, 1200, 0, -600);
+  check("callouts: full descent in order", descent.join(",") === "one thousand,five hundred,four hundred,three hundred,two hundred,one hundred,fifty,forty,thirty,twenty,ten",
+        descent.join(","));
+  u = createCallouts();
+  check("callouts: none while climbing", fly(u, 0, 1500, 700).length === 0);
+  u = createCallouts();
+  fly(u, 600, 60, -600); fly(u, 60, 700, 800);            // go-around from 60 ft, climb back to 700
+  const again = fly(u, 700, 30, -500);
+  check("callouts: re-armed after a go-around", again.includes("five hundred") && again.includes("one hundred") && again.includes("fifty"), again.join(","));
+  u = createCallouts();
+  u(1200, -600, false);
+  check("callouts: big jump says the lowest height crossed", u(80, -3000, false) === "one hundred");
+  u = createCallouts();
+  u(300, -500, false);
+  check("callouts: silent on the ground", u(0, -500, true) === null);
+  check("RA display: 10 ft steps high, 5 ft under 200, 1 ft under 50",
+        raDisplay(1234) === 1230 && raDisplay(173) === 175 && raDisplay(37.4) === 37 && raDisplay(-4) === 0);
+}
+
+// ---------- 3D placement: aircraft drawn on the ground it is actually over (no sinking) ----------
+{
+  const { aircraftHeightM, surfaceM, heightM, MODEL_WHEELS_M, EYE_M } = await import("../cesium3d.js");
+  const C = { Cartographic: { fromDegrees: (lon, lat) => ({ lon, lat }) } };
+  const viewerAt = (h) => ({ scene: { globe: { getHeight: () => h } } });
+  const FT = 0.3048;
+  // flat mode: the drawn ground is the ellipsoid (0 m) everywhere, so height = AGL exactly
+  check("3D flat: on the runway the wheels are at the drawn ground", aircraftHeightM(C, null, false, 33.69, -112.08, 1450, 0) === 0);
+  check("3D flat: 20 ft AGL over low ground is drawn 20 ft up (old code drew it underground)",
+        Math.abs(aircraftHeightM(C, null, false, 33.69, -112.08, 1470, 20) - 20 * FT) < 1e-9 && heightM(1470, false, 1478) === 0);
+  // terrain mode: sits on Cesium's rendered terrain, whatever our elevation grid says
+  check("3D terrain: wheels on Cesium's ground when it is loaded", aircraftHeightM(C, viewerAt(412.5), true, 33.69, -112.08, 1450, 0) === 412.5);
+  check("3D terrain: AGL added on top of Cesium's ground",
+        Math.abs(aircraftHeightM(C, viewerAt(412.5), true, 33.69, -112.08, 1550, 100) - (412.5 + 100 * FT)) < 1e-9);
+  check("3D terrain: falls back to sim ground + geoid before tiles load",
+        Math.abs(surfaceM(C, viewerAt(undefined), true, 0, 0, 1450) - (1450 * FT - 31)) < 1e-9);
+  check("3D: negative AGL never drawn below ground", aircraftHeightM(C, null, false, 0, 0, 1440, -3) === 0);
+  check("3D: model lifted so wheels touch, eye above wheels", MODEL_WHEELS_M > 0.8 && MODEL_WHEELS_M < 1.3 && EYE_M >= 1.8);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall web logic tests passed");
 process.exit(failures ? 1 : 0);

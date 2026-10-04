@@ -4,10 +4,12 @@
 
 import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
-import { sayAdvisory, sayNow } from "./voice.js";
+import { sayAdvisory, sayCallout, sayNow } from "./voice.js";
+import { createCallouts, RA_SHOW_BELOW_FT, raDisplay } from "./callouts.js";
 import { startHaptics } from "./haptics.js";
 import { MAP_ATTRIBUTION, startMapLayer } from "./maplayer.js";
-import { AIRCRAFT_MODEL, gpuInfo, heightM, Interp, loadCesium, makeViewer, offsetLL } from "./cesium3d.js";
+import { AIRCRAFT_MODEL, aircraftHeightM, EYE_M, gpuInfo, Interp, loadCesium, makeViewer, MODEL_SCALE, MODEL_WHEELS_M,
+         offsetLL, surfaceM } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -126,6 +128,7 @@ export function startCockpit(role) {
     if (s.v3) update3D(s);
     renderVisibility(s);
     renderTaws(s);
+    heightCallouts(s);
     renderReset(inp);
     const chase = !!(s.v3 && s.v3.chase);
     drawPFD(pfd, s.own, !!s.v3, s.v3 && !chase ? s.v3.viewer.camera.frustum.fovy : null, !chase, s.wx);
@@ -216,11 +219,12 @@ function update3D(s) {
   const { Cesium: C, viewer, terrain } = s.v3;
   const p = s.interp.sample();
   if (!p) return;
-  const h = heightM(p.alt_msl_ft, terrain, s.fieldElevFt);
-  const pos = C.Cartesian3.fromDegrees(p.lon, p.lat, h);
+  const h = aircraftHeightM(C, viewer, terrain, p.lat, p.lon, p.alt_msl_ft, p.agl_ft);   // wheels height
+  s.v3.lastH = h;
+  const pos = C.Cartesian3.fromDegrees(p.lon, p.lat, h + MODEL_WHEELS_M);                 // model origin
   const fpa = Math.atan2(p.vs_fpm, Math.max(p.gs_kt, 30) * 101.27) / D2R;
 
-  if (!s.v3.own) s.v3.own = viewer.entities.add({ model: { uri: AIRCRAFT_MODEL, minimumPixelSize: 48 } });
+  if (!s.v3.own) s.v3.own = viewer.entities.add({ model: { uri: AIRCRAFT_MODEL, scale: MODEL_SCALE, minimumPixelSize: 48 } });
   const hpr = new C.HeadingPitchRoll(C.Math.toRadians(p.hdg_deg + MODEL_HDG_OFFSET), C.Math.toRadians(fpa), C.Math.toRadians(p.bank_deg));
   s.v3.own.position = pos;
   s.v3.own.orientation = C.Transforms.headingPitchRollQuaternion(pos, hpr);
@@ -228,13 +232,14 @@ function update3D(s) {
 
   if (s.v3.chase) {
     const [blat, blon] = offsetLL(p.lat, p.lon, p.track_deg + 180, 70);
+    const camGround = surfaceM(C, viewer, terrain, blat, blon, p.alt_msl_ft - Math.max(0, p.agl_ft));
     viewer.camera.setView({
-      destination: C.Cartesian3.fromDegrees(blon, blat, h + 18),
+      destination: C.Cartesian3.fromDegrees(blon, blat, Math.max(h + 18, camGround + 5)),   // never under the ground behind
       orientation: { heading: C.Math.toRadians(p.track_deg), pitch: C.Math.toRadians(-12), roll: 0 },
     });
   } else {
     viewer.camera.setView({
-      destination: C.Cartesian3.fromDegrees(p.lon, p.lat, h + 1.5),
+      destination: C.Cartesian3.fromDegrees(p.lon, p.lat, h + EYE_M),
       orientation: { heading: C.Math.toRadians(p.hdg_deg), pitch: C.Math.toRadians(fpa), roll: C.Math.toRadians(p.bank_deg) },
     });
   }
@@ -245,7 +250,7 @@ function update3D(s) {
     if (!t.rel || t.state === "CAMERA_ONLY") continue;
     seen.add(t.id);
     const [lat, lon] = offsetLL(p.lat, p.lon, t.rel.brg_deg, t.rel.rng_m);
-    const th = heightM(p.alt_msl_ft + (t.rel.dalt_ft || 0), terrain, s.fieldElevFt);
+    const th = h + (t.rel.dalt_ft || 0) * 0.3048;              // relative to own height, as the node reports it
     const col = C.Color.fromCssColorString(css(TRUST_COLOR[t.state] || "#fff"));
     let e = s.v3.targets.get(t.id);
     if (!e) {
@@ -273,6 +278,15 @@ function toast(text, kind = "info", ms = 3500) {
   toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 function say(text) { sayAdvisory({ level: "INFO", layer: 0, speak: text }); }
+
+// Radio-altimeter callouts on descent (callouts.js); silent while a terrain warning is talking.
+function heightCallouts(s) {
+  const o = s.own;
+  if (!o) return;
+  s.callouts = s.callouts || createCallouts();
+  const words = s.callouts(o.agl_ft, o.vs_fpm, !!o.on_ground);
+  if (words && !o.taws) sayCallout(words);
+}
 
 function fit(cv) {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -423,6 +437,23 @@ function drawPFD(cv, o, svt = false, fovy = null, att = true, wx = null) {
   }
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 18 * k, `AGL ${Math.round(o.agl_ft)}`, 13 * k, "left",
         o.agl_ft < 300 ? css("var(--lvl-traffic)") : css("var(--text-2)"));
+  // radio altimeter: height above the ground right below the aircraft (shown under 2,500 ft, airborne)
+  if (!o.on_ground && o.agl_ft < RA_SHOW_BELOW_FT) {
+    const ra = raDisplay(o.agl_ft), low = o.agl_ft < 200;
+    const col = low ? css("var(--lvl-traffic)") : css("var(--lvl-release)");
+    const bw = 150 * k, bh = 46 * k, bx = cx - bw / 2, by = cy + R * 0.52;
+    ctx.fillStyle = "#000"; ctx.fillRect(bx, by, bw, bh);                 // opaque: pitch ladder must not show through
+    ctx.strokeStyle = col; ctx.lineWidth = 2 * k; ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = col; ctx.textAlign = "left"; ctx.font = `600 ${12 * k}px ${MONO}`;
+    ctx.fillText("RA", bx + 8 * k, by + bh * 0.62);
+    ctx.textAlign = "right"; ctx.font = `bold ${28 * k}px ${MONO}`;
+    ctx.fillText(String(ra), bx + bw - 10 * k, by + bh * 0.74);
+    if (Math.abs(o.vs_fpm) > 100) {                              // trend: where we will be in 6 s
+      const fut = Math.max(0, o.agl_ft + o.vs_fpm / 10);
+      ctx.fillStyle = "#000"; ctx.fillRect(bx, by + bh + 2 * k, bw, 20 * k);   // readable over sky/ground/3D
+      label(ctx, cx, by + bh + 16 * k, `${o.vs_fpm < 0 ? "↓" : "↑"} ${raDisplay(fut)} ft in 6 s`, 12 * k, "center", col);
+    }
+  }
   label(ctx, cx + R + 30 * k, cy + boxH / 2 + 38 * k, `VS ${o.vs_fpm > 0 ? "+" : ""}${Math.round(o.vs_fpm / 10) * 10}`, 13 * k, "left", css("var(--text-2)"));
   label(ctx, cx - R - 30 * k - boxW, cy + boxH / 2 + 18 * k, `GS ${Math.round(o.gs_kt)}`, 13 * k, "left", css("var(--text-2)"));
 
@@ -619,7 +650,8 @@ function drawNavMap(cv, s) {
   }
   const hdr = `${m.northUp ? "NORTH UP" : `HDG ${String(Math.round(o.hdg_deg) % 360).padStart(3, "0")} UP`} · ${rangeNm} NM`;
   label(ctx, 10 * k, 20 * k, hdr, 12 * k, "left", css("var(--text-2)"));
-  label(ctx, 10 * k, 36 * k, `TRK ${String(Math.round(o.track_deg) % 360).padStart(3, "0")} · GS ${Math.round(o.gs_kt)} kt`, 12 * k, "left", css("var(--own)"));
+  label(ctx, 10 * k, 36 * k, `TRK ${String(Math.round(o.track_deg) % 360).padStart(3, "0")} · GS ${Math.round(o.gs_kt)} kt · AGL ${o.on_ground ? "GND" : raDisplay(o.agl_ft)}`,
+        12 * k, "left", css("var(--own)"));
   const nx = W - 26 * k, ny = 28 * k, na = -up * D2R;
   ctx.strokeStyle = css("var(--text-2)"); ctx.lineWidth = 2 * k;
   ctx.beginPath(); ctx.moveTo(nx - 9 * k * Math.sin(na), ny + 9 * k * Math.cos(na)); ctx.lineTo(nx + 9 * k * Math.sin(na), ny - 9 * k * Math.cos(na)); ctx.stroke();
