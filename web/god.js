@@ -76,6 +76,7 @@ export function startGod() {
         break;
       case "TRUTH":
         s.t = m.t;
+        pruneGone(s, m.aircraft);
         for (const a of m.aircraft) {
           s.ac.set(a.ac_id, a);
           if (!s.local) continue;
@@ -129,6 +130,8 @@ export function startGod() {
     daTimer = setTimeout(() => link.send({ type: "SET_DA", ft: +slider.value }), 120);
   });
 
+  wireResetDemo(link);
+
   const cv = $("god-map");
   panZoom(cv, s.view);
   const frame = () => {
@@ -152,6 +155,39 @@ function renderLive(s) {
 }
 
 // ---------- ground-truth separation (world/separation.py) ----------
+// Live traffic: aircraft that left the world (landed and taxied off, departed) vanish from TRUTH -
+// forget them everywhere so they don't sit frozen on the map.
+function pruneGone(s, list) {
+  const now = new Set(list.map((a) => a.ac_id));
+  for (const id of [...s.ac.keys()]) {
+    if (now.has(id)) continue;
+    for (const map of [s.ac, s.trails, s.adv, s.cmd, s.trust, s.crystal]) map.delete(id);
+    for (const k of [...s.pred.keys()]) if (k.startsWith(`${id}>`) || k.endsWith(`>${id}`)) s.pred.delete(k);
+  }
+  if (s.stat && s.stat.live_traffic) {
+    const ai = list.filter((a) => !a.human), up = ai.filter((a) => !a.on_ground).length;
+    $("god-traffic").textContent = `live traffic · runway ${s.stat.flow} flow · ${ai.length} AI (${up} airborne)`;
+  }
+}
+
+// RESET DEMO: two clicks within 3 s (no confirm() - browser dialogs block the page), or Shift+R twice.
+function wireResetDemo(link) {
+  const b = $("god-reset-demo");
+  let armed = null;
+  const press = () => {
+    if (armed) {
+      clearTimeout(armed); armed = null;
+      b.dataset.armed = "0"; b.textContent = "⟲ Reset demo";
+      link.send({ type: "RESET_DEMO" });
+      return;
+    }
+    b.dataset.armed = "1"; b.textContent = "click again to reset";
+    armed = setTimeout(() => { armed = null; b.dataset.armed = "0"; b.textContent = "⟲ Reset demo"; }, 3000);
+  };
+  b.addEventListener("click", press);
+  addEventListener("keydown", (e) => { if (e.code === "KeyR" && e.shiftKey && !e.repeat) press(); });
+}
+
 function onWorldEvent(s, m) {
   const key = `${m.a}|${m.b}`;
   if (m.event === "NMAC" || m.event === "COLLISION") {
@@ -165,6 +201,11 @@ function onWorldEvent(s, m) {
   } else if (m.event === "RESET") {
     pushEvent(s, m.t, m.a, "CLEAR", `reset to scenario start (was ${m.was})`);
     s.trails.delete(m.a);
+    return;
+  } else if (m.event === "RESET_DEMO") {
+    const gone = (m.removed || []).length;
+    pushEvent(s, m.t, (m.aircraft || []).join("/"), "RELEASE", `demo reset · judges at their start points${gone ? ` · ${gone} AI cleared` : ""}`);
+    for (const k of [...s.nmacOpen.keys()]) if ((m.aircraft || []).some((id) => k.includes(id))) s.nmacOpen.delete(k);
     return;
   } else if (m.event === "TAWS") {
     if (m.alert) pushEvent(s, m.t, m.a, m.alert === "PULL UP" || m.alert === "TERRAIN" ? "NMAC" : "TRAFFIC",

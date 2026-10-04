@@ -85,7 +85,28 @@ export async function makeViewer(Cesium, container, { buildings = true, lite = f
   return { viewer, terrain: !!token };
 }
 
-// Height above the ellipsoid for an aircraft at alt_msl_ft.
+// Aircraft model: Cesium_Air.glb is a ~26 m twin with its origin ~2.3 m above the wheels (measured from the
+// mesh bounds). Scaled to a C172's ~11 m span; MODEL_WHEELS_M lifts the origin so the wheels touch the ground.
+export const MODEL_SCALE = 0.43;
+export const MODEL_WHEELS_M = 2.3 * MODEL_SCALE;
+export const EYE_M = 2.0;            // pilot eye above the wheels (C172 ~1.9 m)
+
+// Ellipsoid height of the ground the viewer actually DRAWS under lat/lon: flat mode = 0 (the ellipsoid);
+// terrain mode = Cesium's rendered terrain, or the sim's ground (MSL + geoid) until those tiles load.
+export function surfaceM(Cesium, viewer, terrain, lat, lon, simGroundFt) {
+  if (!terrain) return 0;
+  const g = viewer.scene.globe.getHeight(Cesium.Cartographic.fromDegrees(lon, lat));
+  return g !== undefined ? g : simGroundFt * FT + GEOID_N_M;
+}
+
+// Height for an aircraft: rendered ground + its true height above the ground (AGL from the sim), so the
+// picture always matches the physics - on the runway the wheels sit on the drawn runway, never under it.
+export function aircraftHeightM(Cesium, viewer, terrain, lat, lon, altMslFt, aglFt) {
+  const agl = Math.max(0, aglFt);
+  return surfaceM(Cesium, viewer, terrain, lat, lon, altMslFt - agl) + agl * FT;
+}
+
+// Kept for older callers: MSL-based height (can disagree with the drawn ground by metres).
 export function heightM(altMslFt, terrain, fieldElevFt) {
   return terrain ? altMslFt * FT + GEOID_N_M : Math.max(0, (altMslFt - fieldElevFt) * FT);
 }
@@ -106,6 +127,7 @@ export class Interp {
     const lerp = (x, y) => x + (y - x) * f;
     const lerpAng = (x, y) => x + ((((y - x) % 360) + 540) % 360 - 180) * f;
     return { ...b, lat: lerp(a.lat, b.lat), lon: lerp(a.lon, b.lon), alt_msl_ft: lerp(a.alt_msl_ft, b.alt_msl_ft),
+             agl_ft: lerp(a.agl_ft ?? 0, b.agl_ft ?? 0),
              hdg_deg: lerpAng(a.hdg_deg, b.hdg_deg), track_deg: lerpAng(a.track_deg, b.track_deg),
              bank_deg: lerp(a.bank_deg, b.bank_deg), vs_fpm: lerp(a.vs_fpm, b.vs_fpm) };
   }

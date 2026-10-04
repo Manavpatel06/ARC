@@ -25,6 +25,19 @@ export function sayAdvisory(adv) {
   speechSynthesis.speak(u);
 }
 
+// Height callout ("one hundred", "fifty"...): spoken right away, never interrupts what is already being said
+// apart from an older callout (keeps the sequence current), no de-duplication.
+let lastCallout = null;
+export function sayCallout(text) {
+  if (!unlocked || !text) return;
+  if (lastCallout && speechSynthesis.speaking) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.3;
+  lastCallout = u;
+  u.onend = () => { if (lastCallout === u) lastCallout = null; };
+  speechSynthesis.speak(u);
+}
+
 // Urgent callout (terrain): always spoken, interrupts anything else, no de-duplication.
 export function sayNow(text) {
   if (!unlocked || !text) return;
