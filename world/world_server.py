@@ -15,7 +15,14 @@ Clients connect to ws://<host>:8765/?role=<role>:
   god              TRUTH (all aircraft) at 10 Hz, every ADVISORY/TRUST/COMMAND/PREDICTION/CRYSTAL,
                    WX (weather state) on change + WX_FIELD (thermal positions) every 2 s.
                    God -> world: SET_DA, and (Lane A) SET_WX {"preset"?, field: value...} /
-                   {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH).
+                   {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH) /
+                   {"type":"RESET_DEMO"}: every judge aircraft back to its scenario start, AI traffic on
+                   those starts removed (WORLD_EVENT RESET per judge + RESET_DEMO).
+Live traffic (scenario "traffic", world/traffic.py TrafficGenerator): AI aircraft come and go; each
+  gets WORLD_EVENT SPAWN / DESPAWN (log; god prunes TRUTH). With --traffic-nodes ws://<channel> the
+  world starts a FLOCK node (node/node.py) for every new AI aircraft and stops it when it leaves; logs
+  in harness/out/nodes/<id>.log. AI pilots act on their own node's ADVISORY (LOG kind decision,
+  {"ai_pilot": ...}). LIVE_TRAFFIC frames also feed the generator when "live_seed" is on.
   log              LOG frames: decisions, radio (from channel), camera, world events, LIVE_TRAFFIC
   ENV              {"type":"ENV","t","da_field_ft"} to god AND every node on connect and whenever density
                    altitude changes (SET_DA / SET_WX) - nodes use it for climb capability. Density altitude
@@ -32,7 +39,7 @@ Also serves web/ over HTTP on --http (ES modules do not load from file://):
   http://<host>:8080/index.html?role=cockpitA | cockpitB | god
 """
 from __future__ import annotations
-import argparse, asyncio, functools, http.server, json, os, sys, threading, time
+import argparse, asyncio, atexit, functools, http.server, json, os, subprocess, sys, threading, time
 from collections import defaultdict
 from urllib.parse import parse_qs, urlparse
 
@@ -57,9 +64,40 @@ VALIDATE = {"ADVISORY": schemas.Advisory, "COMMAND": schemas.Command, "TRUST": s
 def dumps(obj) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
+class NodeLauncher:
+    """One node/node.py process per live-traffic aircraft (background, no window, log to a file)."""
+    def __init__(self, world_url: str, channel_url: str, pidfile: str | None = None):
+        self.world_url, self.channel_url, self.pidfile = world_url, channel_url, pidfile
+        self.procs: dict[str, subprocess.Popen] = {}
+        self.logdir = os.path.join(ROOT, "harness", "out", "nodes")
+        os.makedirs(self.logdir, exist_ok=True)
+        atexit.register(self.stop_all)
+
+    def start(self, ac_id: str) -> None:
+        log = open(os.path.join(self.logdir, f"{ac_id}.log"), "w")
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        p = subprocess.Popen([sys.executable, "-u", os.path.join("node", "node.py"), "--id", ac_id,
+                              "--world", self.world_url, "--via-channel", self.channel_url],
+                             cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        log.close()
+        self.procs[ac_id] = p
+        if self.pidfile and os.path.exists(self.pidfile):           # run_demo.ps1 -Stop kills these too
+            with open(self.pidfile, "a") as f:
+                f.write(f"{p.pid}\n")
+
+    def stop(self, ac_id: str) -> None:
+        p = self.procs.pop(ac_id, None)
+        if p is not None and p.poll() is None:
+            p.terminate()
+
+    def stop_all(self) -> None:
+        for i in list(self.procs):
+            self.stop(i)
+
 class Hub:
-    def __init__(self, world: World):
+    def __init__(self, world: World, nodes: NodeLauncher | None = None):
         self.w = world
+        self.nodes = nodes
         self.roles: dict[str, set] = defaultdict(set)      # role -> websockets
         self.latest: dict[str, dict] = {}                  # "<TYPE>:<ac_id>" -> last frame (replayed to new cockpits)
         self.t0 = time.time()
@@ -148,6 +186,8 @@ class Hub:
         self.check(role, m)
 
         if role.startswith("node:"):
+            if own_id not in self.w.fleet:                 # its aircraft has left (live traffic)
+                return
             ac_id = m.get("ac_id", own_id)
             if ac_id != own_id:
                 print(f"[world] {role} sent {t} for {ac_id}; using its own id {own_id}")
@@ -161,6 +201,7 @@ class Hub:
                 self.log(ac_id, "decision", m)
                 if t == "ADVISORY":
                     print(f"[world] ADVISORY {ac_id} {m.get('level')} '{m.get('text')}' ttc={m.get('ttc_s')}")
+                    self.ai_pilot_hears(ac_id, m)
             elif t == "COMMAND":
                 ac = self.w.fleet[ac_id]
                 applied = ac.apply_command(m, self.now())
@@ -193,18 +234,7 @@ class Hub:
                     print(f"[world] STICK {own_id} - pilot took it back")
             elif t == "RESET":
                 old = self.w.fleet[own_id]
-                was = f"{old.mode} {old.agl_ft:.0f} ft AGL"
-                ac = self.w.reset_aircraft(own_id)
-                self.sep.forget(own_id)
-                self.taws.forget(own_id)
-                self.taws_state.pop(own_id, None)
-                ev = {"type": "WORLD_EVENT", "event": "RESET", "a": own_id, "t": round(self.now(), 3),
-                      "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft),
-                      "leg": ac.autopilot.leg, "was": was}
-                self.send(f"cockpit:{own_id}", ev)
-                self.send("god", ev)
-                self.log(own_id, "world", ev)
-                print(f"[world] RESET {own_id} -> scenario start ({ac.autopilot.leg}); was {was}")
+                self.announce_reset(self.w.reset_aircraft(own_id), f"{old.mode} {old.agl_ft:.0f} ft AGL")
             elif t == "AP":
                 ac = self.w.fleet[own_id]
                 want = m.get("engage")
@@ -243,6 +273,8 @@ class Hub:
                 self.publish_wx()
                 self.publish_env()
                 print(f"[world] weather: {', '.join(what) or 'no change'} -> {self.w.env.wx.metar_style()}")
+            elif t == "RESET_DEMO":
+                self.reset_demo()
             return
 
         if role == "data" and t == "LIVE_TRAFFIC":
@@ -251,6 +283,8 @@ class Hub:
                 schemas.LiveTraffic.model_validate(m)
             except ValidationError as e:
                 print(f"[world] LIVE_TRAFFIC schema warning: {str(e).splitlines()[0]}")
+            if self.w.traffic is not None:
+                self.w.traffic.live = m                    # live_seed: real inbound aircraft become AI arrivals
             self.send("god", m)
             self.log("live", "world", m)
             return
@@ -260,6 +294,70 @@ class Hub:
             if t == "CRYSTAL":
                 self.send("god", m)
             self.log(m.get("from", m.get("src", role)), kind, m)
+
+    # ---------- resets ----------
+    def announce_reset(self, ac, was: str) -> None:
+        """An aircraft is back at its scenario start: clear its alert state, tell its cockpit, god, log."""
+        i = ac.id
+        self.sep.forget(i)
+        self.taws.forget(i)
+        self.taws_state.pop(i, None)
+        ev = {"type": "WORLD_EVENT", "event": "RESET", "a": i, "t": round(self.now(), 3),
+              "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft),
+              "leg": ac.autopilot.leg, "was": was}
+        self.send(f"cockpit:{i}", ev)
+        self.send("god", ev)
+        self.log(i, "world", ev)
+        print(f"[world] RESET {i} -> scenario start ({ac.autopilot.leg}); was {was}")
+
+    def reset_demo(self) -> None:
+        """God view RESET DEMO: both judges back to their starts at once, traffic on those starts removed."""
+        was = {i: f"{self.w.fleet[i].mode} {self.w.fleet[i].agl_ft:.0f} ft AGL" for i in self.w.humans}
+        reset, removed = self.w.reset_demo()
+        for ac in reset:
+            self.announce_reset(ac, was[ac.id])
+        self.despawned(removed, "demo reset")
+        ev = {"type": "WORLD_EVENT", "event": "RESET_DEMO", "t": round(self.now(), 3),
+              "aircraft": [a.id for a in reset], "removed": removed}
+        self.send("god", ev)
+        self.log("god", "world", ev)
+        print(f"[world] RESET_DEMO judges {[a.id for a in reset]} back at their starts; removed traffic {removed}")
+
+    # ---------- live traffic ----------
+    def ai_pilot_hears(self, ac_id: str, m: dict) -> None:
+        """An AI aircraft's node gave advice: its pilot decides whether / how to follow (world/traffic.py)."""
+        ac = self.w.fleet.get(ac_id)
+        if ac is None or ac.human or not hasattr(ac.autopilot, "advise"):
+            return
+        entry = ac.autopilot.advise(m, self.now())
+        if entry:
+            self.log(ac_id, "decision", {"ai_pilot": ac_id, **entry})
+            print(f"[world] AI {ac_id} {'will follow' if entry['follow'] else 'ignores'} {entry['level']} '{entry['text']}'")
+
+    def traffic_step(self, now: float) -> None:
+        spawned, removed = self.w.traffic.step(now)
+        for i in spawned:
+            ac, d = self.w.fleet[i], self.w.traffic.describe(i)
+            ev = {"type": "WORLD_EVENT", "event": "SPAWN", "a": i, "t": round(now, 3), **d,
+                  "lat": round(ac.lat, 6), "lon": round(ac.lon, 6), "alt_msl_ft": round(ac.alt_msl_ft),
+                  "ap_equipped": ac.ap_equipped}
+            self.log(i, "world", ev)
+            if self.nodes is not None:
+                self.nodes.start(i)
+            print(f"[world] + {i} {d['mission']} {d['runway']}" + (f" (mirrors live {d['live']})" if d.get("live") else "")
+                  + f"  | {len(self.w.traffic.active)} AI, {self.w.traffic.airborne()} airborne")
+        self.despawned(removed, "left")
+
+    def despawned(self, ids: list[str], why: str) -> None:
+        for i in ids:
+            self.sep.forget(i)
+            for k in ("ADVISORY", "TRUST"):
+                self.latest.pop(f"{k}:{i}", None)
+            if self.nodes is not None:
+                self.nodes.stop(i)
+            ev = {"type": "WORLD_EVENT", "event": "DESPAWN", "a": i, "t": round(self.now(), 3), "why": why}
+            self.log(i, "world", ev)
+            print(f"[world] - {i} {why}")
 
     def env_frame(self) -> dict:
         return {"type": "ENV", "t": round(self.now(), 3), "da_field_ft": round(self.w.env.da_field_ft, 1)}
@@ -358,6 +456,8 @@ class Hub:
                     ac.step(sim_dt / n, self.w.env, now)
             now = self.now()
             tick = self.stats["ticks"]
+            if self.w.traffic is not None and tick % PHYS_HZ == 0:      # 1 Hz: live traffic comes and goes
+                self.traffic_step(now)
             for ac in self.w.fleet.values():                    # 20 Hz to cockpits
                 if self.roles.get(f"cockpit:{ac.id}"):
                     self.send(f"cockpit:{ac.id}", self.cockpit_frame(ac, now))
@@ -418,14 +518,22 @@ async def main():
     ap.add_argument("--time-scale", type=float, help="1 for judges, 10 for A/B runs (overrides scenario)")
     ap.add_argument("--da", type=float, help="density altitude at the field, ft (overrides METAR/scenario)")
     ap.add_argument("--weather", help="weather preset (world/weather.py): metar, calm_morning, hot_gusty_afternoon, haboob, low_ceiling, pressure_drop")
+    ap.add_argument("--seed", type=int, help="live-traffic seed (overrides the scenario's traffic.seed)")
+    ap.add_argument("--traffic-nodes", metavar="CHANNEL_WS", help="start a FLOCK node for every live-traffic aircraft, "
+                    "radio via this channel (e.g. ws://localhost:8766)")
+    ap.add_argument("--pidfile", help="append node PIDs here (run_demo.ps1 .demo_pids)")
     a = ap.parse_args()
-    world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather)
-    hub = Hub(world)
+    world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather, seed=a.seed)
+    nodes = NodeLauncher(f"ws://localhost:{a.port}", a.traffic_nodes, a.pidfile) if a.traffic_nodes and world.traffic else None
+    hub = Hub(world, nodes)
     if a.http:
         serve_http(a.http)
     async with serve(hub.handler, "0.0.0.0", a.port, compression=None):
         print(f"[world] '{world.scenario.name}' on ws://0.0.0.0:{a.port}  aircraft={list(world.fleet)}  "
               f"humans={world.humans}  DA={world.env.da_field_ft:.0f} ft  x{world.time_scale:g}  wx {world.env.wx.name}: {world.env.wx.metar_style()}")
+        if world.traffic is not None:
+            print(f"[world] live traffic: flow {world.flow} runways {world.traffic_runways}  seed {world.traffic.seed}  "
+                  f"airborne {world.traffic.lo}-{world.traffic.hi}  nodes {'on via ' + a.traffic_nodes if nodes else 'off'}")
         await hub.loop()
 
 if __name__ == "__main__":

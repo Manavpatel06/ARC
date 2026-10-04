@@ -15,4 +15,4 @@ harness/out/*
 .DS_Store
 node_modules/
 .env
-.demo_pids
+.demo_pids*

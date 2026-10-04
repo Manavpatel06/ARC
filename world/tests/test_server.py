@@ -170,3 +170,62 @@ def test_input_cannot_fly_someone_elses_aircraft(world):
     last = [x for x in god if x["type"] == "TRUTH"][-1]
     modes = {a["ac_id"]: a["mode"] for a in last["aircraft"]}
     assert modes["N102"] == "HUMAN" and modes["N101"] != "HUMAN", modes
+
+# ------------------------------------------------------------------ live traffic (live_kdvt.json)
+@pytest.fixture(scope="module")
+def live_world(tmp_path_factory):
+    port = free_port()
+    log = tmp_path_factory.mktemp("live") / "world.log"
+    logf = open(log, "w")
+    proc = subprocess.Popen([sys.executable, "-u", "world/world_server.py", "--scenario", "harness/scenarios/live_kdvt.json",
+                             "--port", str(port), "--http", "0", "--seed", "3"], cwd=ROOT, stdout=logf,
+                            stderr=subprocess.STDOUT, text=True)
+    for _ in range(80):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    yield f"ws://127.0.0.1:{port}"
+    assert proc.poll() is None, "live world died: " + open(log).read()[-2000:]
+    proc.terminate()
+    try:
+        proc.wait(5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    logf.close()
+
+def test_live_traffic_in_truth_and_static(live_world):
+    god = run(collect(live_world, "god", 2.0))
+    st = god[0]["static"]
+    assert st["live_traffic"] and st["flow"] in ("07", "25") and st["judges"] == ["N101", "N102"]
+    assert len(st["patterns"]) == 2                                    # both active patterns drawn
+    ai = {a["ac_id"] for f in god if f["type"] == "TRUTH" for a in f["aircraft"] if not a["human"]}
+    assert len(ai) >= 4, ai
+
+def test_ai_pilot_hears_its_node_and_logs_the_decision(live_world):
+    truth = [f for f in run(collect(live_world, "god", 1.0)) if f["type"] == "TRUTH"][-1]
+    ai = sorted(a["ac_id"] for a in truth["aircraft"] if not a["human"] and not a["on_ground"])[0]
+    adv = {"type": "ADVISORY", "ac_id": ai, "t": truth["t"], "layer": 2, "level": "RESOLVE",
+           "text": "TURN RIGHT 20 - N101 TURNING RIGHT", "reason": {"chosen": "R20"}}
+
+    async def both():
+        logs = asyncio.create_task(collect(live_world, "log", 2.5))
+        await asyncio.sleep(0.5)
+        await collect(live_world, f"node:{ai}", 0.5, send=[adv])
+        return await logs
+    dec = [f["payload"] for f in run(both()) if f.get("kind") == "decision" and f["payload"].get("ai_pilot") == ai]
+    assert dec and dec[0]["action"] == ["TURN", 20.0] and isinstance(dec[0]["follow"], bool), dec
+
+def test_reset_demo_only_from_god_and_puts_judges_at_their_starts(live_world):
+    ignored = run(collect(live_world, "cockpitA", 1.0, send=[{"type": "RESET_DEMO"}]))
+    assert not [f for f in ignored if f.get("event") in ("RESET", "RESET_DEMO")]
+    god = run(collect(live_world, "god", 1.5, send=[{"type": "RESET_DEMO"}]))
+    resets = [f for f in god if f.get("event") == "RESET"]
+    demo = [f for f in god if f.get("event") == "RESET_DEMO"]
+    assert {f["a"] for f in resets} == {"N101", "N102"} and demo and demo[0]["aircraft"] == ["N101", "N102"]
+    lat = {f["a"]: f["lat"] for f in resets}
+    assert lat["N101"] > 33.75 and lat["N102"] < 33.63                   # 4 NM north / 4 NM south of KDVT
+    truth = [f for f in god if f["type"] == "TRUTH"][-1]
+    j = {a["ac_id"]: a for a in truth["aircraft"] if a["human"]}
+    assert all(a["mode"] == "AUTOPILOT" and abs(a["alt_msl_ft"] - 2500) < 40 for a in j.values()), j

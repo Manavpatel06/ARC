@@ -156,6 +156,10 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .wx-controls button { cursor: pointer; }
 .wx-controls button[data-hot="1"] { border-color: var(--lvl-traffic); color: var(--lvl-traffic); }
 .da input { width: 100%; accent-color: var(--lvl-traffic); }
+.demo-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; font-size: 12px; }
+.demo-row button { font: 600 13px var(--sans); background: var(--panel-2); color: var(--own); border: 1px solid var(--own);
+                   border-radius: 6px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.demo-row button[data-armed="1"] { background: var(--own); color: #000; }
 .god-table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
 .god-table th { text-align: left; color: var(--text-2); font-weight: 500; border-bottom: 1px solid var(--line); padding: 3px 3px; }
 .god-table td { padding: 3px 3px; border-bottom: 1px solid var(--panel-2); white-space: nowrap; }

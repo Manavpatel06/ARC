@@ -41,6 +41,34 @@ re-check with find_conflict.py after any change to physics, terrain or pattern g
 | `harness/scenarios/three_on_final.json` | N101 (judge), N204, straight-in N399 converge on final: all three pairs NMAC, 155-160 s |
 | `harness/scenarios/head_on_judges.json` | both judges (N101 25L downwind 086°, N102 07R downwind 266°) head-on, collision ~76 s |
 
+Live traffic — `harness/scenarios/live_kdvt.json` (free flight, no tuned conflict):
+
+```
+.\run_demo.ps1 -Scenario harness\scenarios\live_kdvt.json [-Seed 11]
+```
+
+- Judges: N101 (cockpit A) 4 NM north and N102 (cockpit B) 4 NM south, inbound at pattern altitude (2,500 ft), free to
+  fly anywhere. Untouched they fly straight at each other through the field (FLOCK sequences / warns / resolves),
+  then join their own pattern 2 NM past it. Start `{"leg":"INBOUND","from_deg","dist_nm","runway":"NORTH"|"SOUTH"}`.
+- Runway flow from the METAR wind (`"runway_flow": "auto"`; 120/9 -> runway 07: 07R south, right traffic; 07L north,
+  left traffic; calm -> 25). `NORTH` / `SOUTH` / `ACTIVE` runway names follow the flow.
+- `traffic.py` TrafficGenerator keeps 5-8 AI airborne: 45-degree-entry arrivals from random directions on the pattern
+  side, straight-ins, departures (straight out or 45-degree turn out, gone at 5.5 NM), touch-and-go circuits (1-3,
+  then full stop). Landers taxi off (despawn) below 15 kt. Departures hold short while the runway or a 1.5 NM final is
+  occupied. Fixed seed (`traffic.seed`, or `--seed` / `-Seed`) = the same spawns every run.
+- AI pilots act on their own node's advice 70 % of the time, ~3 s after it arrives: EXTEND (base turn moves out),
+  SLOW AND SPACE, TURN LEFT/RIGHT n, CLIMB, DESCEND; advice that reaches them on final -> go-around. They also go around
+  when the runway is still occupied below 300 ft, and do last-resort see-and-avoid (turn right; go around on final)
+  when traffic ahead will pass within 150 m / 300 ft in 30 s. Decisions go to the log (`kind: decision`, `ai_pilot`).
+- With `--traffic-nodes ws://<channel>` (run_demo does this) the world starts a node per AI aircraft and stops it when
+  the aircraft leaves; logs in `harness/out/nodes/<id>.log`, PIDs appended to `--pidfile` for `run_demo.ps1 -Stop`.
+- `WORLD_EVENT` SPAWN {mission, runway, live} / DESPAWN {why} -> log; god drops aircraft that leave TRUTH.
+- Demo reset: god view **⟲ Reset demo** (click twice, or Shift+R twice) sends `{"type":"RESET_DEMO"}`: both judges back at
+  their start points (pattern-altitude, inbound, autopilot until a pilot touches the stick) and AI traffic within
+  2 NM / 1,500 ft of those points removed. Cockpit L2+R2 reset still resets just that aircraft.
+- `"live_seed": true` (optional): some arrivals spawn where real aircraft are flying right now (LIVE_TRAFFIC from
+  `data/live_traffic.py`, started by run_demo); breaks exact seed replay.
+
 Tests (Lane A):
 ```
 python -m pytest -q world/tests      # physics, pattern AI, autopilot, ground, TAWS, weather, scenarios + server contract
