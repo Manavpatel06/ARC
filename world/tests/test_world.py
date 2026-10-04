@@ -283,6 +283,8 @@ def run_live(w: World, secs: float, t0: float = 0.0, sep: SeparationMonitor | No
             ac.step(DT, w.env, t)
             ac.events.clear()
         t += DT; n += 1
+        if n % 4 == 0:
+            w.runway_watch(t)                                 # 5 Hz, like the server
         if n % 20 == 0:
             s, r = w.traffic.step(t)
             events += [("+", i, w.traffic.describe(i)["mission"]) for i in s] + [("-", i, None) for i in r]
@@ -416,3 +418,99 @@ def test_reset_demo_puts_both_judges_back_and_clears_their_starts():
         x, y = P.to_enu(ac.lat, ac.lon)
         assert math.hypot(x, y) / NM_M == pytest.approx(4.0, abs=0.01) and ac.mode == "AUTOPILOT"
         assert ac.autopilot.phase == "TRANSIT" and not ac.has_pilot
+
+# ---------------------------------------------------------------- runway occupancy + one landing direction
+def fly_all(w: World, secs: float, t0: float = 0.0, sep: SeparationMonitor | None = None):
+    """Everyone flies; World.runway_watch at 5 Hz like the server. Returns (t, world events, separation events)."""
+    t, n, evs, seps = t0, 0, [], []
+    for _ in range(int(secs / DT)):
+        for ac in list(w.fleet.values()):
+            ac.step(DT, w.env, t)
+            ac.events.clear()
+        t += DT; n += 1
+        if n % 4 == 0:
+            evs += w.runway_watch(t)
+        if sep and n % 2 == 0:
+            seps += [e for e in sep.check(w.fleet, t) if e["event"] in ("NMAC", "COLLISION")]
+    return t, evs, seps
+
+def park_on_runway(w: World, ac: Aircraft, rwy: str, along_m: float, ias: float = 0.0) -> None:
+    """A judge sitting (or rolling slowly) on the runway: pilot has it, no AP."""
+    L = w.pattern(rwy).legs["RUNWAY"]
+    ue, un = math.sin(math.radians(L.brg)), math.cos(math.radians(L.brg))
+    ac.lat, ac.lon = P.from_enu(L.a[0] + ue * along_m, L.a[1] + un * along_m)
+    ac.alt_msl_ft = w.env.terrain_ft(ac.lat, ac.lon)
+    ac.agl_ft, ac.vs_fpm, ac.ias_kt, ac.hdg_deg, ac.on_ground = 0.0, 0.0, ias, L.brg, True
+    ac.apply_input(0, 0, 0.0 if ias == 0 else 0.3, 0.0, brake=ias == 0)
+
+def on_final(w: World, ac: Aircraft, rwy: str, secs_out: float) -> None:
+    pos = P.place("FINAL", rwy, 0, 72.0)
+    L = w.pattern(rwy).legs["FINAL"]
+    p = P.place("FINAL", rwy, max(0.0, L.length / (72 * 0.514444) - secs_out), 72.0)
+    ac.lat, ac.lon, ac.alt_msl_ft, ac.hdg_deg, ac.ias_kt = p["lat"], p["lon"], p["alt_msl_ft"], p["hdg_deg"], 72.0
+    ac.agl_ft, ac.on_ground = p["agl_ft"], False
+    ac.autopilot.leg, ac.autopilot.phase, ac.autopilot.touched = "FINAL", "PATTERN", False
+
+@pytest.mark.parametrize("parked_ias", [0.0, 12.0])          # stopped, and slowly rolling / taxiing on the runway
+def test_ap_lander_goes_around_when_someone_is_on_the_runway(parked_ias):
+    w = scn("judges.json")
+    for i in [i for i in w.fleet if i not in ("N101", "N102")]:
+        del w.fleet[i]
+    park_on_runway(w, w.fleet["N101"], "25L", 500.0, parked_ias)
+    b = w.fleet["N102"]
+    on_final(w, b, "25L", 40)
+    ok, _ = w.engage_ap("N102", True)                          # judge B on AP, full stop
+    assert ok
+    b.autopilot.leg, b.autopilot.phase, b.autopilot.touched = "FINAL", "PATTERN", False
+    sep = SeparationMonitor()
+    _, evs, seps = fly_all(w, 90, sep=sep)
+    ga = [e for e in evs if e["event"] == "GO_AROUND" and e["a"] == "N102"]
+    assert ga and ga[0]["b"] == "N101" and ga[0]["agl_ft"] <= 400, evs
+    assert not [e for e in seps if e["event"] == "COLLISION"], seps
+    assert b.alt_msl_ft - b.autopilot.p.elev_ft > 300 and not b.on_ground     # climbing away, not on top of N101
+
+def test_ai_traffic_goes_around_a_stopped_judge_and_lands_when_clear():
+    w = scn("judges.json")
+    keep = ("N101", "N204")                                   # N204: AI on final, touch-and-goes
+    for i in [i for i in w.fleet if i not in keep]:
+        del w.fleet[i]
+    park_on_runway(w, w.fleet["N101"], "25L", 900.0)
+    ai = w.fleet["N204"]
+    on_final(w, ai, "25L", 35)
+    sep = SeparationMonitor()
+    _, evs, seps = fly_all(w, 60, sep=sep)
+    assert any(e["event"] == "GO_AROUND" and e["a"] == "N204" for e in evs), evs
+    assert not [e for e in seps if e["event"] == "COLLISION"]
+    w.fleet["N101"].lat, w.fleet["N101"].lon = P.from_enu(0, -3000)     # judge clears the runway
+    w.fleet["N101"].alt_msl_ft = w.env.terrain_ft(w.fleet["N101"].lat, w.fleet["N101"].lon)
+    _, evs2, _ = fly_all(w, 480, t0=60)
+    assert not [e for e in evs2 if e["event"] == "GO_AROUND"]             # clear runway: no more go-arounds
+
+def test_ap_takeoff_holds_short_while_runway_or_short_final_busy():
+    w = scn("judges.json")
+    for i in [i for i in w.fleet if i not in ("N101", "N102", "N204")]:
+        del w.fleet[i]
+    a, b = w.fleet["N101"], w.fleet["N102"]
+    park_on_runway(w, b, "25L", 60.0)                          # B at the start of the runway, wants to go
+    park_on_runway(w, a, "25L", 1200.0)                        # A stopped further down
+    w.fleet.pop("N204")
+    w.engage_ap("N102", True)
+    assert b.autopilot.phase == "TAKEOFF"
+    _, evs, _ = fly_all(w, 20)
+    assert b.ias_kt < 1 and b.on_ground and any(e["event"] == "HOLD_SHORT" and e["a"] == "N102" for e in evs)
+    a.lat, a.lon = P.from_enu(0, -3000)                        # A taxis off
+    a.alt_msl_ft = w.env.terrain_ft(a.lat, a.lon)
+    fly_all(w, 60, t0=20)
+    assert not b.on_ground and b.agl_ft > 100                  # then it goes
+
+def test_ap_always_lands_with_the_runway_flow():
+    w = scn("head_on_judges.json")                              # N102 was set up on 07R, N101 on 25L (same strip)
+    assert w.flow == "25"
+    b = w.fleet["N102"]
+    assert b.autopilot.p.ident == "07R"
+    ok, _ = w.engage_ap("N102", True)
+    assert ok and b.autopilot.p.ident == "25L"                 # AP flies the active end, like everyone else
+    t, _, _ = fly_all(w, 600)
+    R = b.autopilot.p.legs["RUNWAY"]
+    assert b.ap_phase == "STOPPED" and abs(wrap180(b.hdg_deg - R.brg)) < 10   # landed heading 266, not 086
+    assert scn("judges.json").flow == "25" and live(runway_flow="07").flow == "07"
