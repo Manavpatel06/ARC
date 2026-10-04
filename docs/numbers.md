@@ -6,7 +6,8 @@ Source: `python harness/montecarlo.py --n 60` — 420 KDVT 25L pattern encounter
 |---|---|---|---|---|---|
 | No avoidance | 100 % | – | – | – | – |
 | Straight-line + fixed right 30° | 18 % (28/154) | 903 ft | 41 s | 1 % | 0 |
-| ARC, default layers (90/35/20/8 s), required margin 2.0 | 3 % (5/154) | 1,157 ft | 55 s | 3 % | 5 |
+| ARC, default layers (90/35/20/8 s), required margin 2.0 (rerun 4 Oct, same numbers) | 3 % (5/154) | 1,169 ft | 55 s | 3 % | 4 |
+| ARC, SEQUENCE moved to 120 s (120/35/20/8 s), tried 4 Oct, not adopted | 5 % (8/154) | 1,159 ft | 56 s | 3 % | 3 |
 | ARC, `FLOCK_LAYERS=early` (90/40/25/8 s) | 3 % (4/154) | 1,224 ft | 55 s | 7 % | 6 |
 
 Run-to-run spread on one version is a few percentage points on NMAC (we saw 3–6 %), so quote "about 5 %" for the default and "about 3 %" for `early`, not a decimal.
@@ -14,6 +15,7 @@ Run-to-run spread on one version is a few percentage points on NMAC (we saw 3–
 What is left, and why:
 - Most residual NMACs are two pilot-only aircraft where one or both pilots do not follow the advice (the sim draws 30 % non-compliance). No node logic can fix a pilot who ignores the advisory; only an AP-equipped aircraft can be taken over, and only inside the printed bounds.
 - `NO_SOLUTION` is mostly late base-to-final merges where a 10 s bounded maneuver cannot open enough separation, plus low final where automatic action is forbidden below 300 ft AGL. Many of those encounters still end safely.
+- Why SEQUENCE starts at 90 s, not 120 s (tested 4 Oct, deterministic seeds, run twice): at 120 s, NMAC 8 vs 5 of 154 with the same nuisance rate (3 %) and only 1 s more warning, and accept_b three_on_final fails (362 ft vs 1,196 ft): a landing-order plan made on a 2-minute prediction gets cancelled after a pilot has already extended downwind. A 120 s "pattern traffic - monitor" stage with planning kept at 90 s fixed that seed but broke another (170 ft). Two-minute predictions of GA pilots are too uncertain to move anyone (see harness/out/learned_report.md: real 60 s error is already ~700 m).
 - Warning lead is bounded by the 90 s horizon: straight-line only sees a base-to-final merge about 43 s before it starts because it cannot know about the turn; ARC sees it at the horizon edge (the brief's 60 s target is not reachable without a longer horizon, which also raised nuisance to 17 % when tried with 120/45/30/8).
 
 Per-tick compute: about 0.5 ms mean (peaks of 15–20 ms under the parallel Monte Carlo load).
