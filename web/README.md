@@ -39,6 +39,10 @@ Cockpit controls:
 - Weather (god view panel): preset, turbulence, wind / gusts / shear / thermals / visibility / cloud base / QNH sliders,
   "Update all altimeters to QNH". Cockpit: dust / haze / cloud over the 3D view, METAR line on the PFD, altimeter shows
   indicated altitude with BARO setting (amber + ATIS value when it is stale), light rumble in turbulence.
+- Height above ground: radio altimeter box "RA 175" under the attitude display below 2,500 ft (green; amber
+  under 200 ft; 5 ft steps under 200, 1 ft under 50) with a 6 s trend, AGL in the moving-map header, and voice
+  callouts on descent: one thousand, five hundred, four .. one hundred, fifty, forty, thirty, twenty, ten
+  (re-armed after climbing back out; silent while a terrain warning is speaking).
 - Terrain awareness: red PULL UP / TERRAIN, amber SINK RATE / TOO LOW TERRAIN banner over the PFD with repeating
   voice callouts and strong rumble; touchdown notices for OFF-RUNWAY LANDING and TERRAIN IMPACT.
 - Other aircraft on the moving map come from YOUR aircraft's FLOCK node: each peer broadcasts STATE on the radio
