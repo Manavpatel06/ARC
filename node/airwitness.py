@@ -69,6 +69,12 @@ DUP_ID_M = 800.0
 RF_Z_CONFLICT = 4.0
 RF_Z_STRONG = 6.0
 UPGRADE_HOLD_S = 2.0
+NEAR_GROUND_FT = 1700.0           # KDVT field 1,478 ft + ~200 ft
+POPIN_M = 2000.0                  # a target first heard this close, already airborne, "popped into existence"
+POPIN_MIN_ALT_FT = 2000.0         # (KDVT field 1,478 ft: anything above ~500 ft AGL is airborne)
+BARO_GEO_SOFT_FT = 250.0          # same air mass: (GNSS alt - baro alt) of a real nearby aircraft matches ours
+BARO_GEO_HARD_FT = 400.0
+NEG_ANSWER_S = 6.0                # a live FLOCK peer answers our MANEUVER_COMMIT / SEQ_PROPOSE within this
 
 
 @dataclass
@@ -130,8 +136,8 @@ class TrustResult:
     def evidence_strings(self) -> list[str]:
         """Compact form for TRUST.targets[].evidence (the cockpit badge / explain panel)."""
         out = [f"aw:{self.state}"]
-        for k in ("signature", "freshness", "replay", "challenge", "kinematics", "continuity", "intent",
-                  "witnesses", "rf_range", "rf_bearing", "tdoa", "doppler", "duplicate_id", "sybil"):
+        for k in ("signature", "freshness", "replay", "challenge", "negotiation", "kinematics", "continuity", "intent",
+                  "baro_geo", "pop_in", "witnesses", "rf_range", "rf_bearing", "tdoa", "doppler", "duplicate_id", "sybil"):
             v = self.checks.get(k)
             if v is not None and v != "n/a":
                 out.append(f"{k}:{v}")
@@ -165,6 +171,12 @@ class _Track:
     chal_ok_t: float = -1e9
     chal_misses: int = 0
     chal_last: float = -1e9
+    pop_in: Optional[str] = None
+    baro_geo: collections.deque = field(default_factory=lambda: collections.deque(maxlen=8))   # |offset diff| ft
+    neg_sent: Optional[float] = None
+    neg_ok_t: float = -1e9
+    neg_latency: float = 0.0
+    neg_miss: int = 0
     rf: collections.deque = field(default_factory=lambda: collections.deque(maxlen=20))      # (RFMeasurement, z dict)
     state: str = UNVERIFIED
     upgrade_since: Optional[float] = None
@@ -222,6 +234,7 @@ class AirWitness:
         self._respond: dict[str, int] = {}
         self._nonce = nonce_fn or (lambda: secrets.randbelow(10 ** 9))
         self.pnt = OwnshipPNT(to_enu)
+        self.own_geo_minus_baro: Optional[float] = None
 
     # ------------------------------------------------------------------ inputs
     def on_ownship(self, own: dict) -> None:
@@ -230,6 +243,7 @@ class AirWitness:
         r = math.radians(own["track_deg"])
         v = own["gs_kt"] * KT
         self.own_vel = (math.sin(r) * v, math.cos(r) * v, own.get("vs_fpm", 0.0) * FT / 60.0)
+        self.own_geo_minus_baro = own["alt_msl_ft"] - own.get("alt_press_ft", own["alt_msl_ft"])
         self.pnt.on_ownship(own)
 
     def on_message(self, env: dict, now: float) -> bool:
@@ -266,6 +280,17 @@ class AirWitness:
             if rfm and self.own_pos is not None:
                 self.ingest_rf(self._rssi_measurement(frm, t_claim, rfm))
         elif msg == "HEARTBEAT":
+            w = b.get("w") if isinstance(b.get("w"), dict) else {}
+            if w and tr.auth in ("ok", "n/a") and tr.states and tr.state == VERIFIED:
+                # collective radio location: a verified peer tells us how far (by its own RSSI) each target is from
+                # IT.  Several receivers = software multilateration of the transmitter, no second antenna needed.
+                for tgt, rng in list(w.items())[:6]:
+                    if tgt in (self.own_id, frm) or tgt not in self.tracks:
+                        continue
+                    pos = self._claimed_at(tr, t_claim)
+                    if pos is not None:
+                        self.ingest_rf(RFMeasurement(frm, tgt, t_claim, pos[:3], estimated_range_m=float(rng),
+                                                     range_log_sigma_db=3.0))
             c = b.get("c") if isinstance(b.get("c"), dict) else {}
             if self.own_id in c:
                 self._respond[frm] = int(c[self.own_id])
@@ -275,13 +300,42 @@ class AirWitness:
                 if n in tr.chal_pending and (tr.auth in ("ok", "n/a")):
                     tr.chal_pending.pop(n, None)
                     tr.chal_ok_t, tr.chal_misses = now, 0
+        elif msg == "SEQ_ACCEPT":
+            self._answered(tr, now)
         elif msg == "MANEUVER_COMMIT":
+            if b.get("target") == self.own_id:
+                self._answered(tr, now)
             sense = b.get("sense")
             if sense in ("L", "R", "CLIMB", "DESCEND"):
                 st = float(b.get("start_t", t_claim))
                 tr.intents.append([st + 3.0, st + float(b.get("hold_s", 10.0)), sense, 0, 0, False])
                 tr.intents = tr.intents[-4:]
         return True
+
+    def note_sent(self, msg: str, body: dict, now: float) -> None:
+        """Our own negotiation messages: a live FLOCK peer must answer them (negotiation as liveness evidence)."""
+        ids = []
+        if msg == "MANEUVER_COMMIT":
+            ids = [body.get("target")]
+        elif msg == "SEQ_PROPOSE":
+            ids = [i for i in body.get("order", []) if i != self.own_id]
+        for i in ids:
+            if i in self.tracks and self.tracks[i].neg_sent is None:
+                self.tracks[i].neg_sent = now
+
+    def _answered(self, tr: "_Track", now: float) -> None:
+        if tr.neg_sent is not None:
+            tr.neg_latency = now - tr.neg_sent
+            tr.neg_ok_t, tr.neg_sent, tr.neg_miss = now, None, 0
+
+    def witness_report(self, now: float, n: int = 4) -> dict:
+        """{target: our RSSI-derived range m} for targets we measured in the last 3 s, nearest first (HEARTBEAT "w")."""
+        out = []
+        for tid, tr in self.tracks.items():
+            mine = [m for m, _ in tr.rf if m.observer_id == self.own_id and m.estimated_range_m and now - m.t < 3.0]
+            if mine:
+                out.append((mine[-1].estimated_range_m, tid))
+        return {tid: int(round(r, -1)) for r, tid in sorted(out)[:n]}
 
     def ingest_rf(self, m: RFMeasurement) -> None:
         tr = self.tracks[m.target_id]
@@ -294,6 +348,10 @@ class AirWitness:
         out_c, out_r = {}, dict(self._respond)
         self._respond.clear()
         for pid, tr in self.tracks.items():
+            if tr.neg_sent is not None and now - tr.neg_sent > NEG_ANSWER_S:
+                tr.neg_sent = None
+                if now - tr.last_rx < 3.0:                    # it is talking, but not to our negotiation
+                    tr.neg_miss += 1
             for n, ts in list(tr.chal_pending.items()):
                 if now - ts > CHALLENGE_TIMEOUT_S:
                     tr.chal_pending.pop(n)
@@ -318,7 +376,8 @@ class AirWitness:
                float(b.get("track_deg", 0.0)), float(b.get("vs_fpm", 0.0)))
         if cur[5] > MAX_SPEED_KT:
             tr.flags["speed"] = now
-        if abs(cur[7]) > MAX_VS_FPM:
+        near_ground = cur[4] < NEAR_GROUND_FT                # flare / touchdown / takeoff: altitude checks unreliable
+        if abs(cur[7]) > MAX_VS_FPM and not near_ground:
             tr.flags["climb_rate"] = now
         if tr.states:
             p = tr.states[-1]
@@ -335,20 +394,34 @@ class AirWitness:
                     tr.flags["accel"] = now
                 if abs(((cur[6] - p[6] + 540) % 360) - 180) / dte > MAX_TURN_DPS:
                     tr.flags["turn_rate"] = now
-                if abs(cur[4] - p[4]) / dte * 60.0 > MAX_VS_FPM * 1.3:
+                if abs(cur[4] - p[4]) / dte * 60.0 > MAX_VS_FPM * 1.3 and not near_ground and p[4] >= NEAR_GROUND_FT:
                     tr.flags["altitude_jump"] = now
                 # intent: compare the claimed maneuver with what the track actually does
                 trk_rate = (((cur[6] - p[6] + 540) % 360) - 180) / dte
                 for it in tr.intents:
                     if it[0] <= t <= it[1]:
-                        ok = {"R": trk_rate > 1.0, "L": trk_rate < -1.0, "CLIMB": cur[7] > 150.0,
-                              "DESCEND": cur[7] < -150.0}[it[2]]
-                        it[3 if ok else 4] += 1
+                        # consistent = flying it; inconsistent = flying the OPPOSITE way.  Not acting (yet) is
+                        # neither: a pilot may ignore advice and an autopilot acts later, at takeover.
+                        good = {"R": trk_rate > 1.0, "L": trk_rate < -1.0, "CLIMB": cur[7] > 150.0,
+                                "DESCEND": cur[7] < -150.0}[it[2]]
+                        bad = {"R": trk_rate < -1.0, "L": trk_rate > 1.0, "CLIMB": cur[7] < -150.0,
+                               "DESCEND": cur[7] > 150.0}[it[2]]
+                        if good:
+                            it[3] += 1
+                        elif bad:
+                            it[4] += 1
                     elif t > it[1] and not it[5]:
                         it[5] = True
                         if it[4] > it[3] and it[4] >= 2:
                             tr.intent_bad_n += 1
                             tr.intent_bad_t = now
+        if not tr.states and self.own_pos is not None and tr.pop_in is None:
+            rng0 = math.hypot(x - self.own_pos[0], y - self.own_pos[1])
+            if rng0 < POPIN_M and cur[4] > POPIN_MIN_ALT_FT:
+                tr.pop_in = f"appeared {rng0 / 1000:.1f} km away, already airborne"
+        geo = b.get("alt_geo_ft")
+        if geo is not None and self.own_geo_minus_baro is not None:
+            tr.baro_geo.append(abs((float(geo) - cur[4]) - self.own_geo_minus_baro))
         tr.states.append(cur)
         # one identity at two places: dead-reckon the last few seconds of claims to now and look for 2 clusters
         recent = [s for s in tr.states if t - s[0] <= 6.0]
@@ -424,10 +497,12 @@ class AirWitness:
         out = {}
         for kind, label in (("range", "rf_range"), ("bearing", "rf_bearing"), ("tdoa", "tdoa"), ("doppler", "doppler")):
             zs = [z[kind] for _, z in tr.rf if kind in z]
-            if len(zs) < 3:
+            if len(zs) < 2:
                 continue
             zs.sort()
             med = zs[len(zs) // 2]
+            if len(zs) < 3 and med < RF_Z_STRONG + 2:          # two samples only decide an overwhelming conflict
+                continue
             if med > RF_Z_CONFLICT:
                 extra = ""
                 if kind == "range":
@@ -584,6 +659,7 @@ class AirWitness:
         if lane_c_rf_bad and "rf_range" not in rfv:
             ck["rf_range"] = "CONFLICT (" + ", ".join(lane_c_rf_bad) + ")"
             rf_conflict = True
+        dop_strong = "doppler" in rfv and rfv["doppler"][1] > 3 * RF_Z_STRONG
         if "doppler" in rfv and rfv["doppler"][0].startswith("CONFLICT"):
             score -= 0.1                                          # Doppler is supporting evidence only
         if rf_conflict:
@@ -597,20 +673,45 @@ class AirWitness:
             gates.append("one identity in two places -> SUSPICIOUS minimum")
         else:
             ck["duplicate_id"] = "PASS"
+        if tr.pop_in:
+            ck["pop_in"] = tr.pop_in
+            score -= 0.15
+        if len(tr.baro_geo) >= 2:
+            bg = sorted(tr.baro_geo)[len(tr.baro_geo) // 2]
+            if bg > BARO_GEO_HARD_FT:
+                ck["baro_geo"] = f"FAIL (GNSS-baro offset differs from ours by {bg:.0f} ft)"
+                strikes += 1
+                gates.append("altitude claim inconsistent with the local atmosphere -> SUSPICIOUS minimum")
+            elif bg > BARO_GEO_SOFT_FT:
+                ck["baro_geo"] = f"MARGINAL ({bg:.0f} ft)"
+                score -= 0.2
+            else:
+                ck["baro_geo"] = "PASS"
+        if now - tr.neg_ok_t < 60.0:
+            ck["negotiation"] = f"PASS (answered in {tr.neg_latency:.1f} s)"
+        elif tr.neg_miss:
+            ck["negotiation"] = f"NO ANSWER x{tr.neg_miss}"
+            score -= min(0.2, 0.1 * tr.neg_miss)
         syb = self._sybil(tid, now)
         if syb:
             ck["sybil"] = "SAME TRANSMITTER AS " + ",".join(syb)
             strikes += 1
             gates.append("sybil cluster -> SUSPICIOUS minimum")
 
+        if dop_strong and strikes >= 1:
+            # never decides alone, but an overwhelming Doppler contradiction confirms another hard failure
+            strikes += 1
+            gates.append("Doppler contradicts the claimed motion and confirms another failure")
         score = round(max(0.0, min(1.0, score)), 2)
         positive = (ck.get("challenge") == "PASS" or n_w >= 1 or rfv.get("rf_range", ("", 9))[0] == "PASS"
+                    or ck.get("negotiation", "").startswith("PASS")
                     or (not self.signed_radio and len(tr.states) >= 3))
         if strikes >= 2:
             state = QUARANTINED
             gates.append(f"{strikes} independent hard failures -> QUARANTINED")
         elif (kin_all or rf_conflict or replay or "duplicate_identity" in active or syb
-              or (sig_fail and n_w == 0 and (refuters or len(silent) >= 2))):   # unsigned and nobody signed hears it
+              or (sig_fail and n_w == 0 and (refuters or len(silent) >= 2 or tr.pop_in))
+              or ck.get("baro_geo", "").startswith("FAIL")):   # unsigned and nobody signed hears it
             state = SUSPICIOUS
         elif sig_fail or replay or score < 0.7 or not positive:
             state = UNVERIFIED

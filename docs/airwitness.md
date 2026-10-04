@@ -66,3 +66,28 @@ Low trust never deletes a target: it removes what its claims are allowed to do a
 - Research only: RF fingerprinting (would be weak supporting evidence, never safety-critical).
 
 Known limit, said out loud: an attacker with several valid, registered keys and transmitters placed to fake geometry could corroborate itself (Sybil with real keys). Registration-bound keys plus RF location from several receivers make that expensive, not impossible.
+
+## Round 2 — software-only additions (no hardware)
+
+| Idea | Plausible with software only? | What FLOCK does |
+|---|---|---|
+| RF fingerprinting (transmitter imperfections) | **No.** Needs raw IQ samples from an SDR front end; the radio we have only gives decoded packets + RSSI/Doppler. | Not built for real. The sybil test uses a simulated emitter id (`source_id`) through the same interface, so a future SDR plug-in needs no engine change. Would only ever be weak evidence. |
+| Direction of arrival with two antennas | **No** (needs a second antenna and phase/time measurement). | Replaced by a software equivalent: **collective radio location**. Every FLOCK node shares its RSSI-derived range to each target in its signed HEARTBEAT (`"w"`); each receiver checks the claimed position against the ranges measured by several VERIFIED peers at known places. Several aircraft act as the "two ears", spread kilometres apart. |
+| Kinematic / plausibility filters (incl. "pops into existence") | **Yes.** | Speed / acceleration / turn / climb / teleport limits, track continuity, plus **pop-in**: a target first heard within 2 km and already airborne (real traffic arrives from the edge of radio range). |
+| Barometric vs geometric altitude | **Yes** (needs both altitudes in the message). | Our STATE now carries `alt_geo_ft` next to `alt_press_ft` (additive field). Every aircraft in the same air mass has nearly the same GNSS-minus-baro offset; a target whose offset differs from ours by > 400 ft fails (> 250 ft costs confidence). Legacy traffic without the field: n/a. |
+| ACAS X-style probabilistic reasoning | **Yes** (software). | Trust becomes uncertainty: the trust state scales each target's Threat Tube (x1 / x1.5 / x2.5), so doubtful data widens the protected volume instead of being believed or deleted. Full ACAS X tables are out of scope. |
+| Negotiation as evidence (new) | **Yes.** | A live FLOCK peer answers our MANEUVER_COMMIT / SEQ_PROPOSE within 6 s (`negotiation: PASS (answered in 1.0 s)`), which counts as independent proof of life; a target that keeps talking but never answers loses confidence; a peer that commits one way and flies the opposite way is "intent inconsistent" (tube widened). Commits from anything that is not VERIFIED are never used for planning, and we never send commits to it. |
+
+Pilot alert: when a target becomes SUSPICIOUS or QUARANTINED, or our own GNSS becomes inconsistent, the node adds an `alerts` list to its TRUST frame (additive) — the cockpit shows a warning banner and speaks it once ("caution, spoofed traffic, G H O S T 7, ignored"). Live it reached the pilot 1–5 s after the ghost's first packet; full quarantine took 2–17 s depending on geometry.
+
+Measured detection (in-process ladder, `harness/redflock_spoof.py`): impossible motion, fresh unsigned ghost and sybil flagged + quarantined + alerted within 1 s of the first packet; a replay is dropped on the first replayed packet; the "own key, true position" attacker is SUSPICIOUS + alerted within 1 s (warning only, never quarantined — it is the honest hard case).
+
+## Limitations that remain (and why they cannot be fixed in software alone)
+
+1. **An attacker with a valid registered key** (stolen key or insider) passes the signature gate; only physics, RF location and peer witnesses can catch it.
+2. **RSSI-only ranging is coarse** (3 dB ≈ a factor of 1.4 in distance): it catches gross position lies, not a transmitter a few hundred metres from its claim. Fine location needs ranging/TDOA hardware (simulated today).
+3. **Doppler** depends on a stable oscillator in real radios; here it comes from the channel emulator, and it never decides alone.
+4. **Isolated aircraft** (no FLOCK peers in range) get no witnesses and no collective radio location; they still have signature, replay, physics and pop-in checks.
+5. **Legacy (unsigned) traffic that pops up close** (e.g. after radio shadowing) is treated as SUSPICIOUS: it is still shown and warned about, but FLOCK will not act on it automatically.
+6. **Contract**: the frozen TRUST states have no UNVERIFIED (sent as SUSPICIOUS + `aw:UNVERIFIED`); `alerts` and `alt_geo_ft` are additive fields; a v1.2 should make them official.
+7. **Real RF hardware** (fingerprinting, DoA, ranging) is out of scope by choice (software only); the `RFMeasurement` interface is where it plugs in.

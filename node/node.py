@@ -45,6 +45,7 @@ LATENCY_EST_S = 0.3
 PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
 COMMIT_RESEND_S = 2.0
+ALERT_REPEAT_S = 60.0          # a target that flaps is announced at most once a minute (quarantine always)
 AIRWITNESS_ON = os.environ.get("FLOCK_AIRWITNESS", "1") != "0"   # 0 = A/B comparison only
 SEQ_HOLD_S = 150.0
 SEQ_HOLD_RANGE_M = 6000.0
@@ -101,6 +102,8 @@ class Node:
         # run() switches it on with the real radio/client.py.
         self.aw = AirWitness(ac_id, to_enu, signed_radio=False)
         self._aw_t = -1e9
+        self._alerted: dict = {}
+        self._alert_t: dict = {}
         self.auth = authority.AuthorityMonitor(ac_id)
         self.trackers: dict[str, layers.LayerTracker] = {}
         self.peers: dict[str, PeerTrack] = {}
@@ -161,6 +164,7 @@ class Node:
 
     def _emit_radio(self, msg: str, body: dict) -> None:
         self._radio_out.append((msg, body))
+        self.aw.note_sent(msg, body, self.now)
         if self.record:
             self.sent.append(("radio", self.now, {"msg": msg, "body": body}))
 
@@ -283,13 +287,18 @@ class Node:
             self._last["state"] = now
             self._emit_radio("STATE", {"lat": o["lat"], "lon": o["lon"], "alt_press_ft": o["alt_press_ft"],
                                        "gs_kt": o["gs_kt"], "track_deg": o["track_deg"], "vs_fpm": o.get("vs_fpm", 0.0),
-                                       "leg": leg, "intent": intent, "ap_equipped": bool(o.get("ap_equipped"))})
+                                       "leg": leg, "intent": intent, "ap_equipped": bool(o.get("ap_equipped")),
+                                       "alt_geo_ft": round(o["alt_msl_ft"])})   # extra field: baro/GNSS cross-check
         if nt and nt[1] <= 20.0 and nt[0] != self._last_intent_leg:
             self._last_intent_leg = nt[0]
             self._emit_radio("INTENT", {"leg": leg, "intent": intent, "valid_for_s": 20.0})
         elif not nt or nt[1] > 25.0:
             self._last_intent_leg = None if not nt else self._last_intent_leg
         extra = self.aw.tick(now)                    # challenge nonces to send, nonces to echo (liveness)
+        if now - self._last["hb"] >= HEARTBEAT_PERIOD_S:
+            w = self.aw.witness_report(now)          # our RSSI ranges: peers multilaterate transmitters with them
+            if w:
+                extra["w"] = w
         if now - self._last["hb"] >= HEARTBEAT_PERIOD_S or extra:
             self._last["hb"] = now
             self._emit_radio("HEARTBEAT", dict({"alive": True}, **extra))
@@ -302,7 +311,11 @@ class Node:
         if now - self._last["trust"] >= TRUST_PERIOD_S:
             self._last["trust"] = now
             ids = sorted(self.peers) + sorted({f"CAM-{s['observer']}" for t_s, s in self.sightings if now - t_s < 6.0})
-            self._emit_world(self.trust.frame(self.id, now, ids, self._rels(now)))
+            frame = self.trust.frame(self.id, now, ids, self._rels(now))
+            alerts = self._spoof_alerts()
+            if alerts:
+                frame["alerts"] = alerts                # additive field: cockpit banner + voice
+            self._emit_world(frame)
         if now - self._last["pred"] >= PRED_PERIOD_S:
             self._last["pred"] = now
             self._emit_world(self.own_pred.to_frame(self.id, to_latlon, now=now))
@@ -323,6 +336,32 @@ class Node:
             out[pid] = {"brg_deg": round(bearing_deg(dx, dy), 1), "rng_m": round(math.hypot(dx, dy)),
                         "dalt_ft": round(tr.alt_press_ft + tr.vs / FT * age - self.own["alt_press_ft"]),
                         "trk_deg": round(tr.track, 1), "vs_fpm": round(tr.vs / FT * 60.0)}
+        return out
+
+    def _spoof_alerts(self) -> list:
+        """One alert when a target becomes SUSPICIOUS or QUARANTINED, and when our own GNSS turns inconsistent."""
+        out = []
+        for pid in sorted(self.peers):
+            r = self.trust.result(pid)
+            if r is None:
+                continue
+            prev = self._alerted.get(pid)
+            last_t = self._alert_t.get(pid, -1e9)
+            if r.state in (SUSPICIOUS, QUARANTINED) and prev != r.state and                     (r.state == QUARANTINED or self.now - last_t > ALERT_REPEAT_S):
+                self._alert_t[pid] = self.now
+                spoken = " ".join(pid)
+                if r.state == QUARANTINED:
+                    text, speak = f"SPOOFED TRAFFIC {pid} - IGNORED", f"caution, spoofed traffic, {spoken}, ignored"
+                else:
+                    text, speak = f"UNCONFIRMED TRAFFIC {pid} - NOT TRUSTED", f"caution, unconfirmed traffic, {spoken}"
+                out.append({"id": pid, "state": r.state, "text": text, "speak": speak, "why": r.reasons[:4]})
+                print(f"[node {self.id}] AIRWITNESS {text}: {'; '.join(r.reasons[:4])}", flush=True)
+            self._alerted[pid] = r.state
+        pnt = self.aw.pnt.state
+        if pnt == "DEGRADED" and self._alerted.get("_pnt") != pnt:
+            out.append({"id": self.id, "state": "GNSS_DEGRADED", "text": "GPS INCONSISTENT - POSITION UNCERTAIN",
+                        "speak": "caution, g p s inconsistent", "why": self.aw.pnt.reasons})
+        self._alerted["_pnt"] = pnt
         return out
 
     def _drop_stale(self, now: float) -> None:

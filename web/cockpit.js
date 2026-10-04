@@ -38,7 +38,11 @@ export function startCockpit(role) {
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
         break;
-      case "TRUST": s.trust = m; trackTraffic(s, m); break;
+      case "TRUST":
+        s.trust = m; trackTraffic(s, m);
+        // AirWitness (Lane B): one alert when a target turns SUSPICIOUS / QUARANTINED or our GNSS goes inconsistent
+        for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
+        break;
       case "LIVE_TRAFFIC": onLive(s.live, m); break;        // real ADS-B (live demo), display only
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); hap.bump(); break;

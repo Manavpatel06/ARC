@@ -144,7 +144,7 @@ def test_t8_intent_right_but_track_left_widens_tube_only():
 # T9
 def test_t9_legacy_unsigned_aircraft_still_tracked_and_warned():
     aw = mk()
-    t, s, _, _ = fly(aw, "ADSB1", 1.0, 6, 0, 2000, trk=270, auth="unsigned")
+    t, s, _, _ = fly(aw, "ADSB1", 1.0, 6, 0, 3000, trk=270, auth="unsigned")
     r = settle(aw, "ADSB1", t)
     assert r.state == UNVERIFIED and r.cap is not None and not r.may_coordinate
 
@@ -287,3 +287,82 @@ def test_explanation_is_human_readable():
     t, s, _, _ = fly(aw, "GHOST7", 1.0, 5, 0, 120, auth="unsigned")
     text = aw.assess("GHOST7", t).explain()
     assert "TARGET: GHOST7" in text and "signature" in text and "Action:" in text
+
+
+# ---- software-only additions
+def test_pop_in_target_near_us_is_flagged():
+    aw = mk()
+    t, s, _, _ = fly(aw, "GHOST7", 1.0, 4, 0, 600, auth="unsigned")
+    r = aw.assess("GHOST7", t)
+    assert "pop_in" in r.checks and r.state in (SUSPICIOUS, QUARANTINED)
+
+
+def test_altitude_claim_inconsistent_with_local_atmosphere():
+    aw = mk()
+    own(aw, 0.5, alt=2500, press=2480)                   # our GNSS-baro offset: +20 ft
+    for k in range(4):
+        e = env("X9", k + 1, 1.0 + k, 0, 3000 - 46 * k, trk=180)
+        e["body"]["alt_geo_ft"] = ALT + 900               # claims a 900 ft offset: not the same air mass
+        aw.on_message(e, 1.0 + k)
+    r = aw.assess("X9", 5.0)
+    assert r.checks["baro_geo"].startswith("FAIL") and r.state in (SUSPICIOUS, QUARANTINED)
+    aw2 = mk()
+    own(aw2, 0.5, alt=2500, press=2480)
+    for k in range(4):
+        e = env("N204", k + 1, 1.0 + k, 0, 3000 - 46 * k, trk=180)
+        e["body"]["alt_geo_ft"] = ALT + 30
+        aw2.on_message(e, 1.0 + k)
+    assert aw2.assess("N204", 5.0).checks["baro_geo"] == "PASS"
+
+
+def test_negotiation_is_liveness_evidence():
+    aw = mk()
+    t, s, x, y = fly(aw, "N204", 1.0, 4, 0, 2000, trk=270)
+    aw.note_sent("MANEUVER_COMMIT", {"target": "N204", "sense": "R"}, t)
+    aw.on_message(env("N204", s, t + 0.4, x, y, msg="MANEUVER_COMMIT", rx=t + 0.4,
+                      body={"target": "N101", "sense": "R", "bank_deg": 20, "vs_fpm": 0, "start_t": t, "hold_s": 10}), t + 0.4)
+    r = settle(aw, "N204", t + 1)
+    assert r.checks["negotiation"].startswith("PASS") and r.state == VERIFIED
+    aw2 = mk()
+    t, s, x, y = fly(aw2, "N205", 1.0, 4, 0, 2000, trk=270)
+    aw2.note_sent("MANEUVER_COMMIT", {"target": "N205", "sense": "R"}, t)
+    t2, _, _, _ = fly(aw2, "N205", t, 8, x, y, trk=270, seq0=s)                       # keeps talking, never answers
+    aw2.tick(t2)
+    assert aw2.assess("N205", t2).checks["negotiation"].startswith("NO ANSWER")
+
+
+def test_verified_peers_rssi_ranges_locate_a_transmitter():
+    aw = mk(signed=False)
+    t, s, _, _ = fly(aw, "N204", 1.0, 5, -6000, 0, trk=90)        # a verified peer 6 km west
+    settle(aw, "N204", t)
+    t2, _, _, _ = fly(aw, "GHOST7", 1.0, 5, 0, 900, trk=270)       # claims 900 m north of us
+    peer_pos = aw._claimed_at(aw.tracks["N204"], t)[:3]
+    for k in range(4):                                             # N204 hears it from a transmitter right next to N204
+        tx = (peer_pos[0] + 200.0, peer_pos[1] + 100.0, peer_pos[2])      # RSSI only catches gross lies (factor ~1.4)
+        rng = measure("N204", peer_pos, "GHOST7", tx, t + k, kinds=("rssi",), rng=random.Random(k))
+        aw.on_message(env("N204", 100 + k, t + k, -6000 + 46 * (5 + k), 0, msg="HEARTBEAT",
+                          body={"alive": True, "w": {"GHOST7": rng.estimated_range_m}}), t + k)
+    r = aw.assess("GHOST7", t + 4)
+    assert any(m.observer_id == "N204" for m, _ in aw.tracks["GHOST7"].rf)
+    assert r.checks.get("rf_range", "").startswith("CONFLICT")
+
+
+def test_node_trust_frame_carries_a_spoof_alert_once():
+    pats = build_patterns()
+    node = Node("N101", patterns=pats)
+    node.aw.signed_radio = True
+    pl = pats["25L"].place("DOWNWIND", 20.0, 90.0)
+    alerts = []
+    for k in range(80):
+        t = 1.0e9 + k * 0.1
+        lat, lon = to_latlon(pl["x_m"] + 4.6 * k, pl["y_m"])
+        o = {"type": "OWNSHIP", "ac_id": "N101", "t": t, "lat": lat, "lon": lon, "alt_msl_ft": 2500.0,
+             "alt_press_ft": 2500.0, "agl_ft": 1022.0, "gs_kt": 90.0, "track_deg": 86.0, "hdg_deg": 86.0, "bank_deg": 0.0,
+             "vs_fpm": 0.0, "ias_kt": 90.0, "ap_equipped": True, "stick_active": False, "flaps": 0}
+        if k % 10 == 0:                                   # 400 kt ghost with jumps
+            node.on_radio(env("GHOST7", k + 1, t, pl["x_m"] + 2000 + (1500 if k % 20 else 0), pl["y_m"], gs=400,
+                              trk=266.0, auth="unsigned", rx=t))
+        frames, _ = node.tick(o)
+        alerts += [a for f in frames if f["type"] == "TRUST" for a in f.get("alerts", [])]
+    ghost = [a for a in alerts if a["id"] == "GHOST7"]
+    assert ghost and ghost[-1]["text"].startswith(("SPOOFED", "UNCONFIRMED")) and len(ghost) <= 2

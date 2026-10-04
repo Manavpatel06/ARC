@@ -57,7 +57,9 @@ def run_attempt(kind: str, seconds: float = 45.0) -> dict:
     rng = random.Random(7)
     ghosts = ["GHOST7"] if kind != "sybil" else ["GHOST7", "GHOST8", "GHOST9"]
     recorded, seq = [], {g: 0 for g in ghosts + ["N204"]}
-    out = {"commits_to_ghost": 0, "takeovers": 0, "levels": set(), "states": {}}
+    out = {"commits_to_ghost": 0, "takeovers": 0, "levels": set(), "states": {}, "t_flag": None, "t_quar": None,
+           "t_alert": None}
+    first_ghost_t = T0 if kind != "replay" else T0 + 15.0
     for k in range(int(seconds * 10)):
         t = T0 + k * 0.1
         ox, oy = pl["x_m"] + hx * 46.3 * k * 0.1, pl["y_m"] + hy * 46.3 * k * 0.1
@@ -101,7 +103,19 @@ def run_attempt(kind: str, seconds: float = 45.0) -> dict:
                                "_rx_t": t + 0.05, "_auth": "ok", "body": {"alive": True, "r": {"N101": body["c"]["N204"]}}})
             if msg == "MANEUVER_COMMIT" and body.get("target", "").startswith("GHOST"):
                 out["commits_to_ghost"] += 1
+        ghost0 = "N204" if kind == "replay" else ghosts[0]
+        st = node.trust.aw_state(ghost0) if ghost0 in node.peers else None
+        r0 = node.trust.result(ghost0)
+        if kind == "replay":
+            if r0 is not None and r0.checks.get("replay", "PASS") != "PASS" and out["t_flag"] is None:
+                out["t_flag"] = t - first_ghost_t
+        elif st in ("SUSPICIOUS", "QUARANTINED") and out["t_flag"] is None:
+            out["t_flag"] = t - first_ghost_t
+        if st == "QUARANTINED" and out["t_quar"] is None and kind != "replay":
+            out["t_quar"] = t - first_ghost_t
         for f in frames:
+            if f["type"] == "TRUST" and any(a["id"] == ghost0 for a in f.get("alerts", [])) and out["t_alert"] is None:
+                out["t_alert"] = t - first_ghost_t
             if f["type"] == "COMMAND" and f["mode"] == "TAKEOVER":
                 out["takeovers"] += 1
             if f["type"] == "ADVISORY" and str(f.get("target_id", "")).startswith("GHOST"):
@@ -115,7 +129,8 @@ def run_attempt(kind: str, seconds: float = 45.0) -> dict:
 def main() -> None:
     attempts = [("impossible", "1 impossible motion"), ("replay", "2 replay of N204"), ("fresh", "3 fresh + plausible"),
                 ("hardest", "4 own key, true position"), ("sybil", "5 sybil x3")]
-    print(f"{'attempt':26s} {'ghost state':12s} {'score':>5s}  {'ghost advisories':22s} {'commits':>7s} {'takeover':>8s}  N204")
+    print(f"{'attempt':26s} {'ghost state':12s} {'score':>5s}  {'flagged':>7s} {'quarant.':>8s} {'alert':>6s}  "
+          f"{'ghost advisories':14s} {'commits':>7s} {'takeover':>8s}  N204")
     ok_all = True
     explain = None
     for kind, label in attempts:
@@ -128,7 +143,9 @@ def main() -> None:
         ok_all &= ok
         lv = ",".join(sorted(r["levels"])) or "-"
         shown = f"{g.state} ({'replays dropped' if kind == 'replay' else ''})" if kind == "replay" else g.state
-        print(f"{label:26s} {shown:12s} {g.score:5.2f}  {lv:22s} {r['commits_to_ghost']:7d} {r['takeovers']:8d}  "
+        fmt = lambda v: "-" if v is None else f"{v:.1f}s"
+        print(f"{label:26s} {(g.state if kind != 'replay' else 'dropped'):12s} {g.score:5.2f}  {fmt(r['t_flag']):>7s} "
+              f"{fmt(r['t_quar']):>8s} {fmt(r['t_alert']):>6s}  {lv:14s} {r['commits_to_ghost']:7d} {r['takeovers']:8d}  "
               f"{n204.state}  {'PASS' if ok else 'FAIL'}")
         if kind == "fresh":
             explain = g.explain()
