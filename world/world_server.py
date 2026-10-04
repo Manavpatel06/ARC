@@ -68,6 +68,7 @@ from world.flight_model import HARD_LANDING_FPM
 from world.separation import SeparationMonitor
 from world.taws import Taws
 from world.sensors import SensorSim
+from verify.eventlog import check_frame
 from verify.schema import Verify
 
 PHYS_HZ = 20
@@ -116,6 +117,7 @@ class Hub:
         self.sensor_buf: dict[str, list] = defaultdict(list)
         self.scripted = sorted(world.raw.get("attacks", []), key=lambda a: a.get("at_s", 0))   # scenario attacks
         self.sim_start = None
+        self.unit_keys: dict[str, str] = {}               # onboard unit id -> pinned Ed25519 public key
         self.roles: dict[str, set] = defaultdict(set)      # role -> websockets
         self.latest: dict[str, dict] = {}                  # "<TYPE>:<ac_id>" -> last frame (replayed to new cockpits)
         self.t0 = time.time()
@@ -209,11 +211,22 @@ class Hub:
 
         if role.startswith("avionics:"):                   # onboard unit: it may only report what it concluded
             if t == "VERIFY":
+                # signed link: the unit's key is pinned on its first signed frame; after that, unsigned,
+                # forged or re-keyed frames are dropped (a fake "everything VERIFIED" never reaches a cockpit)
+                pinned = self.unit_keys.get(own_id)
+                if m.get("sig") or pinned:
+                    ok, why = check_frame(m, pinned)
+                    if not ok:
+                        print(f"[world] VERIFY from {role} REJECTED ({why})")
+                        self.log(own_id, "world", {"type": "VERIFY_REJECTED", "ac_id": own_id, "why": why})
+                        return
+                    self.unit_keys.setdefault(own_id, m["pub"])
                 try:
                     Verify.model_validate(m)
                 except ValidationError as e:
                     print(f"[world] VERIFY schema warning from {role}: {str(e).splitlines()[0]}")
-                m = dict(m, ac_id=own_id)
+                m = {k: v for k, v in m.items() if k not in ("sig", "pub")}
+                m = dict(m, ac_id=own_id, link="signed" if pinned or self.unit_keys.get(own_id) else "unsigned")
                 self.latest[f"VERIFY:{own_id}"] = m
                 self.send(f"cockpit:{own_id}", m)
                 self.send("god", m)
@@ -315,6 +328,12 @@ class Hub:
                 self.reset_demo()
             elif t == "SET_ATTACK":
                 self.set_attack(m)
+            elif t == "SET_SPEED":                         # demo control panel: playback speed
+                self.w.time_scale = max(0.25, min(10.0, float(m.get("time_scale", 1.0))))
+                ev = {"type": "WORLD_EVENT", "event": "SPEED", "t": round(self.now(), 3), "time_scale": self.w.time_scale}
+                self.send("god", ev)
+                self.log("god", "world", ev)
+                print(f"[world] playback x{self.w.time_scale:g}")
             return
 
         if role == "data" and t == "LIVE_TRAFFIC":
@@ -372,6 +391,8 @@ class Hub:
         """God view SET_ATTACK {"attack": "ghost", "on": true|false, "victim"?: id, params...}."""
         kind, on = str(m.get("attack", "ghost")), m.get("on", True) is not False
         if on:
+            if kind in self.sensors.attacks.KIND_ONCE and any(a.kind == kind for a in self.sensors.attacks.active.values()):
+                return                                     # one jammer / one GPS spoofer at a time
             victim = self.w.fleet.get(m.get("victim") or (self.w.humans[0] if self.w.humans else ""))
             if victim is None:
                 print(f"[world] SET_ATTACK: no victim aircraft")
@@ -614,11 +635,18 @@ async def main():
     ap.add_argument("--traffic-nodes", metavar="CHANNEL_WS", help="start a FLOCK node for every live-traffic aircraft, "
                     "radio via this channel (e.g. ws://localhost:8766)")
     ap.add_argument("--pidfile", help="append node PIDs here (run_demo.ps1 .demo_pids)")
+    ap.add_argument("--replay", help="recorded real traffic (data/live_traffic.py --record, harness/out/live_*.jsonl) "
+                    "played back as real aircraft the onboard units hear (world/replay.py)")
     ap.add_argument("--allow-takeover", action="store_true", help="legacy collision-avoidance demo: let nodes fly the aircraft (COMMAND). Off by default: FLOCK is advisory only")
     a = ap.parse_args()
     world = World(a.scenario, da_override=a.da, time_scale=a.time_scale, weather=a.weather, seed=a.seed)
     nodes = NodeLauncher(f"ws://localhost:{a.port}", a.traffic_nodes, a.pidfile) if a.traffic_nodes and world.traffic else None
     hub = Hub(world, nodes, advisory_only=not a.allow_takeover)
+    rec = a.replay or world.raw.get("replay")
+    if rec:
+        from world.replay import ReplaySource
+        hub.sensors.replay_src = ReplaySource(rec, start_t=hub.now())
+        print(f"[world] replaying real traffic from {rec}: {len(hub.sensors.replay_src.tracks)} aircraft")
     if a.http:
         serve_http(a.http)
     async with serve(hub.handler, "0.0.0.0", a.port, compression=None):

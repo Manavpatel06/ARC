@@ -80,6 +80,15 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .ck-adv[data-level="NO_SOLUTION"] { border-style: dashed; }
 .ck-adv[data-level="VERIFIED"] { --c: var(--trust-ok); }
 .ck-adv[data-level="SUSPECT"] { --c: var(--trust-fake); }
+.ck-adv[data-level="DEGRADED"] { --c: var(--trust-sus); }
+.report-btn { margin-top: 8px; font: 700 13px var(--sans); background: var(--trust-fake); color: #000; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.ck-report { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
+.ck-report[hidden] { display: none; }
+.ck-report > div { width: min(680px, 92vw); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.ck-report h2 { margin: 0 0 8px; font-size: 16px; }
+.ck-report textarea { width: 100%; height: 300px; font: 12px var(--mono); background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; box-sizing: border-box; }
+.ck-report footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.ck-report button { font: 600 13px var(--sans); background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 14px; cursor: pointer; }
 @keyframes pulse { to { background: color-mix(in srgb, var(--lvl-takeover) 22%, var(--panel)); } }
 
 .ck-main { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8px; min-height: 0; }
@@ -184,6 +193,13 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
                    border-radius: 6px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
 .demo-row button[data-armed="1"] { background: var(--own); color: #000; }
 .god-verify td.st { font-weight: 700; }
+.attack-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 6px; align-items: center; }
+.attack-row button { font: 600 12px var(--sans); background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                     border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.attack-row button[data-armed="1"] { background: var(--trust-fake); border-color: var(--trust-fake); color: #000; }
+.attack-row button.stop { border-color: var(--text-2); }
+.attack-row .speed { font-size: 12px; color: var(--text-2); margin-left: auto; }
+.attack-row select { font: 12px var(--sans); background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
 .god-verify tr[data-state="VERIFIED"] td.st { color: var(--trust-ok); }
 .god-verify tr[data-state="UNVERIFIED"] td.st { color: var(--trust-sus); }
 .god-verify tr[data-state="SUSPECT"] td.st { color: var(--trust-fake); }

@@ -21,6 +21,10 @@ def check(track, ctx, cfg: dict) -> CheckResult:
         return CheckResult(c["present_score"], c["present_conf"], why, {"replies": len(rec), "dfs": dfs})
     if ctx.t - ctx.radar_t > c["radar_active_s"]:
         return CheckResult.none("no ground radar heard (nothing to compare)")
+    if ctx.band_degraded:
+        return CheckResult.none("1090 band degraded: missing replies prove nothing")
+    if track.pos and ctx.t - track.pos[-1][0] > 2.5:
+        return CheckResult.none("stopped broadcasting")
     if ctx.t - track.first_t < c["window_s"]:
         return CheckResult.none("listening for its Mode S replies")
     claim = track.claimed_at(ctx.t)

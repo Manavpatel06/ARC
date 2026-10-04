@@ -113,6 +113,10 @@ export function startCockpit(role) {
   const cycleRange = (d) => { s.map.range = (s.map.range + d + MAP_RANGES_NM.length) % MAP_RANGES_NM.length; saveMap(s.map); };
   const flipOrient = () => { s.map.northUp = !s.map.northUp; saveMap(s.map); };
   $("ck-traffic").addEventListener("click", () => cycleRange(1));
+  $("ck-detail").addEventListener("click", (e) => {           // details panel: Report to ATC
+    const b = e.target.closest("button[data-report]");
+    if (b) openReport(s, b.dataset.report);
+  });
   $("ck-trust").addEventListener("click", (e) => {            // a target chip: show / hide why FLOCK trusts it
     const li = e.target.closest("li[data-key]");
     if (li) { s.detail = s.detail === li.dataset.key ? null : li.dataset.key; renderTrust(s); }
@@ -361,15 +365,19 @@ function renderBanner(s) {
   } else if (s.verify && now - s.verifyAt < VERIFY_STALE_MS) {
     // FLOCK verification summary (advisory only: what to believe on the traffic display, never what to fly)
     const ts = s.verify.targets || [], sus = ts.filter((t) => t.state === "SUSPECT");
+    const bn = s.verify.banners || [];
     if (sus.length) {
       level = "SUSPECT"; text = `SUSPECT TRAFFIC · ${sus.map((t) => t.id).join(" ")}`;
       sub = `${sus[0].reasons[0] || "likely spoofed"} · advisory only - follow ATC and TCAS`;
+    } else if (bn.length) {                               // whole-picture warning: jamming / own GPS
+      level = "DEGRADED"; text = bn[0].split(" - ")[0];
+      sub = bn[0].split(" - ").slice(1).join(" - ");
     } else {
       const ok = ts.filter((t) => t.state === "VERIFIED").length;
       level = "VERIFIED"; text = ts.length ? `TRAFFIC VERIFIED · ${ok} of ${ts.length}` : "NO TRAFFIC";
       sub = ts.length - ok ? `${ts.length - ok} unverified (not enough evidence yet - not spoofed)` : "every target confirmed by TCAS / Mode S";
     }
-    if ((s.verify.banners || []).length) sub = s.verify.banners.join(" · ");
+    if (bn.length && level !== "DEGRADED") sub += ` · ${bn.map((b) => b.split(" - ")[0]).join(" · ")}`;
   }
   if (el.dataset.level !== level) el.dataset.level = level;
   $("ck-adv-text").textContent = text;
@@ -419,8 +427,55 @@ function renderTrust(s) {
   renderDetail(s, targets);
 }
 
+// "Report to ATC": a pre-filled spoofing report the pilot can read out / copy (a UI artifact - nothing is sent).
+function atcReport(s, icao) {
+  const v = (s.verify && s.verify.targets || []).find((t) => t.icao === icao);
+  const o = s.own;
+  if (!v || !o) return "";
+  const r = v.rel || {};
+  const clock = Math.round((((r.brg_deg ?? 0) - o.hdg_deg + 360) % 360) / 30) || 12;
+  const nm = r.rng_m != null ? (r.rng_m / NM).toFixed(1) : "?";
+  const alt = Math.round((o.alt_ind_ft ?? o.alt_msl_ft) + (r.dalt_ft || 0));
+  const when = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  return [
+    "FLOCK SPOOFING REPORT  (advisory - generated on board, NOT transmitted)",
+    `Time        ${when}`,
+    `Reporting   ${s.acId}  ${o.lat.toFixed(4)}N ${Math.abs(o.lon).toFixed(4)}W  ${Math.round(o.alt_ind_ft ?? o.alt_msl_ft)} ft  hdg ${String(Math.round(o.hdg_deg)).padStart(3, "0")}`,
+    `Suspect     ${v.id}  ICAO ${v.icao.split("~")[0].toUpperCase()}`,
+    `Claimed     ${nm} NM at ${clock} o'clock (bearing ${String(Math.round(r.brg_deg ?? 0)).padStart(3, "0")}), ${alt} ft, track ${r.trk_deg != null ? String(Math.round(r.trk_deg)).padStart(3, "0") : "?"}`,
+    `FLOCK       ${v.state}, trust ${v.trust}/100  (sources heard: ${(v.sources || []).join(", ") || "none"})`,
+    "Evidence",
+    ...(v.reasons || []).map((x) => `  - ${x}`),
+    ...((s.verify.banners || []).length ? ["Picture", ...s.verify.banners.map((b) => `  - ${b}`)] : []),
+    "",
+    "Say (example):",
+    `  "${s.acId}, possible ADS-B spoofing: traffic ${v.id} shown ${nm} miles ${clock} o'clock at ${alt}, not confirmed by TCAS. Request traffic advisory."`,
+  ].join("\n");
+}
+
+function openReport(s, icao) {
+  let m = $("ck-report");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "ck-report"; m.className = "ck-report";
+    m.innerHTML = `<div><h2>Report to ATC</h2><textarea readonly spellcheck="false"></textarea>
+      <p class="muted">Nothing is sent: read it on frequency or hand it to your ATC / safety report.</p>
+      <footer><button type="button" data-act="copy">Copy</button><button type="button" data-act="close">Close</button></footer></div>`;
+    document.body.appendChild(m);
+    m.addEventListener("click", (e) => {
+      const act = e.target.dataset.act;
+      if (act === "close" || e.target === m) m.hidden = true;
+      if (act === "copy") { m.querySelector("textarea").select(); navigator.clipboard?.writeText(m.querySelector("textarea").value).catch(() => {}); }
+    });
+  }
+  m.querySelector("textarea").value = atcReport(s, icao);
+  m.hidden = false;
+}
+
 // Click a target: trust score, plain-English reasons and the per-check breakdown.
-const CHECK_NAMES = { tcas_consistency: "TCAS range / bearing", modes_presence: "Mode S replies", kinematics: "Kinematics" };
+const CHECK_NAMES = { tcas_consistency: "TCAS range / bearing", modes_presence: "Mode S replies", timing_1030: "1030/1090 timing",
+                      rssi: "Signal strength", emitter_cluster: "One transmitter?", kinematics: "Kinematics",
+                      replay_detect: "Replay / duplicate", popin: "Pop-in" };
 function renderDetail(s, targets) {
   const box = $("ck-detail");
   const t = s.detail && targets.find((x) => (x.icao || x.id) === s.detail);
@@ -434,7 +489,8 @@ function renderDetail(s, targets) {
   const html = `<header data-state="${v.state}"><b>${v.id}</b><span>${v.state}</span><em>trust ${v.trust}/100</em>`
     + `<i>${(v.sources || []).join(" · ")}${v.icao ? ` · ICAO ${v.icao.toUpperCase()}` : ""}</i></header>`
     + `<ul>${(v.reasons || []).map((r) => `<li>${r}</li>`).join("")}</ul>`
-    + `<table>${rows}</table><p class="muted">Advisory only - FLOCK scores traffic, it never tells you to maneuver. Follow ATC and TCAS.</p>`;
+    + `<table>${rows}</table><p class="muted">Advisory only - FLOCK scores traffic, it never tells you to maneuver. Follow ATC and TCAS.</p>`
+    + (v.state === "SUSPECT" ? `<button type="button" class="report-btn" data-report="${v.icao}">Report to ATC…</button>` : "");
   if (box.innerHTML !== html) box.innerHTML = html;
   box.hidden = false;
 }

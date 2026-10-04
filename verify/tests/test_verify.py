@@ -80,10 +80,14 @@ def test_kinematics_flags_teleport_but_not_normal_flight():
     ok = fly_target(tm, "aaa111", 0, 8)
     assert kinematics.check(ok, ctx(tm, 8), CFG).score >= 0.5
     tr = fly_target(tm, "ddd444", 0, 4)
-    lat, lon = move(tr.pos[-1][1], tr.pos[-1][2], 5000, 0)                       # 5 km jump in 0.5 s
-    tm.ingest({"kind": "ADSB_POSITION", "t_ns": int(4.5e9), "icao": "ddd444", "lat": lat, "lon": lon, "alt_ft": 2500})
-    r = kinematics.check(tr, ctx(tm, 4.5), CFG)
+    lat, lon = move(tr.pos[-1][1], tr.pos[-1][2], 5000, 0)                       # 5 km jump in 0.5 s, then on from there
+    for i in range(5):
+        la, lo = move(lat, lon, 0, 25.7 * i)
+        tm.ingest({"kind": "ADSB_POSITION", "t_ns": int((4.5 + 0.5 * i) * 1e9), "icao": "ddd444", "lat": la, "lon": lo, "alt_ft": 2500})
+    jumped = tm.tracks["ddd444~2"]                                                 # the address split at the jump
+    r = kinematics.check(jumped, ctx(tm, 6.5), CFG)
     assert r.score < 0.1 and "jumps" in r.reason
+    assert kinematics.check(tr, ctx(tm, 6.5), CFG).score >= 0.5                     # the original track is not blamed
 
 def test_modes_presence_only_counts_absence_when_radar_is_active():
     tm = TrackManager(); own_at(tm, 0.0)

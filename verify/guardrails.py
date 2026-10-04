@@ -10,7 +10,7 @@ Own-ship GPS integrity and band-health guardrails hook in here (milestones 3 / 7
 """
 from __future__ import annotations
 
-PHYSICAL = ("tcas_consistency", "modes_presence")
+PHYSICAL = ("tcas_consistency", "modes_presence", "timing_1030")
 
 def apply(state: str, results: dict, cfg: dict) -> tuple[str, list[str]]:
     """results: name -> CheckResult. Returns (state, notes explaining any override)."""

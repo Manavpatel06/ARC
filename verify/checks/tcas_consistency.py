@@ -10,6 +10,7 @@ anything the target claims) and a rough bearing. A ghost that only broadcasts AD
 Bearing tolerance is wide on purpose: TCAS bearing is the weak measurement.
 """
 from __future__ import annotations
+import math
 
 from verify.checks import CheckResult
 from verify.tracks import angdiff, rng_brg
@@ -37,14 +38,38 @@ def check(track, ctx, cfg: dict) -> CheckResult:
     if tc is not None:
         _, t_rng, t_brg, t_alt = tc
         ev.update(tcas_range_m=round(t_rng), tcas_brg_deg=round(t_brg))
-        r_tol = c["range_tol_m"] + c["range_tol_frac"] * rng
-        if abs(t_rng - rng) > r_tol:
-            return CheckResult(c["mismatch_score"], c["mismatch_conf"],
+        # compare the last few TCAS samples with the claim at each sample's time; judge on the MEDIAN residual
+        src = track.parent.tcas if track.parent is not None else track.tcas
+        samples = [s for s in list(src)[-c["median_of"]:] if ctx.t - s[0] <= c["fresh_s"] + c["median_of"]]
+        dr, dx, da = [], [], []
+        for st, sr, sb, sa in samples:
+            cl = track.claimed_at(st)
+            olat, olon, _ = ctx.tm.own_at(st) if ctx.tm is not None else (own.lat, own.lon, own.alt_ft)
+            cr, cb = rng_brg(olat, olon, cl[0], cl[1])                    # both ends at the sample's time
+            dr.append(abs(sr - cr))
+            dx.append(min(sr, cr) * math.sin(math.radians(min(90.0, angdiff(sb, cb)))))   # sideways miss, m
+            if sa is not None and cl[2] is not None:
+                da.append(abs(sa - cl[2]))
+        med = lambda v: sorted(v)[len(v) // 2] if v else 0.0
+        r_tol = (c["range_tol_m"] + c["range_tol_frac"] * rng) * ctx.pos_scale       # own GPS doubtful: wider
+        mis_conf = c["mismatch_conf"] * (0.33 if ctx.own_uncertain else 1.0)          # ... and never decisive
+        x_tol = max(c["cross_floor_m"], rng * math.sin(math.radians(c["bearing_tol_deg"]))) * min(2.0, ctx.pos_scale)
+        ev.update(range_err_m=round(med(dr)), cross_err_m=round(med(dx)))
+        if len(samples) < c["min_samples"]:                                   # just acquired: never decisive
+            if med(dr) > 0.5 * r_tol or med(dx) > 0.5 * x_tol:
+                return CheckResult(c["drifting_score"], c["drifting_conf"],
+                                   f"ADS-B and TCAS disagree while TCAS acquires it ({max(med(dr), med(dx)):.0f} m)", ev)
+            return CheckResult.none("TCAS still acquiring it", **ev)
+        if med(dr) > r_tol:
+            return CheckResult(c["mismatch_score"], mis_conf,
                                f"ADS-B says {rng / NM:.1f} NM, TCAS measures {t_rng / NM:.1f} NM", ev)
-        if rng > 300 and angdiff(t_brg, brg) > c["bearing_tol_deg"]:
-            return CheckResult(c["mismatch_score"], c["mismatch_conf"],
+        if med(dx) > x_tol:
+            return CheckResult(c["mismatch_score"], mis_conf,
                                f"ADS-B bearing {brg:03.0f}, TCAS sees it at {t_brg:03.0f}", ev)
-        if t_alt is not None and claim[2] is not None and abs(t_alt - claim[2]) > c["alt_tol_ft"]:
+        if med(dr) > 0.5 * r_tol or med(dx) > 0.5 * x_tol:
+            return CheckResult(c["drifting_score"], c["drifting_conf"],       # early warning: yellow before red
+                               f"ADS-B and TCAS starting to disagree ({max(med(dr), med(dx)):.0f} m)", ev)
+        if med(da) > c["alt_tol_ft"]:
             return CheckResult(c["mismatch_score"], c["mismatch_conf"],
                                f"ADS-B altitude {claim[2]:.0f} ft, transponder reports {t_alt:.0f} ft", ev)
         return CheckResult(c["match_score"], c["match_conf"], f"TCAS confirms it: {t_rng / NM:.1f} NM, bearing {t_brg:03.0f}",
@@ -54,4 +79,8 @@ def check(track, ctx, cfg: dict) -> CheckResult:
         return CheckResult.none(f"beyond TCAS range ({rng / NM:.1f} NM)", **ev)
     if ctx.t - track.first_t < c["grace_s"]:
         return CheckResult.none("waiting for TCAS to acquire it", **ev)
+    if ctx.band_degraded:
+        return CheckResult.none("1090 band degraded: a missing TCAS reply proves nothing", **ev)
+    if ctx.t - track.pos[-1][0] > c["claim_fresh_s"]:
+        return CheckResult.none("stopped broadcasting (landed / left): nothing to compare", **ev)
     return CheckResult(c["absent_score"], c["absent_conf"], f"TCAS sees nothing where it claims to be ({rng / NM:.1f} NM)", ev)

@@ -134,10 +134,14 @@ export function startGod() {
   });
 
   wireResetDemo(link);
-  $("god-ghost").addEventListener("click", () => {      // toggle a ghost near judge A (simulated radio only)
-    const on = !((s.truth && s.truth.attacks) || []).some((a) => a.kind === "ghost");
-    link.send({ type: "SET_ATTACK", attack: "ghost", on });
+  $("god-attacks").addEventListener("click", (e) => {    // demo control panel: attacks on judge A (simulated radio only)
+    const b = e.target.closest("button[data-attack]");
+    if (!b) return;
+    const kind = b.dataset.attack;
+    const on = kind !== "all" && !((s.truth && s.truth.attacks) || []).some((a) => a.kind === kind);
+    link.send({ type: "SET_ATTACK", attack: kind, on });
   });
+  $("god-speed").addEventListener("change", (e) => link.send({ type: "SET_SPEED", time_scale: +e.target.value }));
 
   const cv = $("god-map");
   panZoom(cv, s.view);
@@ -182,14 +186,18 @@ function pruneGone(s, list) {
 function renderVerify(s) {
   const own = (s.stat && s.stat.judges && s.stat.judges[0]) || [...s.verify.keys()][0];
   const v = own && s.verify.get(own);
-  const truth = new Map(((s.truth && s.truth.emitters) || []).map((e) => [e.icao, e]));
-  const ghosts = ((s.truth && s.truth.attacks) || []).filter((a) => a.kind === "ghost").length;
-  $("god-ghost").textContent = ghosts ? "− Ghost" : "+ Ghost";
-  $("god-ghost").dataset.armed = ghosts ? "1" : "0";
+  const truth = new Map();                                // address -> emitter; the REAL aircraft wins a shared address
+  for (const e of (s.truth && s.truth.emitters) || []) if (!truth.has(e.icao) || (e.label !== "masquerade" && e.label !== "replay")) truth.set(e.icao, e);
+  const active = new Set(((s.truth && s.truth.attacks) || []).map((a) => a.kind));
+  for (const b of document.querySelectorAll("#god-attacks button[data-attack]")) b.dataset.armed = active.has(b.dataset.attack) ? "1" : "0";
+  const fakeOf = new Map();                               // address -> attack label of a second transmitter using it
+  for (const e of (s.truth && s.truth.emitters) || []) if (e.label !== "real") fakeOf.set(e.icao, e.label);
   if (!v) { $("god-verify-sum").textContent = "no onboard unit connected (verify/unit.py)"; return; }
   let ok = 0, n = 0;
   const rows = [...v.targets].sort((a, b) => ((a.rel && a.rel.rng_m) ?? 1e9) - ((b.rel && b.rel.rng_m) ?? 1e9)).map((t) => {
-    const lab = (truth.get(t.icao) || {}).label || "?";
+    const addr = t.icao.split("~")[0];
+    // "~2" = the second place an address is heard from: that is the attacker's transmitter
+    const lab = t.icao.includes("~") ? (fakeOf.get(addr) || "?") : (truth.get(addr) || {}).label || "?";
     const right = (lab === "real" && t.state !== "SUSPECT") || (lab !== "real" && lab !== "?" && t.state !== "VERIFIED");
     if (lab !== "?") { n++; if (right) ok++; }
     return `<tr data-state="${t.state}"><td>${t.id}</td><td>${lab}</td><td class="st">${t.state}</td><td>${t.trust}</td>`
@@ -204,7 +212,15 @@ function renderVerify(s) {
 // sending it (tower mark), joined by a dotted line.
 function drawGhosts(ctx, s, LL, k) {
   for (const e of (s.truth && s.truth.emitters) || []) {
-    if (e.label === "real") continue;
+    if (e.label === "real") {
+      if (!s.ac.has(e.id) && !s.ac.has(e.callsign)) {      // replayed REAL traffic (world/replay.py): not a world aircraft
+        const [x, y] = LL(e.lat, e.lon);
+        ctx.fillStyle = css("var(--live)"); ctx.strokeStyle = css("var(--live)");
+        drawPlane(ctx, x, y, (e.trk_deg || 0) * D2R, 9 * k, true);
+        text(ctx, x + 11 * k, y - 3 * k, `${e.callsign} · recorded`, 11 * k, "left", css("var(--live)"));
+      }
+      continue;
+    }
     const [x, y] = LL(e.lat, e.lon), [tx, ty] = LL(e.tx_lat, e.tx_lon);
     const col = css("var(--trust-fake)");
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5 * k;

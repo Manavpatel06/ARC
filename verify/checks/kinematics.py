@@ -12,6 +12,11 @@ from verify.tracks import KT, angdiff, enu
 def check(track, ctx, cfg: dict) -> CheckResult:
     c = cfg["kinematics"]
     pts = [p for p in track.pos if ctx.t - p[0] <= c["window_s"]]
+    if track.parent is not None and pts and pts[0][0] == track.pos[0][0] and track.parent.pos:
+        # a branch of an address: it "comes from" where that address was just before - a jump shows up here
+        par = [p for p in track.parent.pos if p[0] < pts[0][0]]
+        if par and pts[0][0] - par[-1][0] <= 5.0:
+            pts = [par[-1]] + pts
     if len(pts) < c["min_reports"]:
         return CheckResult.none(f"only {len(pts)} position reports so far")
     bad, worst = [], {}
@@ -32,12 +37,20 @@ def check(track, ctx, cfg: dict) -> CheckResult:
             if abs(vs) > c["max_vs_fpm"]:
                 bad.append(f"altitude changes {abs(vs):.0f} fpm")
                 worst["vs_fpm"] = round(vs)
-    for (_, ta, ea, na, da, _), (_, tb, eb, nb, db, _) in zip(segs, segs[1:]):
+    for (a0, a1, ea, na, da, _), (b0, b1, eb, nb, db, _) in zip(segs, segs[1:]):
         if da > 30 and db > 30:
-            rate = angdiff(math.degrees(math.atan2(ea, na)), math.degrees(math.atan2(eb, nb))) / max(0.1, tb - ta)
-            if rate > c["max_turn_dps"]:
+            mid_dt = max(0.1, ((b0 + b1) - (a0 + a1)) / 2.0)          # between segment midpoints (uneven gaps)
+            rate = angdiff(math.degrees(math.atan2(ea, na)), math.degrees(math.atan2(eb, nb))) / mid_dt
+            if rate > c["max_turn_dps"] * min(2.0, ctx.pos_scale):
                 bad.append(f"turns {rate:.0f} deg/s")
                 worst["turn_dps"] = round(rate, 1)
+    # acceleration from its own velocity reports (Lane B AirWitness: 12 kt/s - a go-around still passes)
+    vel_r = [v for v in track.vel if ctx.t - v[0] <= c["window_s"] and v[1] is not None]
+    for (ta, ga, _, _), (tb, gb, _, _) in zip(vel_r, vel_r[1:]):
+        if tb - ta >= 0.3 and abs(gb - ga) / (tb - ta) > c["max_accel_kt_s"]:
+            bad.append(f"speed changes {abs(gb - ga) / (tb - ta):.0f} kt/s")
+            worst["accel_kt_s"] = round(abs(gb - ga) / (tb - ta), 1)
+            break
     # does each position follow from the previous one + the velocity it reported?
     vel = list(track.vel)
     for (t0, la0, lo0, _, _), (t1, la1, lo1, _, _) in zip(pts, pts[1:]):
@@ -51,7 +64,7 @@ def check(track, ctx, cfg: dict) -> CheckResult:
         pe, pn = gs * KT * math.sin(math.radians(trk)) * dt, gs * KT * math.cos(math.radians(trk)) * dt
         e, n = enu(la0, lo0, la1, lo1)
         res = math.hypot(e - pe, n - pn)
-        if res > c["max_pos_residual_m"] + c["residual_per_s_m"] * dt:
+        if res > (c["max_pos_residual_m"] + c["residual_per_s_m"] * dt) * ctx.pos_scale:
             bad.append(f"position disagrees with its own velocity by {res:.0f} m")
             worst["residual_m"] = round(res)
     if bad:

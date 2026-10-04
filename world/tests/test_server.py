@@ -279,3 +279,31 @@ def test_reset_demo_only_from_god_and_puts_judges_at_their_starts(live_world):
     truth = [f for f in god if f["type"] == "TRUTH"][-1]
     j = {a["ac_id"]: a for a in truth["aircraft"] if a["human"]}
     assert all(a["mode"] == "AUTOPILOT" and abs(a["alt_msl_ft"] - 2500) < 40 for a in j.values()), j
+
+def test_signed_verify_link_pins_the_units_key_and_drops_forgeries(world, tmp_path):
+    from verify.eventlog import load_key, sign_frame
+    good = load_key("UNIT_A", key_dir=str(tmp_path)); evil = load_key("EVIL", key_dir=str(tmp_path))
+    v = lambda st: {"type": "VERIFY", "ac_id": "N102", "t": 0, "targets": [
+        {"icao": "a1b2c3", "id": "N204", "trust": 5, "state": st, "reasons": ["x"], "checks": {}}]}
+    first = sign_frame(v("SUSPECT"), good)
+    forged = dict(sign_frame(v("SUSPECT"), good), targets=[dict(v("SUSPECT")["targets"][0], state="VERIFIED")])
+    rekeyed = sign_frame(v("VERIFIED"), evil)
+    async def go():
+        async def unit():
+            async with websockets.connect(f"{world}/?role=avionics:N102") as ws:
+                await asyncio.sleep(0.4)
+                for f in (first, forged, rekeyed, {k: x for k, x in v("VERIFIED").items()}):
+                    await ws.send(json.dumps(f)); await asyncio.sleep(0.2)
+                await asyncio.sleep(0.6)
+        return await asyncio.gather(unit(), collect(world, "cockpitB", 2.2), collect(world, "log", 2.2))
+    _, ck, log = run(go())
+    got = [x for x in ck if x["type"] == "VERIFY"]
+    assert len(got) == 1 and got[0]["targets"][0]["state"] == "SUSPECT" and got[0]["link"] == "signed"
+    assert "sig" not in got[0] and "pub" not in got[0]
+    why = sorted(x["payload"]["why"] for x in log if x.get("payload", {}).get("type") == "VERIFY_REJECTED")
+    assert why == ["bad signature", "key changed", "unsigned"], why
+
+def test_god_sets_playback_speed(world):
+    god = run(collect(world, "god", 1.0, send=[{"type": "SET_SPEED", "time_scale": 2}]))
+    assert any(x.get("event") == "SPEED" and x["time_scale"] == 2 for x in god)
+    run(collect(world, "god", 0.6, send=[{"type": "SET_SPEED", "time_scale": 1}]))
