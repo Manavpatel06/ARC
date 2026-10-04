@@ -5,7 +5,7 @@
 //
 // The feed polls every ~5 s; positions are dead-reckoned from each report (ground speed, track,
 // vertical speed) so the targets move smoothly in between. Older than LIVE_HIDE_MS -> hidden.
-import { css, NM, SANS } from "./net.js";
+import { css, drawPlane, NM, SANS } from "./net.js";
 import { AIRCRAFT_MODEL, MODEL_SCALE } from "./cesium3d.js";
 
 const D2R = Math.PI / 180;
@@ -49,13 +49,13 @@ export function drawLiveOnMap(ctx, list, g) {
     if (Math.hypot(x - cx, y - cy) > R * 1.08) continue;            // outside the selected range: not drawn
     shown++;
     ctx.globalAlpha = a.stale ? 0.4 : 0.95;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(((a.track_deg || 0) - up) * D2R);
-    const sz = 6.5 * k;
+    const rot = ((a.track_deg || 0) - up) * D2R, sz = 9 * k;
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.6 * k;
-    ctx.beginPath(); ctx.moveTo(0, -sz * 1.3); ctx.lineTo(sz, sz); ctx.lineTo(0, sz * 0.35); ctx.lineTo(-sz, sz); ctx.closePath();
-    a.on_ground ? ctx.stroke() : ctx.fill();
-    if (!a.on_ground && a.gs_kt > 30) { ctx.beginPath(); ctx.moveTo(0, -sz * 1.3); ctx.lineTo(0, -sz * 1.3 - 18 * k); ctx.stroke(); }
-    ctx.restore();
+    drawPlane(ctx, x, y, rot, sz, !a.on_ground);                    // same airplane symbol as FLOCK traffic, in cyan
+    if (!a.on_ground && a.gs_kt > 30) {                             // track line ahead of the nose
+      ctx.beginPath(); ctx.moveTo(x + Math.sin(rot) * sz * 1.2, y - Math.cos(rot) * sz * 1.2);
+      ctx.lineTo(x + Math.sin(rot) * (sz * 1.2 + 18 * k), y - Math.cos(rot) * (sz * 1.2 + 18 * k)); ctx.stroke();
+    }
     const d = Math.round((a.dalt_ft || 0) / 100);
     const arrow = a.vs_fpm > 300 ? "↑" : a.vs_fpm < -300 ? "↓" : "";
     const name = (a.callsign || a.id || "").trim().slice(0, 8);

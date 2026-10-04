@@ -71,6 +71,22 @@ export function css(v) {
   return cssCache[name];
 }
 
+// Top-view airplane silhouette (high wing, tailplane), nose along `rot` radians clockwise from screen-up,
+// `size` ~ half the wingspan in px. fill = solid, else outline. Shared by the cockpit map and the god view.
+const PLANE_R = [[0, -1.3], [0.13, -1.15], [0.16, -0.35], [1.2, -0.2], [1.2, 0.02], [0.16, 0.1],
+                 [0.1, 0.78], [0.48, 0.92], [0.48, 1.08], [0, 1.02]];
+export function drawPlane(ctx, x, y, rot, size, fill = true) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(rot);
+  ctx.beginPath();
+  PLANE_R.forEach(([px, py], i) => (i ? ctx.lineTo(px * size, py * size) : ctx.moveTo(px * size, py * size)));
+  for (let i = PLANE_R.length - 2; i > 0; i--) ctx.lineTo(-PLANE_R[i][0] * size, PLANE_R[i][1] * size);
+  ctx.closePath();
+  if (fill) { ctx.fill(); ctx.lineWidth = Math.max(1, size * 0.12); ctx.strokeStyle = "rgba(0,0,0,.7)"; ctx.stroke(); }
+  else ctx.stroke();
+  ctx.restore();
+}
+
 // Canvas cannot resolve CSS variables in ctx.font; use literal stacks.
 export const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 export const MONO = 'ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace';
