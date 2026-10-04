@@ -28,6 +28,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from node import rightofway
 from node import authority, conflict as conflict_mod, escape, layers
 from node.geometry import FT, KT, bearing_deg, build_patterns, hvec, load_metar, to_enu, to_latlon, wrap180
 from node.negotiate import Negotiator
@@ -549,6 +550,11 @@ class Node:
         pilot_mode = not (ctx["ap_equipped"] and not ctx["stick_active"])
         hold_s = PILOT_HOLD_S if pilot_mode else 10.0
 
+        # 14 CFR 91.113 right-of-way for this pair (deterministic; both nodes compute it from the same shared data)
+        row_me, row_peer, row_first = rightofway.pair(
+            {"x": o.x, "y": o.y, "trk": self.own["track_deg"], "gs": o.gs, "alt_ft": o.z / FT, "leg": self.own_cls.leg},
+            {"x": tr.x, "y": tr.y, "trk": tr.track, "gs": tr.gs, "alt_ft": peer_state["z"] / FT, "leg": tr.leg})
+
         def evaluate(peer_commit):
             pp = dict(peers)
             alt = None
@@ -562,6 +568,7 @@ class Node:
             comp = bool(peer_commit) and peer_commit.get("sense", "HOLD") != "HOLD"
             return escape.evaluate(o, hold, pp, self.terrain_fn, self.obstacle_fn, sig, hold_s=hold_s,
                                    require_maneuver=comp, blocked=blocked, peers_alt=alt, go_around=go_around,
+                                   prefer_hold=row_me.stands_on,
                                    max_bank=PILOT_MAX_BANK if pilot_mode else 30.0)
 
         def expected_peer():
@@ -575,7 +582,8 @@ class Node:
             return None if ch is None else {"sense": ch.cand.sense, "bank_deg": abs(ch.cand.bank), "start_t": now,
                                             "hold_s": 10.0, "vs_fpm": ch.cand.vs_fpm}
 
-        dec = self.negotiator.decide(now, pid, evaluate, expected_peer, hold_s=hold_s)
+        dec = self.negotiator.decide(now, pid, evaluate, expected_peer, hold_s=hold_s,
+                                     i_go_first=row_first, stand_on=row_me.stands_on)
         if dec is None:
             self._no_solution(now, pid, c, evaluate(None))
             return
@@ -591,7 +599,8 @@ class Node:
             self._esc_cache[pid] = (now, dec.result)
         ttc = c.ttc_s
         why = dict(res.reason(ttc) if res else {"chosen": dec.cand}, basis=dec.basis, peer_sense=dec.peer_sense, hold_s=hold_s,
-                   method=c.method, predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2))
+                   method=c.method, predicted_miss_ft=round(c.miss_h_ft), confidence=round(c.confidence, 2),
+                   right_of_way={"role": row_me.kind, "rule": row_me.rule, "peer_role": row_peer.kind})
         eligible = (level == "TAKEOVER" and ctx["ap_equipped"] and not ctx["stick_active"]
                     and now >= self._no_takeover_until and self.trust.may_negotiate(pid) and not self.auth.engaged)
         if eligible:
