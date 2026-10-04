@@ -54,10 +54,10 @@ def verify(pub_b64: str, env: dict) -> bool:
 
 
 def node_key(ac_id: str, key_dir: Optional[str] = None) -> "KeyPair":
-    """Per-aircraft key kept on THIS device (~/.flock/keys/<id>.seed), so a restarted node keeps its identity
+    """Per-aircraft key kept on THIS device (~/.arc/keys/<id>.seed), so a restarted node keeps its identity
     (stand-in for a key provisioned at install). A different laptop gets a different key -> registrar refuses it
     until the channel restarts."""
-    key_dir = key_dir or os.environ.get("FLOCK_KEY_DIR") or os.path.join(os.path.expanduser("~"), ".flock", "keys")
+    key_dir = key_dir or os.environ.get("ARC_KEY_DIR") or os.path.join(os.path.expanduser("~"), ".arc", "keys")
     path = os.path.join(key_dir, f"{ac_id}.seed")
     try:
         with open(path, "rb") as f:

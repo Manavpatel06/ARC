@@ -8,7 +8,7 @@ Brief: `lanes/C-radio-mansi.md`. Acceptance: `python radio/accept_c.py` → **14
 |---|---|
 | `client.py` | `RadioClient` — same API as `stubs/loopback_radio.py`. Signs (Ed25519), numbers `seq`, timestamps, validates every message; rejects bad signature / old seq / ±2 s window / schema with a logged reason; HEARTBEAT 0.5 Hz; link LOST after 3 s silence. |
 | `channel.py` | The air. Reads TRUTH (role `channel`); range 4,828 m, loss 10 %, latency 0.3 ± 0.1 s, slot collisions, faults; attaches emulated RSSI/Doppler; mirrors every delivered and dropped packet to the world log with a reason. Pins public keys (registrar). |
-| `crypto.py` | Ed25519 sign/verify, key ring, replay guard; per-aircraft key kept in `~/.flock/keys/`. |
+| `crypto.py` | Ed25519 sign/verify, key ring, replay guard; per-aircraft key kept in `~/.arc/keys/`. |
 | `slots.py` | AIS-style self-organizing TDMA (1 s frame, 20 slots, slot 19 = burst). `python radio/slots.py` prints the collision-rate table. |
 | `evidence.py` | Trust evidence per target: signature, kinematic plausibility, RF consistency, peer corroboration → score 0–1 + evidence strings for `node/trust.py`. |
 | `spoofer.py` | Rogue radio: GHOST7 on final — unsigned / unknown key / impossible kinematics / impersonation / replay; `--sybil 3`. |

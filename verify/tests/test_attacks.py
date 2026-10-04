@@ -28,7 +28,7 @@ def summary(r):
             first.setdefault(x["icao"], x["t"])
     return fake, real_suspect, first
 
-@pytest.mark.parametrize("attack,within_s,n_fakes", [("ghost", 15, 1), ("flock", 15, 4), ("masquerade", 15, 1),
+@pytest.mark.parametrize("attack,within_s,n_fakes", [("ghost", 15, 1), ("swarm", 15, 4), ("masquerade", 15, 1),
                                                     ("replay", 40, 1), ("drift", 100, 1)])
 def test_attack_goes_suspect_and_no_real_aircraft_does(attack, within_s, n_fakes):
     r = run(attack, seed=1, secs=150, attack_at=30)

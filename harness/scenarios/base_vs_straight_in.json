@@ -19,7 +19,7 @@
     "offset_s": 0
    },
    "ap": false,
-   "flock": true
+   "arc": true
   }
  ],
  "channel": {

@@ -2,5 +2,5 @@
  "aircraft":[
  {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":46},"ap":true,"human":false},
  {"id":"N204","start":{"leg":"DOWNWIND","runway":"25L","offset_s":38},"ap":true,"human":false},
- {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":true,"flock":true}
+ {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":true,"arc":true}
 ],"channel":{"loss":0.1,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}

@@ -6,5 +6,5 @@
  {"id":"N203","start":{"leg":"BASE","runway":"25L","offset_s":0},"ap":true},
  {"id":"N204","start":{"leg":"FINAL","runway":"25L","offset_s":0},"ap":false},
  {"id":"N311","start":{"leg":"DOWNWIND","runway":"25R","offset_s":20},"ap":true,"camera":true},
- {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"flock":false}
+ {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"arc":false}
 ],"channel":{"loss":0.1,"latency_s":0.3},"weather":"live","spoofer":false,"camera_target":true}

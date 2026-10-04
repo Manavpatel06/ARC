@@ -1,4 +1,4 @@
 {"name":"base_cutoff","aircraft":[
  {"id":"N101","start":{"leg":"DOWNWIND","runway":"25L","offset_s":0},"ap":true,"human":false},
- {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"flock":true}
+ {"id":"N399","start":{"leg":"STRAIGHT_IN","runway":"25L","offset_s":0},"ap":false,"arc":true}
 ],"channel":{"loss":0.0,"latency_s":0.3},"weather":"cached","spoofer":false,"camera_target":false}

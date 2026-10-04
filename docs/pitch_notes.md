@@ -23,8 +23,8 @@ its signals agree with each other, using equipment the plane already has.
 ## Numbers (simulation, `eval/out/report.md`)
 4 seeds × 13 cases, live KDVT traffic: **every attack aircraft detected, 0 real aircraft ever SUSPECT, real
 traffic VERIFIED 98–100 % of the time, 0 false banners**, ROC AUC 0.986.
-Time to SUSPECT (median): ghost 5 s, flock 3 s, ICAO masquerade 1 s, replay ~2 s after its first message,
+Time to SUSPECT (median): ghost 5 s, swarm 3 s, ICAO masquerade 1 s, replay ~2 s after its first message,
 slow drift 73 s (yellow first). No TCAS (beyond range or switched off): lone ghost 21 s (ground-radar
-silence), flock 3 s (one transmitter). Jamming banner 1 s, own-GPS banner 27 s, nobody condemned.
+silence), swarm 3 s (one transmitter). Jamming banner 1 s, own-GPS banner 27 s, nobody condemned.
 Ablation: TCAS alone catches 87 %; all checks together 100 % — and dropping Mode S presence or radar
 timing lets false alarms in. That is why fusion beats any single check.

@@ -11,6 +11,7 @@ if [ "${1:-}" = "--stop" ]; then [ -f $PIDS ] && xargs kill < $PIDS 2>/dev/null;
 SC=harness/scenarios/judges.json; SPOOF=0; STUBS=0; NOLIVE=0; ARC=0; VERIFY=1
 SPMODE=unsigned
 for a in "$@"; do case $a in --spoof) SPOOF=1;; --spoof-mode=*) SPOOF=1; SPMODE=${a#*=};; --stubs) STUBS=1;; --no-live) NOLIVE=1;; --arc|--legacy) ARC=1;; --no-verify) VERIFY=0;; *.json) SC=$a;; esac; done
+[ $ARC = 1 ] && ! printf "%s\n" "$@" | grep -q "\.json$" && SC=harness/scenarios/arc_head_on.json   # --arc alone = the final demo
 W=ws://localhost:8765; : > $PIDS
 start() { name=$1; shift; "$PY" "$@" > "harness/out/run_${name// /_}.log" 2>&1 & echo $! >> $PIDS; echo "  started $name: $*"; }
 $PY data/metar.py
@@ -21,12 +22,12 @@ WARGS=(world/world_server.py --scenario "$SC" --http 8080)
 if [ -f world/world_server.py ]; then start world "${WARGS[@]}"
 else start world-stub stubs/fake_world.py --scenario "$SC"; start web -m http.server 8080 -d web; fi
 for i in $(seq 1 60); do (echo > /dev/tcp/127.0.0.1/8765) 2>/dev/null && break; sleep 0.25; done
-JUDGES=$($PY -c "import json;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('human') and a.get('flock',True)))")
+JUDGES=$($PY -c "import json;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('human') and a.get('arc',True)))")
 [ $VERIFY = 1 ] && for id in $JUDGES; do start "verify $id" verify/unit.py --id $id --world $W; done
 if [ $ARC = 1 ]; then
   if [ -f radio/channel.py ] && [ $STUBS = 0 ]; then start channel radio/channel.py --world $W --loss 0.1 --latency 0.3
   else if [ $SPOOF = 1 ]; then start channel-stub stubs/fake_channel.py --world $W --spoof; else start channel-stub stubs/fake_channel.py --world $W; fi; fi
-  IDS=$($PY -c "import json,sys;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('flock',True)))")
+  IDS=$($PY -c "import json,sys;print(' '.join(a['id'] for a in json.load(open('$SC'))['aircraft'] if a.get('arc',True)))")
   if [ -f node/node.py ] && [ $STUBS = 0 ]; then sleep 2; for id in $IDS; do start "node $id" node/node.py --id $id --world $W --via-channel ws://localhost:8766; done
   else start node-stub stubs/fake_node.py --id N101 --world $W; fi
   [ $SPOOF = 1 ] && [ -f radio/spoofer.py ] && start spoofer radio/spoofer.py --mode $SPMODE --via-channel ws://localhost:8766

@@ -208,7 +208,7 @@ def main():
         e_ta = at_h(rows, hz, pick=lambda r: r["method"] == "turn-aware")
         e_ta_line = at_h(rows, hz, "e_line", pick=lambda r: r["method"] == "turn-aware")
         table.append({"h_s": hz, "n": int(len(e_all)),
-                      "flock_median_m": round(float(np.median(e_all)), 1) if len(e_all) else None,
+                      "arc_median_m": round(float(np.median(e_all)), 1) if len(e_all) else None,
                       "line_median_m": round(float(np.median(e_ln)), 1) if len(e_ln) else None,
                       "turn_aware_n": int(len(e_ta)),
                       "turn_aware_median_m": round(float(np.median(e_ta)), 1) if len(e_ta) else None,
@@ -260,7 +260,7 @@ def main():
            "## Prediction error on real aircraft (median, metres)", "",
            "| ahead | samples | ARC (as run) | straight-line | turn-aware only (n) | same samples, straight-line |", "|---|---|---|---|---|---|"]
     for r in table:
-        rep.append(f"| {r['h_s']} s | {r['n']} | {r['flock_median_m']} | {r['line_median_m']} | {r['turn_aware_median_m']} ({r['turn_aware_n']}) | {r['same_samples_line_median_m']} |")
+        rep.append(f"| {r['h_s']} s | {r['n']} | {r['arc_median_m']} | {r['line_median_m']} | {r['turn_aware_median_m']} ({r['turn_aware_n']}) | {r['same_samples_line_median_m']} |")
     rep += ["", "## Fitted numbers (68 % of real errors inside sigma)", "", "| value | now | fitted | samples |", "|---|---|---|---|",
             f"| straight-line sigma growth (m/s) | 2.5 | {out['fitted']['line_sigma_k']} | {n_line} |",
             f"| turn-aware sigma growth, conf >= 0.8 (m/s) | {0.8 + 1.5 * 0.1:.2f} | {out['fitted']['turn_k_conf_ge_0.8']} | {n_hi} |",

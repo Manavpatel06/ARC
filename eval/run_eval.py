@@ -26,10 +26,10 @@ from eval.sim import run                      # noqa: E402
 from verify.checks import CHECKS              # noqa: E402
 
 OUT = os.path.join(ROOT, "eval", "out")
-TARGET_ATTACKS = ["ghost", "flock", "drift", "replay", "masquerade"]
+TARGET_ATTACKS = ["ghost", "swarm", "drift", "replay", "masquerade"]
 # the hard cases: no TCAS help - far beyond TCAS range, or our own TCAS unavailable
 HARD = {"ghost beyond TCAS (14 NM)": ("ghost", {"ahead_nm": 14.0}, False),
-        "flock beyond TCAS (14 NM)": ("flock", {"ahead_nm": 14.0}, False),
+        "swarm beyond TCAS (14 NM)": ("swarm", {"ahead_nm": 14.0}, False),
         "ghost, own TCAS off": ("ghost", None, True),
         "masquerade, own TCAS off": ("masquerade", None, True),
         "quiet, own TCAS off": (None, None, True)}
@@ -181,7 +181,7 @@ def write_report(per_attack, curve, abl, seeds, secs):
                  f"{pct(v['false_alarm_time'])} | {pct(v['real_verified_time'])} |")
     L += ["", "Replay re-broadcasts positions 60 s old, so it only starts transmitting ~30 s after the attack is switched "
           "on (t = 60 s): it is SUSPECT ~2 s after its first message. Without TCAS a lone ghost waits out the 20 s "
-          "Mode S listening window; a flock is caught sooner by its shared transmitter."]
+          "Mode S listening window; a swarm is caught sooner by its shared transmitter."]
     L += ["", "## Whole-picture attacks (banners)", "", "| attack | banner | raised (median after start) | real aircraft ever SUSPECT |", "|---|---|---|---|"]
     for k, key in BANNER_ATTACKS.items():
         ts = [x["banner_t"].get(key) for x in per_attack[k]]
@@ -201,7 +201,7 @@ def write_report(per_attack, curve, abl, seeds, secs):
     for k, v in abl.items():
         ttd = "–" if v["ttd_median"] is None else f"{v['ttd_median']:.0f} s"
         L.append(f"| {k} | {pct(v['detection'])} | {pct(v['false_alarm_aircraft'])} | {ttd} |")
-    L += ["", "Ablation runs: ghost, flock, drift, replay, masquerade, a quiet run and the five hard cases "
+    L += ["", "Ablation runs: ghost, swarm, drift, replay, masquerade, a quiet run and the five hard cases "
           "(beyond TCAS range / own TCAS off), fewer seeds than above. 'TCAS only' does well inside TCAS range and "
           "fails the hard cases; the other checks carry those."]
     open(os.path.join(OUT, "report.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")

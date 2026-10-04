@@ -61,7 +61,7 @@ INPUT meaning (v1.1; Lane A may tune the constants, not the meaning):
 - Any INPUT with |roll| or |pitch| > 0.1 sets `stick_active=true`; it clears after 1 s without such input. During a TAKEOVER the first such INPUT makes the world send STICK.
 
 ### Cockpit identity (v1.1)
-`web/index.html?role=cockpitA` connects as `role=cockpit:A`; `cockpitB` → `cockpit:B`. The world resolves `A` = first aircraft with `"human":true` in the scenario, `B` = second (in `judges.json`: A = N101, B = N102). Override with `&ac=N102` → page connects as `cockpit:N102`. On connect the world replies `HELLO {"role":"cockpit:N101","ac_id":"N101","scenario":"judges","aircraft":[{"id","human","ap","flock"}...]}` (ids and flags only, no positions). Every role gets HELLO.
+`web/index.html?role=cockpitA` connects as `role=cockpit:A`; `cockpitB` → `cockpit:B`. The world resolves `A` = first aircraft with `"human":true` in the scenario, `B` = second (in `judges.json`: A = N101, B = N102). Override with `&ac=N102` → page connects as `cockpit:N102`. On connect the world replies `HELLO {"role":"cockpit:N101","ac_id":"N101","scenario":"judges","aircraft":[{"id","human","ap","arc"}...]}` (ids and flags only, no positions). Every role gets HELLO.
 
 ### OWNSHIP air vs ground (v1.1)
 `ias_kt`/`hdg_deg` are air data; `gs_kt`/`track_deg` are ground data = air velocity + wind from `data.metar.load()` (`data.metar.wind_vector_ms`). `agl_ft` = `alt_msl_ft − data.terrain.elev_at_ft(lat, lon)` (flat field elevation until the real grid lands).

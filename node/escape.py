@@ -30,7 +30,7 @@ NMAC_H_M = 500 * FT
 NMAC_V_M = 100 * FT
 # NMAC-box multiples a maneuver must achieve to count as "clear with margin".  2.0 balances safety and severity in the
 # Monte Carlo (1.5: NMAC 7 %; 2.0: 3 %, mean bank 22 deg; 2.5: 2 %, mean bank 27 deg, close to the 30 deg cap).
-MARGIN_OK = float(os.environ.get("FLOCK_MARGIN_OK", "2.0"))
+MARGIN_OK = float(os.environ.get("ARC_MARGIN_OK", "2.0"))
 MARGIN_MIN = 1.0                 # inside this the maneuver does not resolve the conflict
 TERRAIN_CLEARANCE_M = 300 * FT
 TERRAIN_FLOOR_MIN_M = 50 * FT      # even on short final no maneuver may go below this over the ground

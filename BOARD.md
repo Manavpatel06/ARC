@@ -30,7 +30,7 @@ Stubs to run while building: `stubs/fake_node.py` (gives views real ADVISORY/TRU
 | A2 | `world/flight_model.py`: 3-DOF, bank-to-turn, bank rate 15°/s, climb vs density altitude, speed envelope. | 1:00 PM | [x] |
 | A3 | `web/index.html?role=cockpitA`: own aircraft moving, Gamepad API → INPUT at 30 Hz, keyboard fallback. Test with `fake_node`. | 1:00 PM ✔ status | [x] |
 | A4 | `web/index.html?role=god`: KDVT map (flat image OK), all aircraft, labels. | 1:00 PM ✔ status | [x] |
-| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `flock=False` flag (aircraft with no node). | 2:30 | [x] |
+| A5 | `world/traffic.py`: AI pattern traffic on 25L, correct legs, 90–100 kt, `arc=False` flag (aircraft with no node). | 2:30 | [x] |
 | A6 | Cesium terrain or three.js fallback — **decide by 2 PM, max 90 min**. | 3:30 | [x] Cesium (2D fallback) |
 | A7 | COMMAND applied only if `ap_equipped` and no stick; STICK event during takeover; RELEASE handled. | 4:00 PM | [x] |
 | A8 | Cockpit: big advisory text, voice (`speechSynthesis`), trust badges, radar display from node TRUST only. | 4:00 PM ✔ status | [x] |
@@ -55,7 +55,7 @@ Stubs to run while building: `stubs/fake_world.py` (OWNSHIP in, COMMAND applied)
 | B7 | `node/negotiate.py`: lower ID commits first, complementary sense; event-driven MANEUVER_COMMIT. | 4:00 PM ✔ status | [x] |
 | B8 | `node/escape.py`: Escape Field — candidates × 30 s forward sim × traffic/terrain/obstacles/performance; reason with rejected list. | 5:00 | [x] |
 | B9 | `node/authority.py`: bounds monitor (separate module), NO_SOLUTION path, RELEASE on STICK within one tick. | 6:00 | [x] |
-| B10 | `harness/montecarlo.py`: ARC vs straight-line chart → `harness/out/flock_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
+| B10 | `harness/montecarlo.py`: ARC vs straight-line chart → `harness/out/arc_vs_baseline.png`. | 7:00 PM ✔ status | [x] |
 | B11 | *Phase 2:* `node/trust.py` consuming Lane C evidence; TRUSTED-only may RESOLVE/TAKEOVER; CAMERA_ONLY = right-of-way only. | 8:30 PM | [x] |  `node.py` attaches `radio.evidence.TrustEvidence` when the real radio is present; TRUST carries `rel` + evidence (tested live with channel.py) |
 | B12 | *Phase 2:* lost link after commit → consistent timeout, both default right; three-on-final scenario. | 10:00 PM | [x] |  lost-link R/R fallback + stale-track handling (`accept_b.py` B12), `three_on_final_conflict.json` added |
 | B13 | *Phase 3:* Marana replay scenario `harness/scenarios/marana_2025.json`. | after go/no-go | [ ] |

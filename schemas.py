@@ -97,7 +97,7 @@ class Hello(BaseModel):
     role: str                   # resolved role, e.g. "cockpit:N101"
     ac_id: Optional[str] = None
     scenario: str = ""
-    aircraft: list[dict] = []   # [{"id","human","ap","flock"}] — ids/flags only, no positions
+    aircraft: list[dict] = []   # [{"id","human","ap","arc"}] — ids/flags only, no positions
 
 class Truth(BaseModel):
     """World -> god + channel ONLY (never node/cockpit), 10 Hz. v1.1"""
@@ -245,7 +245,7 @@ class AircraftSpec(BaseModel):
     ap: bool = False
     human: bool = False
     camera: bool = False
-    flock: bool = True          # False = aircraft with no ARC node at all
+    arc: bool = True          # False = aircraft with no ARC node at all
 
 class Scenario(BaseModel):
     name: str

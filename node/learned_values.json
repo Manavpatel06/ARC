@@ -94,7 +94,7 @@
   {
    "h_s": 10,
    "n": 1526,
-   "flock_median_m": 37.5,
+   "arc_median_m": 37.5,
    "line_median_m": 31.6,
    "turn_aware_n": 526,
    "turn_aware_median_m": 50.6,
@@ -103,7 +103,7 @@
   {
    "h_s": 20,
    "n": 1470,
-   "flock_median_m": 84.9,
+   "arc_median_m": 84.9,
    "line_median_m": 71.8,
    "turn_aware_n": 504,
    "turn_aware_median_m": 105.3,
@@ -112,7 +112,7 @@
   {
    "h_s": 30,
    "n": 1368,
-   "flock_median_m": 188.9,
+   "arc_median_m": 188.9,
    "line_median_m": 159.5,
    "turn_aware_n": 455,
    "turn_aware_median_m": 202.2,
@@ -121,7 +121,7 @@
   {
    "h_s": 45,
    "n": 1218,
-   "flock_median_m": 384.9,
+   "arc_median_m": 384.9,
    "line_median_m": 369.6,
    "turn_aware_n": 405,
    "turn_aware_median_m": 371.7,
@@ -130,7 +130,7 @@
   {
    "h_s": 60,
    "n": 1135,
-   "flock_median_m": 687.4,
+   "arc_median_m": 687.4,
    "line_median_m": 743.3,
    "turn_aware_n": 360,
    "turn_aware_median_m": 624.3,

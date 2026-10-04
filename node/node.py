@@ -46,7 +46,7 @@ PEER_HORIZON_S = 140.0
 OWN_HORIZON_S = 105.0
 COMMIT_RESEND_S = 2.0
 ALERT_REPEAT_S = 60.0          # a target that flaps is announced at most once a minute (quarantine always)
-AIRWITNESS_ON = os.environ.get("FLOCK_AIRWITNESS", "1") != "0"   # 0 = A/B comparison only
+AIRWITNESS_ON = os.environ.get("ARC_AIRWITNESS", "1") != "0"   # 0 = A/B comparison only
 SEQ_HOLD_S = 150.0
 SEQ_HOLD_RANGE_M = 6000.0
 PILOT_MAX_BANK = 45.0

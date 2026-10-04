@@ -6,7 +6,7 @@ degrades what our own equipment receives. world/sensors.py turns them into what 
 receives; the ground-truth labels go to the god view, log and eval only - never to the onboard units.
 
   ghost        ADS-B-only aircraft that does not exist, from a ground transmitter, plausible straight track
-  flock        several ghosts from ONE transmitter (same true position -> same signal strength)
+  swarm        several ghosts from ONE transmitter (same true position -> same signal strength)
   drift        a real aircraft's ADS-B position slowly walks away from the truth ("frog-boiling"); its
                transponder (TCAS, ground radar) still answers from the true position
   replay       an old recording of a real aircraft's ADS-B (its address, its positions ~60 s ago)
@@ -42,7 +42,7 @@ class Emitter:
     tx_lon: float
     tx_alt_ft: float
     transponder: bool          # answers TCAS / ground radar interrogations (real aircraft only)
-    label: str                 # ground truth: "real" | "ghost" | "flock" | "drift" | "replay" | "masquerade"
+    label: str                 # ground truth: "real" | "ghost" | "swarm" | "drift" | "replay" | "masquerade"
     ac_id: str | None = None   # world aircraft id for real aircraft
     attack_id: str | None = None
 
@@ -69,7 +69,7 @@ class Attack:
         return {"id": self.id, "kind": self.kind, "victim": self.victim_id, "since_s": round(self.t - self.t0, 1)}
 
 class _Fake:
-    """One fake aircraft flying a straight line (shared by ghost / flock / masquerade)."""
+    """One fake aircraft flying a straight line (shared by ghost / swarm / masquerade)."""
     def __init__(self, icao, callsign, lat, lon, alt_ft, trk, gs):
         self.icao, self.callsign, self.lat, self.lon, self.alt_ft, self.trk, self.gs = icao, callsign, lat, lon, alt_ft, trk, gs
 
@@ -131,9 +131,9 @@ class Ghost(Attack):
                     lat=round(f.lat, 6), lon=round(f.lon, 6), alt_ft=round(f.alt_ft),
                     tx_lat=round(self.tx[0], 6), tx_lon=round(self.tx[1], 6))
 
-class Flock(Ghost):
+class Swarm(Ghost):
     """Several ghosts, one transmitter: they all arrive with the same signal strength."""
-    kind = label = "flock"
+    kind = label = "swarm"
 
     def __init__(self, attack_id, victim, now, rng, sensors=None, n: int = 4, **kw):
         super().__init__(attack_id, victim, now, rng, sensors, **kw)
@@ -249,7 +249,7 @@ class GpsSpoof(Attack):
     def public(self) -> dict:
         return dict(super().public(), offset_m=round(self.rate * (self.t - self.t0)))
 
-KINDS = {"ghost": Ghost, "flock": Flock, "drift": Drift, "replay": Replay, "masquerade": Masquerade,
+KINDS = {"ghost": Ghost, "swarm": Swarm, "drift": Drift, "replay": Replay, "masquerade": Masquerade,
          "jamming": Jamming, "gps": GpsSpoof}
 
 class AttackSet:

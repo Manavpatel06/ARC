@@ -49,7 +49,7 @@
  },
  {
   "scenario": "head_on_judges",
-  "condition": "no_flock",
+  "condition": "no_arc",
   "seed": 1,
   "min_pair": "N101-N102",
   "min_h_ft": 12,
@@ -263,7 +263,7 @@
  },
  {
   "scenario": "three_on_final",
-  "condition": "no_flock",
+  "condition": "no_arc",
   "seed": 1,
   "min_pair": "N101-N204",
   "min_h_ft": 701,

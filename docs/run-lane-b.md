@@ -27,7 +27,7 @@ Checks and evidence (no network needed):
 ```bash
 python -m pytest node/tests -q            # 25 tests
 python harness/accept_b.py                # 1 PM / 4 PM / 7 PM rows + B12, ~60 s;  add --live to also run against stubs/fake_world.py
-python harness/montecarlo.py --n 30       # chart -> harness/out/flock_vs_baseline.png (~3 min)
+python harness/montecarlo.py --n 30       # chart -> harness/out/arc_vs_baseline.png (~3 min)
 ```
 
 Spoof demo on top of the judges scenario (Mansi's spoofer): `python radio/spoofer.py`, then watch GHOST7 turn FAKE/SUSPICIOUS in the log page and never raise RESOLVE.

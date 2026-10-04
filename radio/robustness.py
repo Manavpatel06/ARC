@@ -20,7 +20,7 @@ PY = sys.executable
 OUT = os.path.join(ROOT, "harness", "out")
 
 CONDITIONS = [
-    ("no_flock", "No ARC (baseline)", dict(loss=None)),
+    ("no_arc", "No ARC (baseline)", dict(loss=None)),
     ("loss0", "Perfect radio (0 % loss)", dict(loss=0.0)),
     ("loss10", "Loss 10 %", dict(loss=0.10)),
     ("loss30", "Loss 30 %", dict(loss=0.30)),
@@ -30,9 +30,9 @@ CONDITIONS = [
 ]
 
 
-def flock_ids(scenario_path: str) -> list[str]:
+def arc_ids(scenario_path: str) -> list[str]:
     sc = json.load(open(scenario_path))
-    return [a["id"] for a in sc["aircraft"] if a.get("flock", True)]
+    return [a["id"] for a in sc["aircraft"] if a.get("arc", True)]
 
 
 async def run_one(scn: str, key: str, cfg: dict, seed: int, slot: int, seconds: float) -> dict:
@@ -55,7 +55,7 @@ async def run_one(scn: str, key: str, cfg: dict, seed: int, slot: int, seconds: 
             start(["radio/channel.py", "--world", world, "--ws-port", str(cport), "--loss", str(cfg["loss"]),
                    "--seed", str(seed), "--log", "all"])
             await asyncio.sleep(1.5)
-            for ac in flock_ids(path):
+            for ac in arc_ids(path):
                 start(["node/node.py", "--id", ac, "--world", world, "--via-channel", f"ws://localhost:{cport}"])
         out_json = os.path.join(OUT, f"rob_{tag}.json")
         e2e = subprocess.Popen([PY, "harness/e2e_check.py", "--world", world, "--seconds", str(seconds), "--out", out_json],
@@ -143,8 +143,8 @@ def write_md(results, a):
             w = min(rs, key=lambda r: (r["min_h_ft"] if r["min_h_ft"] is not None else 1e9))
             nm = max(r["nmac"] for r in rs)
             loss = "–" if w["state_loss_pct"] is None else f"{w['state_loss_pct']:.0f} %"
-            ra = "–" if key == "no_flock" else f"{max(r['resolve'] for r in rs)} / {max(r['takeover'] for r in rs)}"
-            cm = "–" if key == "no_flock" else str(max(r["commits"] for r in rs)) + (" (1st dropped)" if key == "dropcommit" else "")
+            ra = "–" if key == "no_arc" else f"{max(r['resolve'] for r in rs)} / {max(r['takeover'] for r in rs)}"
+            cm = "–" if key == "no_arc" else str(max(r["commits"] for r in rs)) + (" (1st dropped)" if key == "dropcommit" else "")
             lines.append(f"| {label[key]} | {w['min_h_ft']:,} ft / {w['min_v_ft']} ft ({w['min_pair']}) | **{nm}** | {loss} | {ra} | {cm} |")
         lines.append("")
     open(os.path.join(OUT, f"robustness_table{a.tag}.md"), "w").write("\n".join(lines))   # radio/ROBUSTNESS.md is the curated summary

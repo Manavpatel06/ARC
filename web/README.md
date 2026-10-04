@@ -53,7 +53,7 @@ Cockpit controls:
   (only delivered within 3 NM), the node turns it into bearing / range / height difference (TRUST `rel`), and the map
   draws it with distance ("N204 1.2 NM +02"), a line from your aircraft (solid for the one ARC is warning about),
   a NEAREST readout (distance, clock position, height) and badges sorted by distance. Aircraft without an ARC
-  radio (flock: false) are not heard. Run the real stack (world + radio/channel.py + node/node.py per aircraft,
+  radio (arc: false) are not heard. Run the real stack (world + radio/channel.py + node/node.py per aircraft,
   e.g. run_demo.ps1 on the integration branch) - with only the world running there is no traffic to show.
 - God view "Live sky": real ADS-B aircraft around KDVT (LIVE_TRAFFIC from `python data/live_traffic.py --world ws://<ip>:8765`)
   as small cyan chevrons with callsign, altitude and pattern leg; display only (never sent to nodes), fades when the

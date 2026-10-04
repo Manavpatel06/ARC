@@ -1,6 +1,6 @@
 Lane A (Manas). See `lanes/A-world-manas.md`. Files: world_server.py, flight_model.py, traffic.py, scenario.py. Views live in `web/index.html`.
 
-**ARC is now advisory only** (`FLOCK_claude_code_prompt.md`): the world rejects every COMMAND
+**ARC is now advisory only** (`ARC_claude_code_prompt.md`): the world rejects every COMMAND
 (`rejected_by_world: "advisory_only"`); `--allow-takeover` / `run_demo.ps1 -Legacy` keeps the old
 collision-avoidance demo. `sensors.py` simulates what each judge aircraft's own equipment receives (ADS-B,
 TCAS, Mode S, ground radar) for the onboard verification unit (`verify/`, role `avionics:<id>`);

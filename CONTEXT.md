@@ -28,7 +28,7 @@ ARC is a peer-to-peer collision-avoidance node for general aviation (GA), built 
 
 ## Repo layout
 ```
-flock/
+arc/
   CONTEXT.md  INTERFACE.md  PLAN.md  schemas.py  requirements.txt
   world/      # Lane A: world_server.py (physics + WebSocket hub), flight_model.py, traffic.py
   web/        # Lane A (+D for log): index.html?role=cockpitA|cockpitB|god|log
@@ -50,4 +50,4 @@ flock/
 - Physics facts for the pitch (from Friday's sim): head-on 120+120 kt closes 3 mi in 39 s; 30° bank at 120 kt gains ~700 ft lateral in 10 s vs ~150 ft from a 500 fpm climb/descend pair; naive left/right rule left 23% of crossings unresolved, CPA-maximizing negotiation 0%.
 
 ## Demo (Sunday noon, 5 min + 3 min Q&A)
-Four laptops: cockpit A (PS controller 1), cockpit B (PS controller 2), god view on projector, comms log + explain panel. Judges fly; the flock sequences them; they try to crash; warn → negotiate → bounded takeover → handback on stick input; spoofed aircraft is flagged and never acted on. (Camera/CV is cut from the build — see BOARD.md.) All four teammates speak.
+Four laptops: cockpit A (PS controller 1), cockpit B (PS controller 2), god view on projector, comms log + explain panel. Judges fly; ARC sequences them; they try to crash; warn → negotiate → bounded takeover → handback on stick input; spoofed aircraft is flagged and never acted on. (Camera/CV is cut from the build — see BOARD.md.) All four teammates speak.

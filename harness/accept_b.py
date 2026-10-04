@@ -43,7 +43,7 @@ def scenario(name: str, factory, duration=180.0, loss=0.0, latency=0.3, comply=0
     return sim, sim.run(duration)
 
 
-def flock(i):
+def arc(i):
     return Node(i, patterns=PATS)
 
 
@@ -61,7 +61,7 @@ def one_pm() -> None:
     own = SimAircraft("N101", pat, "DOWNWIND", x, y, z, h, 90.0, ap=True)
     d = pat.legs["DOWNWIND"].d
     intr = SimAircraft("N204", pat, None, x + d[0] * 4700, y + d[1] * 4700, z, (h + 180.0) % 360.0, 90.0)
-    sim = Sim(PATS, [own, intr], flock, loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
+    sim = Sim(PATS, [own, intr], arc, loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False)
     res = sim.run(60.0)
     n = own.node
     states = [f for k, _, f in n.sent if k == "radio" and f["msg"] == "STATE"]
@@ -78,7 +78,7 @@ def one_pm() -> None:
 # ------------------------------------------------------------------------------------------ 4 PM
 def four_pm() -> None:
     print("4 PM - base_cutoff: turn-aware leads straight-line; four layers in order; complementary commits")
-    _, rf = scenario("base_cutoff_conflict.json", flock, duration=180.0, follow_sequence=False)
+    _, rf = scenario("base_cutoff_conflict.json", arc, duration=180.0, follow_sequence=False)
     _, rb = scenario("base_cutoff_conflict.json", baseline, duration=180.0, follow_sequence=False)
     tf, tb = min(rf.first_seen_t.values()), min(rb.first_seen_t.values())
     af, ab = min(rf.first_conflict_t.values()), min(rb.first_conflict_t.values())
@@ -142,16 +142,16 @@ def seven_pm() -> None:
     low = os.path.join(_REPO, "harness", "out", "_boxed_low.json")
     json.dump(sc, open(low, "w"))
     ac2 = load_scenario(low, PATS, comply=0.0)
-    res2 = Sim(PATS, ac2, flock, loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False).run(75.0)
+    res2 = Sim(PATS, ac2, arc, loss=0.0, latency_s=0.3, dt=0.1, follow_sequence=False).run(75.0)
     inh = [f for _, i, f in res2.advisories if f["level"] == "RESOLVE" and f["reason"].get("takeover_inhibited")]
     check("below 300 ft AGL on final: ARC warns but does not take over", bool(inh) and not res2.commands,
           f"{inh[0]['text']} | inhibited: {inh[0]['reason']['takeover_inhibited']}" if inh else "no inhibited RESOLVE advisory")
 
     # RELEASE on STICK within one tick
-    _, pre = scenario("base_cutoff_conflict.json", flock, duration=180.0, follow_sequence=False)
+    _, pre = scenario("base_cutoff_conflict.json", arc, duration=180.0, follow_sequence=False)
     t_take = min(t - T0 for t, i, f in pre.commands if f["mode"] == "TAKEOVER")
     t_stick = round(t_take + 2.0, 1)                              # pilot grabs the stick 2 s into the takeover
-    sim3, res3 = scenario("base_cutoff_conflict.json", flock, duration=t_stick + 10.0, follow_sequence=False, stick_events={"N101": t_stick})
+    sim3, res3 = scenario("base_cutoff_conflict.json", arc, duration=t_stick + 10.0, follow_sequence=False, stick_events={"N101": t_stick})
     takes = [t - T0 for t, i, f in res3.commands if f["mode"] == "TAKEOVER"]
     rels = [(t - T0, f["reason"].get("cause")) for t, i, f in res3.commands if f["mode"] == "RELEASE"]
     st = getattr(res3, "stick_release_t", None)
@@ -160,8 +160,8 @@ def seven_pm() -> None:
     check("RELEASE on STICK within one tick, no re-grab for 5 s", ok and not retake,
           f"takeover @ {takes[0]:.1f}s, stick @ {t_stick}s, RELEASE(stick) @ {[t for t, c in rels if c == 'stick']}")
 
-    chart = os.path.join(_REPO, "harness", "out", "flock_vs_baseline.png")
-    check("flock_vs_baseline.png produced (python harness/montecarlo.py)", os.path.exists(chart),
+    chart = os.path.join(_REPO, "harness", "out", "arc_vs_baseline.png")
+    check("arc_vs_baseline.png produced (python harness/montecarlo.py)", os.path.exists(chart),
           f"{chart} ({os.path.getsize(chart) // 1024} kB)" if os.path.exists(chart) else "run harness/montecarlo.py")
 
 
@@ -191,7 +191,7 @@ def live() -> None:
 
 def phase2_b12() -> None:
     print("B12 - lost link after the conflict is seen, and three on final")
-    _, rl = scenario("base_cutoff_conflict.json", flock, duration=130.0, follow_sequence=False, blackout=(72.0, 110.0))
+    _, rl = scenario("base_cutoff_conflict.json", arc, duration=130.0, follow_sequence=False, blackout=(72.0, 110.0))
     fb = [(t - T0, i, f) for t, i, f in rl.advisories if f["reason"].get("basis") == "fallback-link-lost"]
     cm = {}
     for t, i, b in rl.commits:
@@ -206,7 +206,7 @@ def phase2_b12() -> None:
           f"commits {cm}; R30 blocked for {sorted(blocked) or 'nobody'}; {len(fb)} advisories tagged fallback-link-lost; "
           f"min sep {rl.min_h_m / FT:.0f} ft / {rl.min_v_at_min_h_m / FT:.0f} ft vertical")
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
-    r3 = Sim(PATS, ac, flock, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
+    r3 = Sim(PATS, ac, arc, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
     ac = load_scenario(os.path.join(_REPO, "harness", "scenarios", "three_on_final_conflict.json"), PATS, comply=0.7)
     rn = Sim(PATS, ac, None, loss=0.1, latency_s=0.3, dt=0.1, seed=3).run(185.0)
     check("three_on_final: ARC resolves what is an NMAC without it", rn.nmac and not r3.nmac,

@@ -18,7 +18,7 @@ Clients connect to ws://<host>:8765/?role=<role>:
                    {"type":"SET_WX","update_altimeters":true} (everyone dials the current QNH) /
                    {"type":"RESET_DEMO"}: every judge aircraft back to its scenario start, AI traffic on
                    those starts removed (WORLD_EVENT RESET per judge + RESET_DEMO).
-ARC verification (advisory only, receive only - FLOCK_claude_code_prompt.md):
+ARC verification (advisory only, receive only - ARC_claude_code_prompt.md):
   avionics:<id>    the onboard unit (verify/unit.py) of judge aircraft <id>. Gets ONLY what that aircraft's
                    own equipment receives (world/sensors.py): {"type":"SENSORS","t","ac_id","msgs":[...]} at
                    10 Hz - ADS-B it hears, own TCAS tracks, Mode S replies, 1030 interrogations, own-ship

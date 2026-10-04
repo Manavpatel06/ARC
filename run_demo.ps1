@@ -8,6 +8,7 @@ run_demo.ps1 — start the whole ARC demo on the world laptop (Windows PowerShel
   .\run_demo.ps1 -Spoof -SpoofArgs "--sybil 3"      # extra spoofer flags passed through as-is
   .\run_demo.ps1 -Stubs                            # force stub node/channel (if a real one is broken)
   .\run_demo.ps1 -Stop                             # stop everything this script started
+  .\run_demo.ps1 -Arc                             # FINAL DEMO: arc_head_on.json, both judges 5 NM apart nose to nose
   .\run_demo.ps1 -Arc -Scenario harness\scenarios\head_on_judges.json   # ARC: collision avoidance (radio nodes, takeover)
                                                    #   + verification units in the same run (god view attacks)
   .\run_demo.ps1 -Legacy                          # same as -Arc (old name)
@@ -48,6 +49,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+if ($Legacy -and -not $PSBoundParameters.ContainsKey("Scenario")) { $Scenario = "harness\scenarios\arc_head_on.json" }   # -Arc alone = the final demo
 $env:PYTHONIOENCODING = "utf-8"        # data/metar.py prints arrows; the Windows console codepage can't
 $PidFile = Join-Path $PSScriptRoot $(if ($WorldPort -eq 8765) { ".demo_pids" } else { ".demo_pids_$WorldPort" })
 
@@ -138,7 +140,7 @@ if (Test-Path "world\world_server.py") {
 else { Start-Role "world(stub)" @("stubs/fake_world.py", "--scenario", $Scenario, "--port", $WorldPort); Start-Role "web" @("-m", "http.server", $HttpPort, "-d", "web") }
 if (-not (Wait-Port $WorldPort)) { Write-Host "World did not open port $WorldPort - check its window." -ForegroundColor Red; exit 1 }
 
-$judges = $sc.aircraft | Where-Object { $_.human -eq $true -and $_.flock -ne $false } | ForEach-Object { $_.id }
+$judges = $sc.aircraft | Where-Object { $_.human -eq $true -and $_.arc -ne $false } | ForEach-Object { $_.id }
 if (-not $NoVerify) {
   # 2. onboard verification unit per judge aircraft: receive only, advisory only (verify/unit.py)
   foreach ($id in $judges) { Start-Role "verify $id" @("verify/unit.py", "--id", $id, "--world", $World) }
@@ -153,12 +155,12 @@ if ($Legacy) {
   }
 
   # 3. one node per ARC aircraft
-  $flock = $sc.aircraft | Where-Object { $_.flock -ne $false } | ForEach-Object { $_.id }
+  $arcIds = $sc.aircraft | Where-Object { $_.arc -ne $false } | ForEach-Object { $_.id }
   if ((Test-Path "node\node.py") -and -not $Stubs) {
-    foreach ($id in $flock) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
+    foreach ($id in $arcIds) { Start-Role "node $id" @("node/node.py", "--id", $id, "--world", $World, "--via-channel", $Chan) }
   } else {
     $first = ($sc.aircraft | Where-Object { $_.human -eq $true } | Select-Object -First 1).id
-    if (-not $first) { $first = $flock[0] }
+    if (-not $first) { $first = $arcIds[0] }
     Start-Role "node $first(stub)" @("stubs/fake_node.py", "--id", $first, "--world", $World)
   }
 

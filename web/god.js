@@ -297,7 +297,7 @@ function onWorldEvent(s, m) {
 // ---------- side panel ----------
 function loadToggles() {
   const def = Object.fromEntries(Object.keys(LAYERS).map((k) => [k, true]));
-  try { return { ...def, ...JSON.parse(localStorage.getItem("flock.god.layers") || "{}") }; } catch { return def; }
+  try { return { ...def, ...JSON.parse(localStorage.getItem("arc.god.layers") || "{}") }; } catch { return def; }
 }
 
 function buildToggles(s) {
@@ -308,7 +308,7 @@ function buildToggles(s) {
     const k = e.target.dataset.layer;
     if (!k) return;
     s.show[k] = e.target.checked;
-    try { localStorage.setItem("flock.god.layers", JSON.stringify(s.show)); } catch { /* private mode */ }
+    try { localStorage.setItem("arc.god.layers", JSON.stringify(s.show)); } catch { /* private mode */ }
   });
 }
 
@@ -402,7 +402,7 @@ function renderTable(s) {
   const rows = [...s.ac.values()].sort((a, b) => a.ac_id.localeCompare(b.ac_id)).map((a) => {
     const adv = s.adv.get(a.ac_id);
     const lvl = adv && s.t - adv.t < ADV_TTL_S && adv.level !== "CLEAR" ? adv.level : "";
-    const kind = a.human ? "human" : a.flock ? "ai" : "noflock";
+    const kind = a.human ? "human" : a.arc ? "ai" : "noarc";
     const vs = Math.round(a.vs_fpm / 50) * 50;
     return `<tr data-kind="${kind}" data-mode="${a.mode}"><td>${a.ac_id}</td><td>${a.leg ?? ""}</td>`
       + `<td>${Math.round(a.alt_msl_ft)}</td><td>${vs > 0 ? "+" : ""}${vs}</td><td>${Math.round(a.ias_kt)}</td>`
@@ -657,9 +657,9 @@ function draw(cv, s) {
   // aircraft
   for (const a of s.ac.values()) {
     const [x, y] = LL(a.lat, a.lon);
-    const col = css(a.mode === "COMMAND" ? "var(--lvl-takeover)" : a.human ? "var(--own)" : a.flock ? "var(--ai)" : "var(--noflock)");
+    const col = css(a.mode === "COMMAND" ? "var(--lvl-takeover)" : a.human ? "var(--own)" : a.arc ? "var(--ai)" : "var(--noarc)");
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.5 * k;
-    drawPlane(ctx, x, y, a.hdg_deg * D2R, (a.human ? 13 : 11) * k, a.flock);   // no ARC node: outline only
+    drawPlane(ctx, x, y, a.hdg_deg * D2R, (a.human ? 13 : 11) * k, a.arc);   // no ARC node: outline only
 
     // takeover box + countdown
     const c = s.cmd.get(a.ac_id);

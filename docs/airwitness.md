@@ -5,7 +5,7 @@
 > prove anything, nothing waits for an answer, and low trust never deletes traffic.
 
 Code: `node/airwitness.py` (engine), wired in `node/node.py` and `node/trust.py`. Tests: `node/tests/test_airwitness.py`
-(spec tests 1–27 plus regression checks). Attacks: `python harness/redflock_spoof.py` (14 attacks). Simulated
+(spec tests 1–27 plus regression checks). Attacks: `python harness/redarc_spoof.py` (14 attacks). Simulated
 surveillance: `harness/surveillance_sim.py`. Simulated RF: `harness/rf_sim.py`.
 
 ## What was removed (challenge-response)
@@ -21,9 +21,9 @@ peer to echo it (`"r"`), and it held "no answer to our negotiation" against a pe
 | `AirWitness.tick()` (issue nonces, time them out, count misses, count negotiation misses) | whole method |
 | replay exemption "real owner answered a fresh challenge"; `challenge: PASS / NO RESPONSE / PENDING`; `negotiation: NO ANSWER` penalty | `AirWitness.assess` |
 | `extra = self.aw.tick(now)` and the extra challenge/echo HEARTBEATs | `Node._periodic_radio` |
-| N204 answering challenges | `harness/redflock_spoof.py` |
+| N204 answering challenges | `harness/redarc_spoof.py` |
 
-`git diff d266114 -- node/airwitness.py node/node.py harness/redflock_spoof.py` shows every removed line;
+`git diff d266114 -- node/airwitness.py node/node.py harness/redarc_spoof.py` shows every removed line;
 `test_no_challenge_path_left` fails if a `tick`, `nonce` or `chal_` path comes back or a HEARTBEAT carries anything
 but `alive` and the passive digest `w`.
 
@@ -96,7 +96,7 @@ evidence line, P(real/spoof/faulty) and the authority list; `TrustResult.explain
 - False positives: 0 spoof alerts and 0 SUSPICIOUS/QUARANTINED real peers in the same 420 legitimate encounters.
   (The first run found one, a vertical-speed change of > 1500 fpm/s when a simulated pilot ended a maneuver; the
   limit is now 3000 fpm/s, ~1.5 g, so an abrupt push-over or go-around passes.)
-- RED ARC (`python harness/redflock_spoof.py`): 14/14 attacks blocked. No spoof was ever VERIFIED, got negotiation or
+- RED ARC (`python harness/redarc_spoof.py`): 14/14 attacks blocked. No spoof was ever VERIFIED, got negotiation or
   a 4D contract, caused an automatic maneuver, or pushed the escape choice to one unsafe if it is fake.
 
 | attack | worst state | flagged | quarantined |

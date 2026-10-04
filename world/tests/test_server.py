@@ -116,7 +116,7 @@ def test_advisory_goes_to_own_cockpit_god_and_log_only_and_id_is_enforced(world)
     assert any(x["type"] == "ADVISORY" for x in god)
     assert any(x["type"] == "LOG" and x["payload"].get("type") == "ADVISORY" for x in log)
 
-def test_command_always_refused_flock_is_advisory_only(world):
+def test_command_always_refused_arc_is_advisory_only(world):
     cmd = {"type": "COMMAND", "ac_id": "N102", "t": 0, "mode": "TAKEOVER", "bank_cmd_deg": -20, "hold_s": 5}
     ck102, _, god, _ = run(_node_and_watchers(world, [cmd]))
     c = [x for x in god if x["type"] == "COMMAND"]

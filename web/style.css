@@ -13,7 +13,7 @@
   --ground: #7a5230;
   --own: #ffd400;          /* judge aircraft / ownship symbol */
   --ai: #e6edf3;
-  --noflock: #8b98a5;
+  --noarc: #8b98a5;
   --map-bg: #0d1218;
   --grid: #1a2430;
   --grid-strong: #2c3a4a;
@@ -208,7 +208,7 @@ h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: v
 .god-table td { padding: 3px 3px; border-bottom: 1px solid var(--panel-2); white-space: nowrap; }
 .god-table td:nth-child(2) { max-width: 76px; overflow: hidden; text-overflow: ellipsis; }
 .god-table tr[data-kind="human"] td:first-child { color: var(--own); font-weight: 700; }
-.god-table tr[data-kind="noflock"] td:first-child { color: var(--noflock); }
+.god-table tr[data-kind="noarc"] td:first-child { color: var(--noarc); }
 .god-table tr[data-mode="COMMAND"] td { color: var(--lvl-takeover); }
 .god-table td[data-level="SEQUENCE"] { color: var(--lvl-seq); }
 .god-table td[data-level="TRAFFIC"] { color: var(--lvl-traffic); }

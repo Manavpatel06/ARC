@@ -394,13 +394,13 @@ def test_26_trust_robust_escape_prefers_safe_under_both():
 # 27
 def test_27_monte_carlo_does_not_regress():
     from harness.montecarlo import run_one
-    rows = [run_one((k, s, 0.1, 0.3, ("none", "flock"))) for k, s in (("head_on_crosswind", 3), ("overtake_downwind", 5),
+    rows = [run_one((k, s, 0.1, 0.3, ("none", "arc"))) for k, s in (("head_on_crosswind", 3), ("overtake_downwind", 5),
                                                                           ("spaced_pattern", 2))]
     for r in rows:
-        if "flock" in r and r.get("label") == "conflict":
-            assert r["flock"]["margin"] >= r["none"]["margin"]
+        if "arc" in r and r.get("label") == "conflict":
+            assert r["arc"]["margin"] >= r["none"]["margin"]
         if r.get("label") == "benign":
-            assert not r["flock"]["maneuvered"]
+            assert not r["arc"]["maneuvered"]
 
 
 # ---- regression / passive-design checks

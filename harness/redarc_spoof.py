@@ -1,5 +1,5 @@
 """
-harness/redflock_spoof.py — RED ARC attacks AirWitness-Hybrid (passive) on the real node (Lane B).
+harness/redarc_spoof.py — RED ARC attacks AirWitness-Hybrid (passive) on the real node (Lane B).
 
 Our aircraft N101 (autopilot-equipped) flies the 25L downwind.  N204 is a legitimate ARC aircraft (signed, its own
 session id), well clear to the north.  The attacker's ground transmitter sits 3 km behind our start point.  Each
@@ -25,7 +25,7 @@ Security objective (what RED ARC is rewarded for):  spoof VERIFIED, spoof gets n
 an automatic maneuver, spoof deforms the escape choice into one that is unsafe if the target is fake.
 Pass = none of those four, and the real N204 keeps VERIFIED (except attack 8, where N204's identity is the victim).
 
-    python harness/redflock_spoof.py
+    python harness/redarc_spoof.py
 """
 from __future__ import annotations
 

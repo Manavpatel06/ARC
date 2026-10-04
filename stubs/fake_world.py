@@ -52,7 +52,7 @@ class Aircraft:
     hdg_deg: float
     ap_equipped: bool = False
     human: bool = False
-    flock: bool = True
+    arc: bool = True
     bank_deg: float = 0.0
     vs_fpm: float = 0.0
     tgt_bank: float = 0.0
@@ -107,7 +107,7 @@ def spawn(spec: dict) -> Aircraft:
     gs = 95.0 if spec.get("human") is False and not spec.get("ap") else 90.0
     p = place(s.get("leg", "DOWNWIND"), s.get("runway", "25L"), s.get("offset_s", 0), gs, s.get("agl_ft"))
     return Aircraft(spec["id"], p["lat"], p["lon"], p["alt_msl_ft"], gs, p["hdg_deg"],
-                    ap_equipped=spec.get("ap", False), human=spec.get("human", False), flock=spec.get("flock", True))
+                    ap_equipped=spec.get("ap", False), human=spec.get("human", False), arc=spec.get("arc", True))
 
 def default_fleet() -> dict[str, Aircraft]:
     n101 = place("DOWNWIND", "25L", offset_s=0, gs_kt=90)
@@ -165,7 +165,7 @@ class Hub:
         role, ac_id = self.resolve(q.get("role", ["god"])[0])
         self.clients[ws] = role
         hello = {"type": "HELLO", "role": role, "ac_id": ac_id, "scenario": self.scenario,
-                 "aircraft": [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "flock": a.flock} for a in self.fleet.values()]}
+                 "aircraft": [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "arc": a.arc} for a in self.fleet.values()]}
         if role in ("god", "log") or role.startswith("cockpit:"):
             hello["static"] = {"metar": self.wx, "da_field_ft": self.da_ft, "scenario": self.scenario}
         if role == "log":     # same as world/world_server.py: log consumers only get LOG frames

@@ -230,7 +230,7 @@ def test_scenario_weather_pin():
 
 # ---------------------------------------------------------------- separation + scenarios
 @pytest.mark.parametrize("name,expect", [("base_vs_straight_in", "NMAC"), ("three_on_final", "NMAC"), ("head_on_judges", "COLLISION")])
-def test_conflict_scenarios_still_conflict_without_flock(name, expect):
+def test_conflict_scenarios_still_conflict_without_arc(name, expect):
     w = scn(f"{name}.json"); sep = SeparationMonitor(); kinds = set()
     def rec(t):
         if round(t / DT) % 2 == 0:

@@ -86,7 +86,7 @@ class SensorSim:
         return out + self.attacks.emitters()
 
     def own_ships(self) -> list:
-        return [ac for ac in self.w.fleet.values() if ac.human and ac.flock]
+        return [ac for ac in self.w.fleet.values() if ac.human and ac.arc]
 
     # ---------- per tick ----------
     def step(self, now: float, own_ids=None) -> dict[str, list[dict]]:

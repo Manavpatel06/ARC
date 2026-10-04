@@ -20,7 +20,7 @@
    "n_fake": 4,
    "n_real": 31
   },
-  "flock": {
+  "swarm": {
    "detection": 1.0,
    "false_alarm_aircraft": 0.0,
    "false_alarm_time": 0.0,
@@ -90,7 +90,7 @@
    "n_fake": 4,
    "n_real": 31
   },
-  "flock beyond TCAS (14 NM)": {
+  "swarm beyond TCAS (14 NM)": {
    "detection": 1.0,
    "false_alarm_aircraft": 0.0,
    "false_alarm_time": 0.0,

@@ -1,0 +1,14 @@
+{
+ "name": "arc_head_on",
+ "note": "Final demo: two judge aircraft 5 NM apart, flying straight at each other over KDVT at the same altitude (2,500 ft MSL, ~100 kt each). Without ARC they meet head-on after about 90 s. God view Reset demo puts both back here.",
+ "runway_flow": "25",
+ "channel": {"loss": 0.1, "latency_s": 0.3},
+ "weather": "cached",
+ "spoofer": false,
+ "camera_target": false,
+ "live_sky_in_cockpit": true,
+ "aircraft": [
+  {"id": "N101", "start": {"leg": "INBOUND", "from_deg": 0, "dist_nm": 2.5, "runway": "NORTH", "alt_msl_ft": 2500}, "ap": true, "human": true},
+  {"id": "N102", "start": {"leg": "INBOUND", "from_deg": 180, "dist_nm": 2.5, "runway": "SOUTH", "alt_msl_ft": 2500}, "ap": true, "human": true}
+ ]
+}

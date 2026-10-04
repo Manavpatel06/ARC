@@ -2,7 +2,7 @@
 //
 // Cesium is pinned and loaded on demand from jsDelivr. If it cannot load (no internet on the
 // hotspot) callers fall back to the 2D views.
-// Ion token: pass ?ion=<token> once; it is kept in localStorage ("flock.ion") on that laptop.
+// Ion token: pass ?ion=<token> once; it is kept in localStorage ("arc.ion") on that laptop.
 //   with a token    -> Cesium World Terrain + ion imagery + OSM Buildings
 //   without a token -> OpenStreetMap imagery on the flat ellipsoid (heights drawn AGL)
 
@@ -34,8 +34,8 @@ export function loadCesium(timeoutMs = 30000) {   // generous: venue hotspots ca
 export function ionToken() {
   const q = new URLSearchParams(location.search).get("ion");
   try {
-    if (q) localStorage.setItem("flock.ion", q);
-    return q || localStorage.getItem("flock.ion") || "";
+    if (q) localStorage.setItem("arc.ion", q);
+    return q || localStorage.getItem("arc.ion") || "";
   } catch {
     return q || "";
   }

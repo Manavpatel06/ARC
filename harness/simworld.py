@@ -52,12 +52,12 @@ class Maneuver:
 
 class SimAircraft:
     def __init__(self, ac_id: str, pat: Pattern, leg: Optional[str], x: float, y: float, z: float, hdg: float,
-                 v_kt: float, ap: bool = False, flock: bool = True, human: bool = True, pilot_bank: float = 20.0,
+                 v_kt: float, ap: bool = False, arc: bool = True, human: bool = True, pilot_bank: float = 20.0,
                  lead_scale: float = 1.0, comply: float = 0.7, react_s: float = 5.0, gps_sigma_m: float = 3.0):
         self.id, self.pat = ac_id, pat
         self.x, self.y, self.z, self.hdg, self.v = x, y, z, hdg, v_kt * KT
         self.bank, self.vs = 0.0, 0.0
-        self.ap, self.flock, self.human = ap, flock, human
+        self.ap, self.arc, self.human = ap, arc, human
         self.pilot_bank, self.lead_scale = pilot_bank, lead_scale
         self.comply, self.react_s = comply, react_s
         self.gps_sigma = gps_sigma_m
@@ -202,7 +202,7 @@ class Sim:
         self.pair = pair or tuple(list(self.aircraft)[:2])
         if node_factory:
             for a in aircraft:
-                if a.flock:
+                if a.arc:
                     a.node = node_factory(a.id)
 
     # --- radio
@@ -357,5 +357,5 @@ def load_scenario(path: str, patterns: dict, speed_kt: float = 90.0, comply: flo
         x, y, h = pl["x_m"], pl["y_m"], pl["hdg_deg"]
         z = pat.elev_m + pl["agl_ft"] * FT
         out.append(SimAircraft(spec["id"], pat, pl["leg"], x, y, z, h, speed_kt, ap=spec.get("ap", False),
-                               flock=spec.get("flock", True), human=True, comply=comply))
+                               arc=spec.get("arc", True), human=True, comply=comply))
     return out

@@ -9,7 +9,7 @@ Re-run everything:
 ```
 python -m pytest -q
 python harness/accept_b.py
-python harness/redflock_spoof.py
+python harness/redarc_spoof.py
 python harness/montecarlo.py --n 60
 ```
 
@@ -18,7 +18,7 @@ python harness/montecarlo.py --n 60
 See every removed line with:
 
 ```
-git diff d266114 8634fdf -- node/airwitness.py node/node.py harness/redflock_spoof.py
+git diff d266114 8634fdf -- node/airwitness.py node/node.py harness/redarc_spoof.py
 ```
 
 | Removed | File / function | What it did |
@@ -32,7 +32,7 @@ git diff d266114 8634fdf -- node/airwitness.py node/node.py harness/redflock_spo
 | `challenge: PASS / NO RESPONSE / PENDING` check and its score penalty | `AirWitness.assess` | — |
 | `negotiation: NO ANSWER xN` penalty | `AirWitness.assess` | negotiation is now positive-only evidence; silence costs nothing |
 | `extra = self.aw.tick(now)` + challenge/echo HEARTBEATs | `node/node.py` `Node._periodic_radio` | HEARTBEAT is now only `{"alive": true, "w": <passive witness digest>}` |
-| N204 answering our challenges | `harness/redflock_spoof.py` | — |
+| N204 answering our challenges | `harness/redarc_spoof.py` | — |
 
 Guard against it coming back: `node/tests/test_airwitness.py::test_no_challenge_path_left` fails if `AirWitness.tick`,
 `nonce` or `chal_` reappear, or if a HEARTBEAT carries anything except `alive` and `w`.

@@ -2,9 +2,9 @@
 
 Peer-to-peer collision avoidance for general aviation. Devils Invent "Future-Ready Avionics" (Honeywell Aerospace), PS 2. Team: Manav · Manas · Reya · Mansi.
 
-GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
+GitHub: https://github.com/Manavpatel06/ARC — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
 
-> **Now: advisory-only traffic VERIFICATION** (`FLOCK_claude_code_prompt.md`). ARC checks that every aircraft on
+> **Now: advisory-only traffic VERIFICATION** (`ARC_claude_code_prompt.md`). ARC checks that every aircraft on
 > the traffic display really exists — TCAS, Mode S, 1030/1090 timing, signal strength, one-transmitter clusters,
 > kinematics, replay — and never flies the aircraft or transmits. Start: `.\run_demo.ps1 -Scenario
 > harness\scenarios\live_kdvt.json`; read `verify/README.md`, `docs/architecture.md`, `docs/demo_script.md`;
@@ -31,7 +31,7 @@ Finished your rows? Take from the **Pull Queue** at the bottom of `BOARD.md`. Bl
 
 ## Setup (everyone, 10 minutes)
 ```
-git clone https://github.com/Manavpatel06/FLOCK.git && cd FLOCK
+git clone https://github.com/Manavpatel06/ARC.git && cd ARC
 git checkout -b lane-<x>-<name>   # see CONTRIBUTING.md
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt

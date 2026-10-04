@@ -119,7 +119,7 @@ class Aircraft:
     ap_equipped: bool = False
     human: bool = False
     camera: bool = False
-    flock: bool = True
+    arc: bool = True
     bank_deg: float = 0.0
     vs_fpm: float = 0.0
     flaps: int = 0
@@ -376,7 +376,7 @@ class Aircraft:
         """TRUTH entry for god/channel: OWNSHIP + world-only fields."""
         d = self.ownship(now)
         leg = getattr(self.autopilot, "leg", None)
-        d.update({"human": self.human, "camera": self.camera, "flock": self.flock,
+        d.update({"human": self.human, "camera": self.camera, "arc": self.arc,
                   "mode": self.mode, "leg": leg, "on_ground": self.on_ground,
                   "ap_phase": self.ap_phase})
         return d

@@ -27,7 +27,7 @@ Inference: a likelihood update over three hypotheses (REAL, SPOOF, FAULTY_OR_UNV
 source, then hard security gates that override it.  Not a flat weighted average.
 
 Pure logic, no I/O.  node/node.py feeds envelopes, OWNSHIP and optional surveillance; tests in
-node/tests/test_airwitness.py; attacks in harness/redflock_spoof.py; simulated surveillance in harness/surveillance_sim.py.
+node/tests/test_airwitness.py; attacks in harness/redarc_spoof.py; simulated surveillance in harness/surveillance_sim.py.
 """
 from __future__ import annotations
 

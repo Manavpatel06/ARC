@@ -244,7 +244,7 @@ class World:
         ias = 0.0 if pos["leg"] == "RUNWAY" else LEG_IAS[pos["leg"]] + pilot.ias_bias
         ac = Aircraft(spec.id, pos["lat"], pos["lon"], pos["alt_msl_ft"], ias,
                       pos["hdg_deg"], ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
-                      flock=spec.flock, autopilot=pilot)
+                      arc=spec.arc, autopilot=pilot)
         if pos["leg"] == "RUNWAY" and not spec.human:
             pilot.phase = "TAKEOFF"                        # AI departs straight away
         self._settle(ac, stale=initial and self.env.wx.name in STALE_BARO_PRESETS)
@@ -262,7 +262,7 @@ class World:
         pilot = PatternPilot(pat, "DOWNWIND", spec.id)
         pilot.phase, pilot.leg, pilot.transit = "TRANSIT", "INBOUND", (hdg, alt)
         ac = Aircraft(spec.id, lat, lon, alt, 95.0, hdg, ap_equipped=spec.ap, human=spec.human, camera=spec.camera,
-                      flock=spec.flock, autopilot=pilot)
+                      arc=spec.arc, autopilot=pilot)
         self._settle(ac, stale=initial and self.env.wx.name in STALE_BARO_PRESETS)
         return ac
 
@@ -326,7 +326,7 @@ class World:
 
     def roster(self) -> list[dict]:
         """HELLO aircraft list: ids and flags only, no positions."""
-        return [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "flock": a.flock} for a in self.fleet.values()]
+        return [{"id": a.id, "human": a.human, "ap": a.ap_equipped, "arc": a.arc} for a in self.fleet.values()]
 
     def static(self) -> dict:
         """Static picture for the god view and cockpit charts: airport, pattern legs, weather."""

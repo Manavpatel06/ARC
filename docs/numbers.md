@@ -9,7 +9,7 @@ Source: `python harness/montecarlo.py --n 60` — 420 KDVT 25L pattern encounter
 | ARC, default layers (90/35/20/8 s), required margin 2.0 (rerun 4 Oct, same numbers) | 3 % (5/154) | 1,169 ft | 55 s | 3 % | 4 |
 | ARC, SEQUENCE moved to 120 s (120/35/20/8 s), tried 4 Oct, not adopted | 5 % (8/154) | 1,159 ft | 56 s | 3 % | 3 |
 | ARC, earlier alerts and takeover (90/60/35/20 s), tried 4 Oct, not adopted | 16 % (25/154) | 1,227 ft | 55 s | 34 % | 10 |
-| ARC, `FLOCK_LAYERS=early` (90/40/25/8 s) | 3 % (4/154) | 1,224 ft | 55 s | 7 % | 6 |
+| ARC, `ARC_LAYERS=early` (90/40/25/8 s) | 3 % (4/154) | 1,224 ft | 55 s | 7 % | 6 |
 
 Run-to-run spread on one version is a few percentage points on NMAC (we saw 3–6 %), so quote "about 5 %" for the default and "about 3 %" for `early`, not a decimal.
 
@@ -24,7 +24,7 @@ Per-tick compute: about 0.5 ms mean (peaks of 15–20 ms under the parallel Mont
 
 Head-on (`head_on_judges.json`, both AP-equipped, pilots ignoring advice, 10 % loss, 40 seeds): 0 of 40 end inside 700 ft, and all 40 take over right/right. Before the commit-ordering fix 2 of 40 ended at about 250 ft because one aircraft flipped to a left turn at takeover.
 
-Required margin (`FLOCK_MARGIN_OK`, default 2.0 NMAC boxes): 1.5 gave 7 % NMAC after the right-of-way merge, 2.0 gives 3 % (mean bank 22 deg), 2.5 gives 2 % but mean bank 27 deg, close to the 30 deg cap, so 2.0 is the default.
+Required margin (`ARC_MARGIN_OK`, default 2.0 NMAC boxes): 1.5 gave 7 % NMAC after the right-of-way merge, 2.0 gives 3 % (mean bank 22 deg), 2.5 gives 2 % but mean bank 27 deg, close to the 30 deg cap, so 2.0 is the default.
 
 Live end-to-end on one laptop (real `world/world_server.py`, `radio/channel.py`, one `node/node.py` per aircraft, `harness/e2e_check.py`):
 - `head_on_judges.json`, nobody on the sticks: SEQUENCE -> TRAFFIC -> RESOLVE -> TAKEOVER (both) -> RELEASE -> CLEAR, 954 ft, 0 NMAC.

@@ -28,8 +28,8 @@ PATTERN_BANK_DEG = 20.0
 # 1-sigma starting position error. 14 CFR 91.227 allows ADS-B position error up to 0.05 NM (92.6 m, 95 %), i.e. ~46 m
 # 1-sigma at the certification limit. Tested Sat Oct 3: 46 m made resolution WORSE (escape subtracts the same sigma
 # from every candidate's margin, so almost nothing qualifies as "safe with margin"; three_on_final seed 3 -> 474 ft
-# NMAC). Default stays 15 m; FLOCK_SIGMA0_M=46 reproduces the certification-limit run.
-SIGMA0_M = float(os.environ.get("FLOCK_SIGMA0_M", "15.0"))
+# NMAC). Default stays 15 m; ARC_SIGMA0_M=46 reproduces the certification-limit run.
+SIGMA0_M = float(os.environ.get("ARC_SIGMA0_M", "15.0"))
 SIGMA_V0_M = 3.0
 CLIMB_MS = 500 * FT / 60.0
 DESC_BASE_MS = 500 * FT / 60.0

@@ -63,11 +63,11 @@ run(0.5);
   pad.buttons[6] = btn(0); pad.buttons[7] = btn(0); run(0.5);
   check("input: reset bar at ~50 % after 2.5 s of L2+R2", Math.abs(mid - 0.5) < 0.05, mid.toFixed(2));
   check("input: L2+R2 together leave the throttle alone", Math.abs(thrBoth - thr0) < 1e-9);
-  check("input: letting go cancels the reset", st.resetProgress === 0 && !fired.some((f) => f[0] === "flock:reset"));
+  check("input: letting go cancels the reset", st.resetProgress === 0 && !fired.some((f) => f[0] === "arc:reset"));
   pad.buttons[6] = btn(1); pad.buttons[7] = btn(1); run(6); pad.buttons[6] = btn(0); pad.buttons[7] = btn(0); run(0.3);
-  check("input: a 5 s hold fires exactly one reset", fired.filter((f) => f[0] === "flock:reset").length === 1);
+  check("input: a 5 s hold fires exactly one reset", fired.filter((f) => f[0] === "arc:reset").length === 1);
   key("keydown", "KeyR"); run(5.5); key("keyup", "KeyR"); run(0.2);
-  check("input: holding R also resets", fired.filter((f) => f[0] === "flock:reset").length === 2);
+  check("input: holding R also resets", fired.filter((f) => f[0] === "arc:reset").length === 2);
 }
 {
   const before = fired.length;
@@ -75,8 +75,8 @@ run(0.5);
   pad.buttons[3] = btn(1); run(0.2); pad.buttons[3] = btn(0); run(0.2);
   pad.buttons[12] = btn(1); run(0.1); pad.buttons[12] = btn(0); run(0.1);
   const evs = fired.slice(before).map((f) => f[0]);
-  check("input: Cross/A = one AP toggle per press (held 1 s)", evs.filter((e) => e === "flock:ap").length === 1, evs.join(","));
-  check("input: Triangle/Y = chase, D-pad up = map range", evs.includes("flock:chase") && evs.includes("flock:map-out"));
+  check("input: Cross/A = one AP toggle per press (held 1 s)", evs.filter((e) => e === "arc:ap").length === 1, evs.join(","));
+  check("input: Triangle/Y = chase, D-pad up = map range", evs.includes("arc:chase") && evs.includes("arc:map-out"));
 }
 {
   pad.axes[0] = 0.9; run(0.2); pad.axes[0] = 0;               // move the stick so INPUT is being sent

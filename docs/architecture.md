@@ -7,7 +7,7 @@ ignore TCAS. (The earlier collision-avoidance demo still runs with `run_demo.ps1
 
 ```
  world (truth: physics, live traffic, weather)          data/live_traffic.py --record   sources/sdr_beast.py
-   │  world/attacks.py  (ghost, flock, drift, replay,          │ (real ADS-B, recorded)          │ (RTL-SDR, Beast,
+   │  world/attacks.py  (ghost, swarm, drift, replay,          │ (real ADS-B, recorded)          │ (RTL-SDR, Beast,
    │                     masquerade, jamming, own-GPS)         ▼                                 │  receive only)
    ▼                                                    world/replay.py                         ▼
  world/sensors.py — what each judge aircraft's OWN equipment receives        normalized SensorMsg

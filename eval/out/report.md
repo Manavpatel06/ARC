@@ -10,17 +10,17 @@ Simulated sensors (world/sensors.py) and attacks (world/attacks.py); ground trut
 |---|---|---|---|---|---|---|
 | none | 0 | – | – | 0 % of 31 | 0 % | 99 % |
 | ghost | 4 | 100 % | 5 s / 5 s | 0 % of 31 | 0 % | 99 % |
-| flock | 16 | 100 % | 3 s / 5 s | 0 % of 31 | 0 % | 99 % |
+| swarm | 16 | 100 % | 3 s / 5 s | 0 % of 31 | 0 % | 99 % |
 | drift | 4 | 100 % | 73 s / 76 s | 0 % of 31 | 0 % | 99 % |
 | replay | 4 | 100 % | 32 s / 32 s | 0 % of 31 | 0 % | 99 % |
 | masquerade | 4 | 100 % | 1 s / 1 s | 0 % of 31 | 0 % | 99 % |
 | ghost beyond TCAS (14 NM) | 4 | 100 % | 21 s / 21 s | 0 % of 31 | 0 % | 99 % |
-| flock beyond TCAS (14 NM) | 16 | 100 % | 3 s / 8 s | 0 % of 31 | 0 % | 99 % |
+| swarm beyond TCAS (14 NM) | 16 | 100 % | 3 s / 8 s | 0 % of 31 | 0 % | 99 % |
 | ghost, own TCAS off | 4 | 100 % | 21 s / 21 s | 0 % of 31 | 0 % | 100 % |
 | masquerade, own TCAS off | 4 | 100 % | 1 s / 21 s | 0 % of 31 | 0 % | 98 % |
 | quiet, own TCAS off | 0 | – | – | 0 % of 31 | 0 % | 100 % |
 
-Replay re-broadcasts positions 60 s old, so it only starts transmitting ~30 s after the attack is switched on (t = 60 s): it is SUSPECT ~2 s after its first message. Without TCAS a lone ghost waits out the 20 s Mode S listening window; a flock is caught sooner by its shared transmitter.
+Replay re-broadcasts positions 60 s old, so it only starts transmitting ~30 s after the attack is switched on (t = 60 s): it is SUSPECT ~2 s after its first message. Without TCAS a lone ghost waits out the 20 s Mode S listening window; a swarm is caught sooner by its shared transmitter.
 
 ## Whole-picture attacks (banners)
 
@@ -61,4 +61,4 @@ Drift is slow by design: the attack walks the position 12 m/s, and ARC flags it 
 | TCAS only | 87 % | 0 % | 5 s |
 | no TCAS | 93 % | 0 % | 3 s |
 
-Ablation runs: ghost, flock, drift, replay, masquerade, a quiet run and the five hard cases (beyond TCAS range / own TCAS off), fewer seeds than above. 'TCAS only' does well inside TCAS range and fails the hard cases; the other checks carry those.
+Ablation runs: ghost, swarm, drift, replay, masquerade, a quiet run and the five hard cases (beyond TCAS range / own TCAS off), fewer seeds than above. 'TCAS only' does well inside TCAS range and fails the hard cases; the other checks carry those.

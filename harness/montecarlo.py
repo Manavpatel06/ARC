@@ -8,14 +8,14 @@ Encounter set (KDVT 25L left traffic, seeded, randomised pilot behaviour):
 Each encounter is flown three times from the same seed:
   none      nobody runs anything (labels the encounter: true NMAC / close / benign)
   baseline  harness/baseline.py  - straight-line prediction, fixed R30 turn, no sequencing/negotiation
-  flock     node/node.py         - turn-aware prediction, Escape Field, negotiation, sequencing
+  arc     node/node.py         - turn-aware prediction, Escape Field, negotiation, sequencing
 
 Both logics share thresholds (90/35/20/8 s), sigma growth, the bounds monitor, radio loss/latency and the
 same pilot model (5 s reaction, 70 % comply with an advisory; AP-equipped aircraft take over at 8 s).
 Metrics: NMAC rate, warning lead time before the closest approach, maneuver severity (bank), nuisance alerts.
 
 Run:  python harness/montecarlo.py [--n 30] [--workers 4] [--loss 0.1] [--latency 0.3]
-Out:  harness/out/flock_vs_baseline.png (+ .json)
+Out:  harness/out/arc_vs_baseline.png (+ .json)
 
 Everything here is simulation under the published geometry.  It shows a timely intervention under these
 assumptions; it does not claim that any real accident would have been prevented.
@@ -83,8 +83,8 @@ def make_encounter(kind: str, seed: int, pats: dict) -> list[SimAircraft]:
     dw = pat.legs["DOWNWIND"]
     bs = pat.legs["BASE"]
 
-    def ac(ac_id, leg, x, y, z, h, kt, p, flock=True):
-        return SimAircraft(ac_id, pat, leg, x, y, z, h, kt, ap=p["ap"], flock=flock, human=True,
+    def ac(ac_id, leg, x, y, z, h, kt, p, arc=True):
+        return SimAircraft(ac_id, pat, leg, x, y, z, h, kt, ap=p["ap"], arc=arc, human=True,
                            pilot_bank=p["pilot_bank"], lead_scale=p["lead_scale"], comply=p["comply"], react_s=p["react_s"])
 
     if kind == "overtake_downwind":
@@ -156,12 +156,12 @@ def run_one(args) -> dict:
     res: dict = {"kind": kind, "seed": seed}
     factories = {"none": None,
                  "baseline": lambda i: BaselineNode(i, patterns=pats, record=False),
-                 "flock_nosq": lambda i: Node(i, patterns=pats, record=False),
-                 "flock": lambda i: Node(i, patterns=pats, record=False)}
+                 "arc_nosq": lambda i: Node(i, patterns=pats, record=False),
+                 "arc": lambda i: Node(i, patterns=pats, record=False)}
     for mode in modes:
         ac = make_encounter(kind, seed, pats)
         sim = Sim(pats, ac, factories[mode], loss=loss, latency_s=latency, dt=DT, seed=seed,
-                  follow_sequence=(mode != "flock_nosq"))
+                  follow_sequence=(mode != "arc_nosq"))
         r = sim.run(DURATION_S)
         margin = max(r.min_h_m / NMAC_H_M, r.min_v_at_min_h_m / NMAC_V_M)
         alerts = {lv for (_, lv) in r.first_level_t if lv in ("TRAFFIC", "RESOLVE", "TAKEOVER")}
@@ -182,12 +182,12 @@ def run_one(args) -> dict:
     return res
 
 
-MODES = ("none", "baseline", "flock_nosq", "flock")
+MODES = ("none", "baseline", "arc_nosq", "arc")
 
 
 def summarise(rows: list[dict]) -> dict:
-    conf = [r for r in rows if r.get("label") == "conflict" and "flock" in r]
-    ben = [r for r in rows if r.get("label") == "benign" and "flock" in r]
+    conf = [r for r in rows if r.get("label") == "conflict" and "arc" in r]
+    ben = [r for r in rows if r.get("label") == "benign" and "arc" in r]
 
     def lead(r, mode, key):
         m = r[mode]
@@ -225,8 +225,8 @@ def plot(summary: dict, path: str, n_per_kind: int, loss: float, latency: float)
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    C = {"none": "#8a8a8a", "baseline": "#c0504d", "flock_nosq": "#7fa8d6", "flock": "#2f6fb5"}
-    L = {"none": "no avoidance", "baseline": "straight-line\n+ fixed R30", "flock_nosq": "ARC\n(pilots ignore\nsequencing)", "flock": "ARC"}
+    C = {"none": "#8a8a8a", "baseline": "#c0504d", "arc_nosq": "#7fa8d6", "arc": "#2f6fb5"}
+    L = {"none": "no avoidance", "baseline": "straight-line\n+ fixed R30", "arc_nosq": "ARC\n(pilots ignore\nsequencing)", "arc": "ARC"}
     m = summary["modes"]
     sel = [k for k in MODES if k != "none"]
     fig, ax = plt.subplots(1, 4, figsize=(18, 4.9))
@@ -282,10 +282,10 @@ def main() -> None:
     ap.add_argument("--loss", type=float, default=0.1)
     ap.add_argument("--latency", type=float, default=0.3)
     ap.add_argument("--kinds", default=",".join(KINDS))
-    ap.add_argument("--out", default=os.path.join(_REPO, "harness", "out", "flock_vs_baseline.png"))
+    ap.add_argument("--out", default=os.path.join(_REPO, "harness", "out", "arc_vs_baseline.png"))
     a = ap.parse_args()
     kinds = a.kinds.split(",")
-    jobs = [(k, 1000 * i + s, a.loss, a.latency, ("none", "baseline", "flock_nosq", "flock")) for i, k in enumerate(kinds) for s in range(a.n)]
+    jobs = [(k, 1000 * i + s, a.loss, a.latency, ("none", "baseline", "arc_nosq", "arc")) for i, k in enumerate(kinds) for s in range(a.n)]
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=a.workers) as ex:
         rows = list(ex.map(run_one, jobs, chunksize=2))

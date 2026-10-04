@@ -356,7 +356,7 @@ $("bExport").onclick = () => {
   const blob = new Blob([frames.map((f) => JSON.stringify(f)).join("\n") + "\n"], { type: "application/x-ndjson" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `flock_log_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.jsonl`;
+  a.download = `arc_log_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.jsonl`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
 $("bLoad").onclick = () => $("fLoad").click();
@@ -367,4 +367,4 @@ $("fLoad").onchange = async () => {
   rerender();
 };
 
-window.flockLog = { frames, entries, st };   // for debugging in the console
+window.arcLog = { frames, entries, st };   // for debugging in the console

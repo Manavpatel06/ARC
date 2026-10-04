@@ -21,7 +21,7 @@ Make the pieces one system and give it a world to live in: live weather, terrain
 
 ### Integration
 8. `run_demo.sh` / `run_demo.ps1` — starts world, channel, N nodes, data fetchers in the right order with the hotspot IP; `scenarios/judges.json` is the Sunday scenario.
-9. Record the backup video (OBS) Saturday night; keep `harness/out/flock_vs_baseline.png` and the pitch deck in `/docs`.
+9. Record the backup video (OBS) Saturday night; keep `harness/out/arc_vs_baseline.png` and the pitch deck in `/docs`.
 
 ### Phase 3 (only after Phase 1 and 2 are green)
 10. `node/crystal.py` — **Escape Crystal + MFI**: sample reachable set over bank ∈ [−30°, 30°] × vs ∈ [−500, climb_avail] × t ≤ 10 s; mark points unsafe if below terrain + 300 ft, inside an obstacle cylinder, or inside a peer's predicted tube; MFI = safe/total; send `CRYSTAL` frames to the god view; MFI collapse rate as an extra escalation trigger.

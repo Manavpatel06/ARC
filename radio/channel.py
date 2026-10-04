@@ -75,7 +75,7 @@ class Channel:
                                 self.truth[ac["ac_id"]] = ac
                                 self.world_ids.add(ac["ac_id"])
                         elif m.get("type") == "HELLO":
-                            self.world_ids.update(x["id"] for x in m.get("aircraft", []) if x.get("flock", True))
+                            self.world_ids.update(x["id"] for x in m.get("aircraft", []) if x.get("arc", True))
             except Exception as e:
                 self.world_ws = None
                 print(f"[channel] world link down ({e}); retrying in 2 s", flush=True)

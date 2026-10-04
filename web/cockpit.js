@@ -100,7 +100,7 @@ export function startCockpit(role) {
   s.hap = hap;
 
   // reset own aircraft: hold L2 + R2 / R / on-screen RESET for 5 s (input.js) -> RESET to the world
-  addEventListener("flock:reset", () => s.acId && link.send({ type: "RESET", ac_id: s.acId }));
+  addEventListener("arc:reset", () => s.acId && link.send({ type: "RESET", ac_id: s.acId }));
   const rb = $("ck-reset-btn");
   const hold = (on) => (e) => { inp.resetButton = on; if (on) rb.setPointerCapture && e.pointerId != null && rb.setPointerCapture(e.pointerId); };
   rb.addEventListener("pointerdown", hold(true));
@@ -126,14 +126,14 @@ export function startCockpit(role) {
     if (e.code === "KeyZ") cycleRange(1);
     if (e.code === "KeyN") flipOrient();
   });
-  addEventListener("flock:map-out", () => { if (s.map.range < MAP_RANGES_NM.length - 1) { s.map.range++; saveMap(s.map); } });
-  addEventListener("flock:map-in", () => { if (s.map.range > 0) { s.map.range--; saveMap(s.map); } });
-  addEventListener("flock:map-orient", flipOrient);
+  addEventListener("arc:map-out", () => { if (s.map.range < MAP_RANGES_NM.length - 1) { s.map.range++; saveMap(s.map); } });
+  addEventListener("arc:map-in", () => { if (s.map.range > 0) { s.map.range--; saveMap(s.map); } });
+  addEventListener("arc:map-orient", flipOrient);
 
   // autopilot button: on-screen AP, key A, gamepad Cross / A -> toggle in the world
   const toggleAP = () => s.acId && link.send({ type: "AP", ac_id: s.acId, engage: null });
   $("ck-ap").addEventListener("click", toggleAP);
-  addEventListener("flock:ap", toggleAP);
+  addEventListener("arc:ap", toggleAP);
   addEventListener("keydown", (e) => { if (e.code === "KeyA" && !e.repeat) toggleAP(); });
 
   // 3D unless ?view=2d. Without GPU acceleration 3D stutters (hundreds of ms per frame), so the
@@ -225,12 +225,12 @@ async function start3D(s, lite = false) {
     viewer.scene.screenSpaceCameraController.enableInputs = false;   // the sim flies the camera
     s.v3 = { Cesium, viewer, terrain, chase: new URLSearchParams(location.search).get("cam") === "chase",
              own: null, targets: new Map() };
-    window.__flock3d = s.v3;                                         // console debugging
+    window.__arc3d = s.v3;                                         // console debugging
     note.textContent = (lite ? "3D lite (no GPU acceleration) · " : "")
       + (terrain ? "3D: Cesium World Terrain · © Cesium ion · C / Triangle / Y = chase cam"
                  : "3D: flat · © OpenStreetMap contributors · C / Triangle / Y = chase cam · add ?ion=<token> for terrain");
     addEventListener("keydown", (e) => { if (e.code === "KeyC" && s.v3) s.v3.chase = !s.v3.chase; });
-    addEventListener("flock:chase", () => { if (s.v3) s.v3.chase = !s.v3.chase; });   // gamepad Triangle / Y
+    addEventListener("arc:chase", () => { if (s.v3) s.v3.chase = !s.v3.chase; });   // gamepad Triangle / Y
   } catch (e) {
     console.warn("[3d]", e);
     note.textContent = `2D only: ${e.message}`;
@@ -647,11 +647,11 @@ const MAP_RANGES_NM = [0.75, 1.5, 3, 6, 12];        // default 1.5 NM: close in,
 
 function mapState() {
   let st = { range: 1, northUp: false };
-  try { st = { ...st, ...JSON.parse(localStorage.getItem("flock.cockpit.map2") || "{}") }; } catch { /* private mode */ }
+  try { st = { ...st, ...JSON.parse(localStorage.getItem("arc.cockpit.map2") || "{}") }; } catch { /* private mode */ }
   st.range = Math.max(0, Math.min(MAP_RANGES_NM.length - 1, st.range | 0));
   return st;
 }
-function saveMap(m) { try { localStorage.setItem("flock.cockpit.map2", JSON.stringify(m)); } catch { /* ignore */ } }
+function saveMap(m) { try { localStorage.setItem("arc.cockpit.map2", JSON.stringify(m)); } catch { /* ignore */ } }
 
 function drawNavMap(cv, s) {
   const o = s.own, m = s.map, ctx = cv.getContext("2d"), W = cv.width, H = cv.height, k = Math.min(W, H) / 480;

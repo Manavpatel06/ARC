@@ -5,13 +5,13 @@
 //
 // Gamepad: left stick X = roll, left stick Y = pitch (pull back = climb; ?invert=1 flips),
 //          R2 / L2 = throttle up / down (held), right stick Y also nudges throttle,
-//          Triangle / Y (standard button 3) = toggle chase camera (fires a "flock:chase" window event),
-//          Cross / A (standard button 0) = autopilot on/off (fires "flock:ap"),
+//          Triangle / Y (standard button 3) = toggle chase camera (fires a "arc:chase" window event),
+//          Cross / A (standard button 0) = autopilot on/off (fires "arc:ap"),
 //          D-pad up / down = map range out / in, D-pad left / right = map north-up toggle,
 //          Circle / B (standard button 1) held = wheel brakes (keyboard: B or Space held).
 // Buttons act on the press, not while held; a button already held when the page starts is ignored.
 // Reset own aircraft: hold L2 + R2 together (or keyboard R, or the on-screen RESET button) for 5 s;
-// fires "flock:reset" once, st.resetProgress (0..1) drives the countdown. Both triggers held = no throttle change.
+// fires "arc:reset" once, st.resetProgress (0..1) drives the countdown. Both triggers held = no throttle change.
 // Keyboard: ←/→ roll, ↓ pull (climb) / ↑ push (descend), W/S throttle up/down.
 
 const DEADZONE = 0.12;
@@ -61,8 +61,8 @@ export function startInput(send, onState = () => {}) {
       if (dThr) st.throttle = clamp(st.throttle + dThr * dt, 0, 1);
       active = roll !== 0 || pitch !== 0 || dThr !== 0;
       if (active) st.source = "gamepad";
-      for (const [btn, evt] of [[3, "flock:chase"], [0, "flock:ap"], [12, "flock:map-out"], [13, "flock:map-in"],
-                                [14, "flock:map-orient"], [15, "flock:map-orient"]]) {   // Triangle/Y, Cross/A, D-pad
+      for (const [btn, evt] of [[3, "arc:chase"], [0, "arc:ap"], [12, "arc:map-out"], [13, "arc:map-in"],
+                                [14, "arc:map-orient"], [15, "arc:map-orient"]]) {   // Triangle/Y, Cross/A, D-pad
         const down = !!(pad.buttons[btn] && pad.buttons[btn].pressed);
         if (down && !wasDown[btn]) dispatchEvent(new Event(evt));
         wasDown[btn] = down;
@@ -86,7 +86,7 @@ export function startInput(send, onState = () => {}) {
     // reset: hold for RESET_HOLD_S, fire once, then wait for release
     if (triggersHeld || keys.has("KeyR") || st.resetButton) {
       resetHeld += dt;
-      if (!resetFired && resetHeld >= RESET_HOLD_S) { resetFired = true; dispatchEvent(new Event("flock:reset")); }
+      if (!resetFired && resetHeld >= RESET_HOLD_S) { resetFired = true; dispatchEvent(new Event("arc:reset")); }
     } else { resetHeld = 0; resetFired = false; }
     st.resetProgress = resetFired ? 1 : Math.min(1, resetHeld / RESET_HOLD_S);
 

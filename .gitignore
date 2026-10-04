@@ -9,7 +9,7 @@ data/cache/*
 !data/cache/obstacles_kdvt.csv
 harness/out/*
 !harness/out/.gitkeep
-!harness/out/flock_vs_baseline.png
+!harness/out/arc_vs_baseline.png
 *.log
 *.jsonl
 .DS_Store
