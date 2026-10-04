@@ -11,7 +11,10 @@ for a in "$@"; do case $a in --spoof) SPOOF=1;; --stubs) STUBS=1;; *.json) SC=$a
 W=ws://localhost:8765; : > $PIDS
 start() { name=$1; shift; "$PY" "$@" > "harness/out/run_${name// /_}.log" 2>&1 & echo $! >> $PIDS; echo "  started $name: $*"; }
 $PY data/metar.py
-if [ -f world/world_server.py ]; then start world world/world_server.py --scenario "$SC" --http 8080
+TRAF=$($PY -c "import json;print(1 if json.load(open('$SC')).get('traffic') else 0)")
+WARGS=(world/world_server.py --scenario "$SC" --http 8080)
+[ "$TRAF" = 1 ] && [ $STUBS = 0 ] && WARGS+=(--traffic-nodes ws://localhost:8766 --pidfile $PIDS)   # live_kdvt: a node per AI aircraft
+if [ -f world/world_server.py ]; then start world "${WARGS[@]}"
 else start world-stub stubs/fake_world.py --scenario "$SC"; start web -m http.server 8080 -d web; fi
 for i in $(seq 1 60); do (echo > /dev/tcp/127.0.0.1/8765) 2>/dev/null && break; sleep 0.25; done
 if [ -f radio/channel.py ] && [ $STUBS = 0 ]; then start channel radio/channel.py --world $W --loss 0.1 --latency 0.3

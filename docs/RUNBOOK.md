@@ -32,8 +32,9 @@ Live sky (real aircraft around KDVT) on laptop 1, separate window: `python data/
 | 1 | `head_on_judges.json` | nobody touches the sticks | SEQUENCE → TRAFFIC → RESOLVE → TAKEOVER (both) → RELEASE → CLEAR in the log; god view truth "0 NMAC" |
 | 2 | `head_on_judges.json` | both judges fly, ignore advisories | takeover happens on the AP aircraft; moving the stick gives control back within 1 s ("STICK" in log) |
 | 3 | `three_on_final.json` | nobody | three-way sequencing + commits in the log; 0 NMAC (without FLOCK it is a 48 ft near miss) |
-| 4 | `judges.json` (8 aircraft, live weather) | both judges fly freely for 3 min | no crashes, views stay in sync, every alert has a reason in the explain panel |
-Record runs 1-3 with OBS / Win+G on laptop 1 (god view + log side by side): that is the backup video.
+| 4 | `base_vs_straight_in.json` | nobody | N101 climbs / go-around, N399 continues (right-of-way), 0 NMAC (was a 433 ft NMAC before GO_AROUND) |
+| 5 | `live_kdvt.json` (unscripted: judges start 4 NM north and south, 5-8 AI aircraft that run FLOCK, live weather) | both judges fly freely for 3-4 min | no crashes, views stay in sync, every alert has a reason in the explain panel, 0 NMAC. God view RESET DEMO restarts it; `-Seed 11` gives different traffic |
+Record runs 1, 3 and 5 with OBS / Win+G on laptop 1 (god view + log side by side): that is the backup video.
 
 ## 4. If something drops
 - A cockpit freezes: refresh the page (it reconnects; the world keeps flying).
@@ -43,5 +44,5 @@ Record runs 1-3 with OBS / Win+G on laptop 1 (god view + log side by side): that
 
 ## Known limits (say them if asked)
 - AI aircraft do not follow advisories; only the AP-equipped aircraft is moved (by a bounded takeover). Judges' aircraft follow their pilots.
-- `base_vs_straight_in`: FLOCK resolves the first merge, then the pattern autopilot turns back into the same final and the second merge ends NO_SOLUTION at ~400 ft (honest: no bounded maneuver fits that low). Fix planned: GO-AROUND as a candidate maneuver on final.
 - Head-on robustness (Mansi, radio/ROBUSTNESS.md): median ~850 ft from 0 % to 50 % loss, but ~1 run in 5 still ends inside 500 ft; takeover/commit ordering being fixed.
+- Live traffic: AI aircraft far from the pattern are often UNKNOWN leg -> FLOCK falls back to straight-line prediction for them (by design, like TCAS).
