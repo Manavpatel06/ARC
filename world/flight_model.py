@@ -10,7 +10,7 @@ the targets (bank, vs, ias) differs:
                           aircraft until their pilot first touches the controller)
 Limits applied to every source: bank rate 15 deg/s, speed envelope 48-140 kt,
 climb capability from density altitude (data.metar.climb_fpm: 730 / 500 / 300 fpm at 0 / 5,000 / 8,000 ft).
-INPUT meaning is pinned in INTERFACE.md v1.1 (target bank = roll x 45 deg, target vs, target IAS 60-120 kt).
+INPUT meaning is pinned in docs/interface.md v1.1 (target bank = roll x 45 deg, target vs, target IAS 60-120 kt).
 
 Ground: below 0.5 ft AGL the aircraft is on its wheels: wings level, the bank target steers the
 nosewheel, IAS may fall to 0 (brakes), wind only adds along the heading, and it can only lift off

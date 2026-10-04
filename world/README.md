@@ -7,7 +7,7 @@ TCAS, Mode S, ground radar) for the onboard verification unit (`verify/`, role `
 `attacks.py` injects spoofing (god view **+ Ghost**, `SET_ATTACK`, or scenario `"attacks": [{"type":"ghost","at_s":60}]`).
 Ground truth goes to god + log only (`GROUND_TRUTH`). See `verify/README.md`.
 
-- `world_server.py` — physics + WebSocket hub (INTERFACE.md v1.2), serves `web/` on :8080. Scenario weather is
+- `world_server.py` — physics + WebSocket hub (docs/interface.md v1.2), serves `web/` on :8080. Scenario weather is
   pinned: `load_metar(scenario.weather)` (`cached` = committed sample, `live` = fetched METAR). ENV (density altitude)
   goes to god and every node; LIVE_TRAFFIC (real ADS-B, data/live_traffic.py) to god + log only.
 - `separation.py` — ground-truth NMAC (< 500 ft H and < 100 ft V) / COLLISION (< 60 ft, < 30 ft) monitor. The world publishes `{"type":"WORLD_EVENT","event":"NMAC"|"COLLISION"|"NMAC_END",...}` to **god + log only** (truth; never to nodes). `NMAC_END` carries the closest approach of the encounter — use it for scoring runs.

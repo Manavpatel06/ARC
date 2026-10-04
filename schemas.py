@@ -1,6 +1,6 @@
 """
 ARC shared schemas (pydantic v2). Import this everywhere; do not fork it.
-Change only by team agreement. See INTERFACE.md for semantics.
+Change only by team agreement. See docs/interface.md for semantics.
 v1.1 (Sat 12:20): additive only — TrustTarget.rel, Hello, Truth, Prediction, SetDA, Crystal.
 """
 from __future__ import annotations

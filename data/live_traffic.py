@@ -14,7 +14,7 @@ on them. (They carry no ARC radio; in the real system they would be ADS-B-only t
     python data/live_traffic.py --world ws://localhost:8765 --record      # also saves harness/out/live_*.jsonl
     python data/live_traffic.py --world ws://localhost:8765 --replay harness/out/live_XXXX.jsonl   # offline fallback
 
-Frame (INTERFACE.md v1.2, additive):
+Frame (docs/interface.md v1.2, additive):
 {"type":"LIVE_TRAFFIC","t":...,"source":"airplanes.live","radius_nm":25,
  "aircraft":[{"id":"a1b2c3","callsign":"N123AB","type":"C172","lat":..,"lon":..,"alt_msl_ft":2500,"dist_nm":3.2,
               "gs_kt":92,"track_deg":86,"vs_fpm":0,"on_ground":false,"age_s":1.2,

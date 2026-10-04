@@ -137,7 +137,7 @@ class Pattern:
         return rem
 
     def place(self, leg: str, offset_s: float = 0.0, gs_kt: float = 90.0, agl_ft: Optional[float] = None) -> dict:
-        """Scenario start semantics of INTERFACE.md section 5: delegates to pattern.place()."""
+        """Scenario start semantics of docs/interface.md section 5: delegates to pattern.place()."""
         return _pat.place(leg, self.runway, offset_s, gs_kt, agl_ft)
 
     def reference_point(self, leg: str, offset_m: float = 0.0, gs_kt: float = 90.0) -> tuple[float, float, float]:

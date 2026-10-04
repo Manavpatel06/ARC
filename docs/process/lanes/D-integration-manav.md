@@ -1,6 +1,6 @@
 # Lane D — Integration, world data, hard algorithms, pitch (Manav)
 
-Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane D.
+Paste CONTEXT.md and docs/interface.md first, then this file. You are the agent for Lane D.
 
 ## Start against stubs (no waiting)
 Start now, without Lane A or B: `python stubs/fake_world.py` + `python stubs/fake_node.py --id N101 --speed 4` feed the log page a full advisory ladder every 17 s. Your task rows with times: `BOARD.md` → Lane D.

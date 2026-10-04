@@ -12,7 +12,7 @@ API (this is the contract Lane C implements in radio/client.py — same names, s
     await radio.send("STATE", {"lat":..., ...})   # wraps envelope {msg,from,seq,t,sig,body}
     await radio.stop()
 
-Delivered dict shape = INTERFACE.md envelope, validated with schemas.RadioMsg:
+Delivered dict shape = docs/interface.md envelope, validated with schemas.RadioMsg:
     {"msg":"STATE","from":"N204","seq":17,"t":...,"sig":"","body":{...}}
 Own messages are NOT delivered back to the sender.
 

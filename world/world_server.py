@@ -1,5 +1,5 @@
 """
-world/world_server.py — Lane A. Authoritative simulation world + WebSocket hub (INTERFACE.md §1).
+world/world_server.py — Lane A. Authoritative simulation world + WebSocket hub (docs/interface.md §1).
 
   python world/world_server.py --scenario harness/scenarios/judges.json [--port 8765]
          [--http 8080] [--time-scale 1] [--da 4980] [--weather metar|calm_morning|hot_gusty_afternoon|haboob|low_ceiling|pressure_drop]

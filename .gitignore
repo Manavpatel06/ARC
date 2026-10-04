@@ -16,3 +16,9 @@ harness/out/*
 node_modules/
 .env
 .demo_pids*
+
+# local transfer files and secrets
+.xfer/
+*.bundle
+harness/out/keys/
+.arc/

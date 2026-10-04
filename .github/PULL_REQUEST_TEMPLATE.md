@@ -8,7 +8,7 @@
 - [ ] Phase 2 / Phase 3 item: ______
 
 ## Contract
-- [ ] No change to `schemas.py` / `INTERFACE.md`
+- [ ] No change to `schemas.py` / `docs/interface.md`
 - [ ] Contract change agreed with lanes: ____ (commit `contract:` separately)
 
 ## How to run / see it

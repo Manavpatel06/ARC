@@ -6,7 +6,7 @@ Two hops, so the channel (the "air") can decide what each receiver hears:
   DOWNLINK channel -> node : UDP multicast 239.1.1.1:5006   (or the same WebSocket)
 `--direct` mode (no channel process, no loss): nodes send and listen on 5005 like the loopback stub.
 
-Frames are JSON. Radio envelopes (INTERFACE.md §2) travel inside control frames:
+Frames are JSON. Radio envelopes (docs/interface.md §2) travel inside control frames:
   uplink   {"ctl":"TX","tx":"<physical radio id>","env":{envelope}}
            {"ctl":"KEYS","id":"N101","pub":"<b64>"}          public key at boot
            {"ctl":"HELLO","id":"N101"}                        "I am a receiver"

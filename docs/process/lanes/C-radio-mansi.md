@@ -1,6 +1,6 @@
 # Lane C — Radio channel, protocol, security, trust evidence (Mansi)
 
-Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane C.
+Paste CONTEXT.md and docs/interface.md first, then this file. You are the agent for Lane C.
 
 ## Start against stubs (no waiting)
 Start now, without Lane A or B: `python stubs/fake_world.py` gives your channel TRUTH frames on role `channel`; `stubs/loopback_radio.py` is the exact `RadioClient` API you must keep (`send`, `on_message`, `start`, `stop`, constructor args) so Lane B swaps by changing one import. Your task rows with times: `BOARD.md` → Lane C.

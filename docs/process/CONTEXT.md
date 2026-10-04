@@ -29,7 +29,7 @@ ARC is a peer-to-peer collision-avoidance node for general aviation (GA), built 
 ## Repo layout
 ```
 arc/
-  CONTEXT.md  INTERFACE.md  PLAN.md  schemas.py  requirements.txt
+  CONTEXT.md  docs/interface.md  PLAN.md  schemas.py  requirements.txt
   world/      # Lane A: world_server.py (physics + WebSocket hub), flight_model.py, traffic.py
   web/        # Lane A (+D for log): index.html?role=cockpitA|cockpitB|god|log
   node/       # Lane B: node.py, predict.py, layers.py, escape.py, authority.py, trust.py

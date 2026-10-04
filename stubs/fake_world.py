@@ -1,6 +1,6 @@
 """
 stubs/fake_world.py — stand-in for Lane A's world server so Lanes B, C, D can start NOW.
-Reference implementation of the INTERFACE.md v1.1 hub protocol on ws://0.0.0.0:8765 with ?role=...:
+Reference implementation of the docs/interface.md v1.1 hub protocol on ws://0.0.0.0:8765 with ?role=...:
   node:<id>          -> HELLO, then OWNSHIP at 10 Hz for its own aircraft only
   cockpit:<id>|A|B   -> HELLO (tells the page which aircraft it flies), own OWNSHIP + its node's ADVISORY/TRUST
   god                -> HELLO, TRUTH 10 Hz, ADVISORY/COMMAND/PREDICTION/CRYSTAL

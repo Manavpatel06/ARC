@@ -1,6 +1,6 @@
 # Lane A — Sim world and views (Manas)
 
-Paste CONTEXT.md and INTERFACE.md first, then this file. You are the agent for Lane A.
+Paste CONTEXT.md and docs/interface.md first, then this file. You are the agent for Lane A.
 
 ## Start against stubs (no waiting)
 Start now, without Lane B or D: run `python stubs/fake_node.py --id N101 --speed 4` against your world to get real ADVISORY/TRUST/COMMAND/PREDICTION frames for the views, and `python stubs/tail_log.py` to see what you mirror. `stubs/fake_world.py` is a minimal reference of the hub protocol — copy it as your starting point. Your task rows with times: `BOARD.md` → Lane A.
@@ -8,11 +8,11 @@ Start now, without Lane B or D: run `python stubs/fake_node.py --id N101 --speed
 ## Decisions from your review (Sat 12:20 PM) — contract v1.1, already in the repo
 1. **Radar positions:** every TRUST target now carries `rel {brg_deg (TRUE), rng_m, dalt_ft, trk_deg?, vs_fpm?}`. Draw the radar from TRUST only; rotate by own heading. FAKE targets drawn hollow red. `stubs/fake_node.py` sends `rel` so you can build the radar now.
 2. **Which aircraft each cockpit flies:** page `?role=cockpitA` connects as `role=cockpit:A`; the world resolves A/B to the 1st/2nd `"human":true` aircraft in the scenario (judges.json: N101, N102). `&ac=N102` → `cockpit:N102`. The world sends `HELLO {role, ac_id, scenario, aircraft[]}` first on every connection. Reference: `stubs/fake_world.py` `resolve()`.
-3. **TRUTH, PREDICTION, SET_DA, CRYSTAL** are now pydantic models in `schemas.py` (`Truth`, `Prediction`, `SetDA`, `Crystal`) with formats in INTERFACE.md §1. TRUTH goes to god + channel only.
+3. **TRUTH, PREDICTION, SET_DA, CRYSTAL** are now pydantic models in `schemas.py` (`Truth`, `Prediction`, `SetDA`, `Crystal`) with formats in docs/interface.md §1. TRUTH goes to god + channel only.
 4. **Pattern side and headings:** your model was right that the stub was right traffic — and the sample headings were also wrong. Real KDVT: headings **086°/266° TRUE** (074/254 magnetic). 25L left traffic = south side: downwind 086, base 356, final 266. 25R right traffic = north side: base 176. The stub now spawns on the real pattern.
 5. **Runway coordinates:** fixed from surveyed data (AirNav/FAA 5010) in `data/runways.py`; 25R is the north runway. Pull Queue "airport diagram check" is done.
 6. **Leg + offset → position:** use `pattern.place(leg, runway, offset_s, gs_kt, agl_ft)`; `pattern.legs(runway)` gives the ENU segments to fly (and Reya's classifier uses the same ones). `offset_s` = seconds flown from the start of the leg; negative = before it. `python pattern.py` prints every leg and runs self-checks; `python pattern.py --geojson` writes `web/pattern_kdvt.geojson` for the god view.
-7. **INPUT meaning (pinned in INTERFACE.md):** roll → *target bank* roll×45° at ≤15°/s (stick centred = wings level — chosen over a bank-rate stick because judges aren't pilots); pitch → target vs (up capped by `climb_fpm(DA)`, down 1,000 fpm); throttle → target IAS 60–120 kt. |roll|/|pitch| > 0.1 sets `stick_active`, clears after 1 s. Tune constants freely; keep the meaning.
+7. **INPUT meaning (pinned in docs/interface.md):** roll → *target bank* roll×45° at ≤15°/s (stick centred = wings level — chosen over a bank-rate stick because judges aren't pilots); pitch → target vs (up capped by `climb_fpm(DA)`, down 1,000 fpm); throttle → target IAS 60–120 kt. |roll|/|pitch| > 0.1 sets `stick_active`, clears after 1 s. Tune constants freely; keep the meaning.
 8. **Use the shared tools:** `agl_ft = alt_msl_ft − data.terrain.elev_at_ft(lat, lon)`; DA and wind from `data.metar.load()`; climb from `data.metar.climb_fpm(da)`; ground velocity = air velocity + `data.metar.wind_vector_ms(wx)` so gs/track differ from ias/heading. `stubs/fake_world.py` implements 2, 6, 7 and 8 as a reference.
 
 ## Goal

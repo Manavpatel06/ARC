@@ -1,5 +1,5 @@
 """
-world/tests/test_server.py — Lane A contract tests against a REAL world_server process (INTERFACE.md v1.2).
+world/tests/test_server.py — Lane A contract tests against a REAL world_server process (docs/interface.md v1.2).
 Who receives what, what must never leak, and bad input that must not break the hub.
 Run:  python -m pytest -q world/tests/test_server.py
 """
