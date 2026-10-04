@@ -27,16 +27,16 @@ Numbers marked (sim) come from `python harness/montecarlo.py` / `python harness/
    A conflict needs a predicted miss under 500 ft horizontal and 100 ft vertical inside 90 s, after taking prediction uncertainty off. On benign encounters (spaced pattern traffic, 500+ ft vertical crossings, 2,000+ ft lateral passes) ARC alerted on 2 % (sim), with no unnecessary maneuvers.
 
 9. **How do you know it works?**
-   Monte Carlo against a straight-line + fixed right-turn baseline on the same 77 NMAC-prone encounters: NMAC rate 100 % with no avoidance, 18 % baseline, 6 % ARC; median miss 864 ft vs 1,150 ft (sim). Baseline and ARC share thresholds, radio and bounds, so the difference is turn-aware prediction plus escape/negotiation.
+   Monte Carlo against a straight-line + fixed right-turn baseline on the same 154 NMAC-prone encounters: NMAC rate 100 % with no avoidance, 18 % baseline, 3 % ARC; median miss 903 ft vs 1,157 ft (sim). Baseline and ARC share thresholds, radio and bounds, so the difference is turn-aware prediction plus escape/negotiation.
 
 10. **What are the limits of those numbers?**
-    It is our own simulation, with a nominal pattern model (real pilots vary), a 70 % compliance assumption, and one aircraft model (C172S-class). Out-of-sample validation on recorded KDVT ADS-B is planned, not done.
+    It is our own simulation, with a nominal pattern model (real pilots vary), a 70 % compliance assumption, and one aircraft model (C172S-class). The turn predictor has been scored on 116 real KDVT aircraft (recorded ADS-B); encounter-level validation on recorded traffic is not done yet.
 
 11. **How do two aircraft agree on a maneuver?**
     The lower ID commits first with the best sense; the higher ID answers with a complementary one (it pre-computes the lower's choice, so commits land within one radio latency). If the link is silent for 3 s both default to a right turn (14 CFR 91.113), tested with a radio blackout.
 
 12. **What stops a fake aircraft from making you maneuver?**
-    Messages are Ed25519-signed with replay protection; each target is scored on signature, kinematic plausibility, emulated RF consistency (RSSI/Doppler) and peer corroboration. Only TRUSTED targets (score 0.7+) can trigger RESOLVE or TAKEOVER; a FAKE one is shown to the pilot and never acted on.
+    Messages are Ed25519-signed with replay protection; each target is scored on signature, kinematic plausibility, emulated RF consistency (RSSI/Doppler) and peer corroboration. Only VERIFIED targets (P(real) 0.85+) can drive a TAKEOVER; unverified ones at most a warning; a FAKE one is shown to the pilot and never acted on.
 
 13. **Can an attacker with many valid keys fool it?**
     A Sybil attacker with several valid keys and transmitters placed to fake geometry could corroborate itself. Registration-bound keys and RF checks from several receivers make that expensive, not impossible; we say so rather than claim otherwise.
