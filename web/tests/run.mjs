@@ -58,15 +58,15 @@ const st = startInput((v) => sent.push(v));
 run(0.5);
 {
   const thr0 = st.throttle;
-  pad.buttons[6] = btn(1); pad.buttons[7] = btn(1); run(2.5);
+  pad.buttons[6] = btn(1); pad.buttons[7] = btn(1); run(0.5);
   const mid = st.resetProgress, thrBoth = st.throttle;
   pad.buttons[6] = btn(0); pad.buttons[7] = btn(0); run(0.5);
-  check("input: reset bar at ~50 % after 2.5 s of L2+R2", Math.abs(mid - 0.5) < 0.05, mid.toFixed(2));
+  check("input: reset bar at ~50 % after 0.5 s of L2+R2", Math.abs(mid - 0.5) < 0.05, mid.toFixed(2));
   check("input: L2+R2 together leave the throttle alone", Math.abs(thrBoth - thr0) < 1e-9);
   check("input: letting go cancels the reset", st.resetProgress === 0 && !fired.some((f) => f[0] === "arc:reset"));
-  pad.buttons[6] = btn(1); pad.buttons[7] = btn(1); run(6); pad.buttons[6] = btn(0); pad.buttons[7] = btn(0); run(0.3);
-  check("input: a 5 s hold fires exactly one reset", fired.filter((f) => f[0] === "arc:reset").length === 1);
-  key("keydown", "KeyR"); run(5.5); key("keyup", "KeyR"); run(0.2);
+  pad.buttons[6] = btn(1); pad.buttons[7] = btn(1); run(1.5); pad.buttons[6] = btn(0); pad.buttons[7] = btn(0); run(0.3);
+  check("input: a 1 s hold fires exactly one reset", fired.filter((f) => f[0] === "arc:reset").length === 1);
+  key("keydown", "KeyR"); run(1.5); key("keyup", "KeyR"); run(0.2);
   check("input: holding R also resets", fired.filter((f) => f[0] === "arc:reset").length === 2);
 }
 {
