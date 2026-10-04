@@ -137,5 +137,26 @@ run(0.5);
   check("3D: model lifted so wheels touch, eye above wheels", MODEL_WHEELS_M > 0.8 && MODEL_WHEELS_M < 1.3 && EYE_M >= 1.8);
 }
 
+// ---------- other aircraft in 3D: glide between ~1 Hz node fixes, bank from turn rate ----------
+{
+  const { TrafficTrack } = await import("../cesium3d.js");
+  const tr = new TrafficTrack();
+  check("traffic 3D: nothing before the first fix", tr.sample(0) === null);
+  tr.push({ lat: 33.70, lon: -112.10, alt_ft: 2500, trk_deg: 90, vs_fpm: 0 }, 0);
+  const s0 = tr.sample(10);
+  check("traffic 3D: first fix shown as is, wings level", s0.lat === 33.70 && s0.bank_deg === 0 && s0.trk_deg === 90);
+  tr.push({ lat: 33.70, lon: -112.09, alt_ft: 2400, trk_deg: 96, vs_fpm: -500 }, 1000);
+  const mid = tr.sample(1500), end = tr.sample(2000), late = tr.sample(9000);
+  check("traffic 3D: glides between fixes (one update late)", Math.abs(mid.lon - -112.095) < 1e-9 && Math.abs(mid.alt_ft - 2450) < 1e-9);
+  check("traffic 3D: reaches the newest fix after one interval", Math.abs(end.lon - -112.09) < 1e-9 && end.trk_deg === 96);
+  check("traffic 3D: extrapolates at most half an interval when fixes stop", Math.abs(late.lon - -112.085) < 1e-9);
+  check("traffic 3D: right turn 6 deg/s -> right bank ~25 deg, nose down when descending",
+        end.bank_deg > 20 && end.bank_deg < 30 && end.pitch_deg < 0, `${end.bank_deg.toFixed(1)} / ${end.pitch_deg.toFixed(1)}`);
+  tr.push({ lat: 33.70, lon: -112.08, alt_ft: 2400, trk_deg: 2, vs_fpm: 0 }, 2000);
+  tr.push({ lat: 33.71, lon: -112.08, alt_ft: 2400, trk_deg: 350, vs_fpm: 0 }, 3000);
+  const wrap = tr.sample(3500);
+  check("traffic 3D: track wraps through north (002 -> 350 is a left turn)", wrap.bank_deg < 0 && (wrap.trk_deg > 355 || wrap.trk_deg < 2), wrap.trk_deg.toFixed(1));
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall web logic tests passed");
 process.exit(failures ? 1 : 0);

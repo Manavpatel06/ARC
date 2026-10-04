@@ -17,7 +17,7 @@
 //                 inside the NMAC box, burst marker where NMAC / COLLISION happened, counter.
 // All ages use the world clock (frame t), so --time-scale runs keep consistent fades.
 
-import { connect, css, LEVEL_COLOR, Local, NM, SANS } from "./net.js";
+import { connect, css, drawPlane, LEVEL_COLOR, Local, NM, SANS } from "./net.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -595,13 +595,8 @@ function draw(cv, s) {
   for (const a of s.ac.values()) {
     const [x, y] = LL(a.lat, a.lon);
     const col = css(a.mode === "COMMAND" ? "var(--lvl-takeover)" : a.human ? "var(--own)" : a.flock ? "var(--ai)" : "var(--noflock)");
-    ctx.save(); ctx.translate(x, y); ctx.rotate(a.track_deg * D2R);
-    ctx.fillStyle = col; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5 * k;
-    const sz = 9 * k;
-    ctx.beginPath(); ctx.moveTo(0, -sz * 1.4); ctx.lineTo(sz, sz); ctx.lineTo(0, sz * 0.45); ctx.lineTo(-sz, sz); ctx.closePath();
-    a.flock ? ctx.fill() : ctx.stroke();
-    if (!a.flock) { ctx.strokeStyle = col; ctx.stroke(); }
-    ctx.restore();
+    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.5 * k;
+    drawPlane(ctx, x, y, a.hdg_deg * D2R, (a.human ? 13 : 11) * k, a.flock);   // no FLOCK node: outline only
 
     // takeover box + countdown
     const c = s.cmd.get(a.ac_id);

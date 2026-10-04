@@ -2,14 +2,14 @@
 // Knows only what the world sends a cockpit: its own aircraft's state and its own node's
 // ADVISORY / TRUST / COMMAND / STICK. No other aircraft's truth ever reaches this page.
 
-import { connect, css, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
+import { connect, css, drawPlane, LEVEL_COLOR, MONO, NM, SANS, TRUST_COLOR } from "./net.js";
 import { startInput } from "./input.js";
 import { sayAdvisory, sayCallout, sayNow } from "./voice.js";
 import { createCallouts, RA_SHOW_BELOW_FT, raDisplay } from "./callouts.js";
 import { startHaptics } from "./haptics.js";
 import { MAP_ATTRIBUTION, startMapLayer } from "./maplayer.js";
 import { AIRCRAFT_MODEL, aircraftHeightM, EYE_M, gpuInfo, Interp, loadCesium, makeViewer, MODEL_SCALE, MODEL_WHEELS_M,
-         offsetLL, surfaceM } from "./cesium3d.js";
+         offsetLL, surfaceM, TrafficTrack } from "./cesium3d.js";
 
 const $ = (id) => document.getElementById(id);
 const D2R = Math.PI / 180;
@@ -36,7 +36,7 @@ export function startCockpit(role) {
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
         break;
-      case "TRUST": s.trust = m; break;
+      case "TRUST": s.trust = m; trackTraffic(s, m); break;
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); hap.bump(); break;
       case "AP_STATUS":
@@ -246,29 +246,58 @@ function update3D(s) {
     });
   }
 
-  // node-reported traffic (TRUST rel) as 3D markers
-  const seen = new Set();
+  // node-reported traffic (TRUST rel) as real aircraft: same model as ours, flying its reported track,
+  // pitched by its climb and banked by its turn; outline = trust colour, FAKE = see-through ghost
+  const seen = new Set(), now = performance.now(), ground = p.alt_msl_ft - Math.max(0, p.agl_ft);
   for (const t of (s.trust && s.trust.targets) || []) {
-    if (!t.rel || t.state === "CAMERA_ONLY") continue;
+    const tr = s.tracks && s.tracks.get(t.id);
+    const q = tr && t.state !== "CAMERA_ONLY" ? tr.sample(now) : null;
+    if (!q) continue;
     seen.add(t.id);
-    const [lat, lon] = offsetLL(p.lat, p.lon, t.rel.brg_deg, t.rel.rng_m);
-    const th = h + (t.rel.dalt_ft || 0) * 0.3048;              // relative to own height, as the node reports it
+    const surf = surfaceM(C, viewer, terrain, q.lat, q.lon, ground);
+    const th = Math.max(h + (q.alt_ft - p.alt_msl_ft) * 0.3048, surf);   // relative to own height, never underground
+    const tpos = C.Cartesian3.fromDegrees(q.lon, q.lat, th + MODEL_WHEELS_M);
     const col = C.Color.fromCssColorString(css(TRUST_COLOR[t.state] || "#fff"));
+    const fake = t.state === "FAKE";
     let e = s.v3.targets.get(t.id);
     if (!e) {
       e = viewer.entities.add({
-        point: { pixelSize: 12, color: col, outlineColor: C.Color.BLACK, outlineWidth: 2 },
-        label: { text: t.id, font: `600 14px ${SANS}`, fillColor: col, outlineColor: C.Color.BLACK, outlineWidth: 3,
-                 style: C.LabelStyle.FILL_AND_OUTLINE, pixelOffset: new C.Cartesian2(0, -18) },
+        model: { uri: AIRCRAFT_MODEL, scale: MODEL_SCALE, minimumPixelSize: 56, silhouetteSize: 2.5,   // readable at 1-3 NM
+                 colorBlendMode: C.ColorBlendMode.MIX, colorBlendAmount: 0.35 },
+        label: { text: t.id, font: `600 14px ${SANS}`, outlineColor: C.Color.BLACK, outlineWidth: 3,
+                 style: C.LabelStyle.FILL_AND_OUTLINE, pixelOffset: new C.Cartesian2(0, -30),
+                 disableDepthTestDistance: Number.POSITIVE_INFINITY },
       });
       s.v3.targets.set(t.id, e);
     }
-    e.position = C.Cartesian3.fromDegrees(lon, lat, th);
-    e.point.color = t.state === "FAKE" ? C.Color.TRANSPARENT : col;     // FAKE: hollow
-    e.point.outlineColor = t.state === "FAKE" ? col : C.Color.BLACK;
+    e.position = tpos;
+    e.orientation = C.Transforms.headingPitchRollQuaternion(tpos, new C.HeadingPitchRoll(
+      C.Math.toRadians(q.trk_deg + MODEL_HDG_OFFSET), C.Math.toRadians(q.pitch_deg), C.Math.toRadians(q.bank_deg)));
+    e.model.color = fake ? col.withAlpha(0.3) : col.withAlpha(1.0);
+    e.model.silhouetteColor = col;
+    const rng = t.rel ? t.rel.rng_m : null, d = Math.round(((t.rel && t.rel.dalt_ft) || 0) / 100);
+    e.label.text = `${t.id}${rng != null ? ` · ${(rng / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}` : ""}${fake ? " · FAKE" : ""}`;
     e.label.fillColor = col;
   }
   for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
+}
+
+// Each TRUST frame: where the node says every target is, made absolute from our position right now,
+// into a TrafficTrack per target (the 3D view glides between these).
+function trackTraffic(s, m) {
+  const o = s.own;
+  s.tracks = s.tracks || new Map();
+  if (!o) return;
+  const now = performance.now(), ids = new Set();
+  for (const t of m.targets || []) {
+    if (!t.rel || t.rel.brg_deg == null || t.rel.rng_m == null) continue;
+    ids.add(t.id);
+    const [lat, lon] = offsetLL(o.lat, o.lon, t.rel.brg_deg, t.rel.rng_m);
+    let tr = s.tracks.get(t.id);
+    if (!tr) { tr = new TrafficTrack(); s.tracks.set(t.id, tr); }
+    tr.push({ lat, lon, alt_ft: o.alt_msl_ft + (t.rel.dalt_ft || 0), trk_deg: t.rel.trk_deg, vs_fpm: t.rel.vs_fpm }, now);
+  }
+  for (const id of [...s.tracks.keys()]) if (!ids.has(id)) s.tracks.delete(id);
 }
 
 // ---------- short notices (AP, touchdown, liftoff) ----------
@@ -621,24 +650,26 @@ function drawNavMap(cv, s) {
       ctx.arc(cx, cy, R, a - Math.PI / 2 - 0.08, a - Math.PI / 2 + 0.08); ctx.fill(); ctx.globalAlpha = 1;
       continue;
     }
-    const sz = (hot ? 11 : 8) * k;
-    ctx.beginPath(); ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y); ctx.lineTo(x, y + sz); ctx.lineTo(x - sz, y); ctx.closePath();
-    if (t.state === "TRUSTED" || hot) ctx.fill(); else ctx.stroke();
-    if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz); ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz); ctx.stroke(); }
-    if (rel.trk_deg != null) {
-      const ta = (rel.trk_deg - up) * D2R;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 22 * k * Math.sin(ta), y - 22 * k * Math.cos(ta)); ctx.stroke();
+    const sz = (hot ? 13 : 10) * k;
+    if (rel.trk_deg != null) {                              // an airplane pointing where it is going
+      drawPlane(ctx, x, y, (rel.trk_deg - up) * D2R, sz, t.state === "TRUSTED" || hot);
+      const ta = (rel.trk_deg - up) * D2R;                  // short trend line ahead of the nose
+      ctx.globalAlpha = 0.6; ctx.beginPath();
+      ctx.moveTo(x + 1.4 * sz * Math.sin(ta), y - 1.4 * sz * Math.cos(ta));
+      ctx.lineTo(x + 3.2 * sz * Math.sin(ta), y - 3.2 * sz * Math.cos(ta)); ctx.stroke(); ctx.globalAlpha = 1;
+    } else {                                                // no track reported: diamond
+      ctx.beginPath(); ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y); ctx.lineTo(x, y + sz); ctx.lineTo(x - sz, y); ctx.closePath();
+      if (t.state === "TRUSTED" || hot) ctx.fill(); else ctx.stroke();
     }
+    if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz); ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz); ctx.stroke(); }
     const d = Math.round((rel.dalt_ft || 0) / 100);
     const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
     label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${(rel.rng_m / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
   }
 
   // own aircraft
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate((o.hdg_deg - up) * D2R);
   ctx.fillStyle = css("var(--own)");
-  ctx.beginPath(); ctx.moveTo(0, -12 * k); ctx.lineTo(-8 * k, 9 * k); ctx.lineTo(0, 4 * k); ctx.lineTo(8 * k, 9 * k); ctx.fill();
-  ctx.restore();
+  drawPlane(ctx, cx, cy, (o.hdg_deg - up) * D2R, 12 * k, true);
   ctx.restore();
 
   // header: orientation, north pointer, range, track / GS (dark backing so it reads over the street map)
