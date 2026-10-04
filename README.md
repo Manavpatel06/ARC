@@ -4,6 +4,12 @@ Peer-to-peer collision avoidance for general aviation. Devils Invent "Future-Rea
 
 GitHub: https://github.com/Manavpatel06/FLOCK — **read `CONTRIBUTING.md` for branches and the contract rule before your first commit.**
 
+> **Now: advisory-only traffic VERIFICATION** (`FLOCK_claude_code_prompt.md`). FLOCK checks that every aircraft on
+> the traffic display really exists — TCAS, Mode S, 1030/1090 timing, signal strength, one-transmitter clusters,
+> kinematics, replay — and never flies the aircraft or transmits. Start: `.\run_demo.ps1 -Scenario
+> harness\scenarios\live_kdvt.json`; read `verify/README.md`, `docs/architecture.md`, `docs/demo_script.md`;
+> results in `eval/out/report.md`. The original collision-avoidance stack below still runs with `-Legacy`.
+
 ## Who does what
 | Lane | Owner | Branch | Folders | Brief for your AI agent | Task rows |
 |---|---|---|---|---|---|

@@ -56,6 +56,7 @@ export function startGod() {
     stat: null, local: null, ac: new Map(), trails: new Map(), adv: new Map(), pred: new Map(),
     trust: new Map(), crystal: new Map(), cmd: new Map(), stick: new Map(), events: [],
     nmacOpen: new Map(), sepMarks: [], sepCounts: { NMAC: 0, COLLISION: 0 }, wx: null, thermals: [], live: null,
+    verify: new Map(), truth: null,                   // FLOCK onboard verdicts per judge, simulation ground truth
     t: 0, da: null, show: loadToggles(),
     view: { cx: 0, cy: 0, scale: 0.08, fitted: false },
   };
@@ -114,6 +115,8 @@ export function startGod() {
       case "WX": s.wx = m; s.da = m.da_field_ft; renderWeather(s); renderDA(s); break;
       case "WX_FIELD": s.thermals = m.thermals || []; break;
       case "LIVE_TRAFFIC": s.live = { m, at: performance.now() }; break;
+      case "VERIFY": s.verify.set(m.ac_id, m); renderVerify(s); break;
+      case "GROUND_TRUTH": s.truth = m; renderVerify(s); break;
     }
   }, (status) => {
     $("god-link").textContent = status === "open" ? "LIVE" : status.toUpperCase();
@@ -131,6 +134,14 @@ export function startGod() {
   });
 
   wireResetDemo(link);
+  $("god-attacks").addEventListener("click", (e) => {    // demo control panel: attacks on judge A (simulated radio only)
+    const b = e.target.closest("button[data-attack]");
+    if (!b) return;
+    const kind = b.dataset.attack;
+    const on = kind !== "all" && !((s.truth && s.truth.attacks) || []).some((a) => a.kind === kind);
+    link.send({ type: "SET_ATTACK", attack: kind, on });
+  });
+  $("god-speed").addEventListener("change", (e) => link.send({ type: "SET_SPEED", time_scale: +e.target.value }));
 
   const cv = $("god-map");
   panZoom(cv, s.view);
@@ -167,6 +178,59 @@ function pruneGone(s, list) {
   if (s.stat && s.stat.live_traffic) {
     const ai = list.filter((a) => !a.human), up = ai.filter((a) => !a.on_ground).length;
     $("god-traffic").textContent = `live traffic · runway ${s.stat.flow} flow · ${ai.length} AI (${up} airborne)`;
+  }
+}
+
+// FLOCK verification table: what judge A's onboard unit concluded about each target, next to the
+// simulation's ground truth (real / ghost) - the god view is the only place that knows both.
+function renderVerify(s) {
+  const own = (s.stat && s.stat.judges && s.stat.judges[0]) || [...s.verify.keys()][0];
+  const v = own && s.verify.get(own);
+  const truth = new Map();                                // address -> emitter; the REAL aircraft wins a shared address
+  for (const e of (s.truth && s.truth.emitters) || []) if (!truth.has(e.icao) || (e.label !== "masquerade" && e.label !== "replay")) truth.set(e.icao, e);
+  const active = new Set(((s.truth && s.truth.attacks) || []).map((a) => a.kind));
+  for (const b of document.querySelectorAll("#god-attacks button[data-attack]")) b.dataset.armed = active.has(b.dataset.attack) ? "1" : "0";
+  const fakeOf = new Map();                               // address -> attack label of a second transmitter using it
+  for (const e of (s.truth && s.truth.emitters) || []) if (e.label !== "real") fakeOf.set(e.icao, e.label);
+  if (!v) { $("god-verify-sum").textContent = "no onboard unit connected (verify/unit.py)"; return; }
+  let ok = 0, n = 0;
+  const rows = [...v.targets].sort((a, b) => ((a.rel && a.rel.rng_m) ?? 1e9) - ((b.rel && b.rel.rng_m) ?? 1e9)).map((t) => {
+    const addr = t.icao.split("~")[0];
+    // "~2" = the second place an address is heard from: that is the attacker's transmitter
+    const lab = t.icao.includes("~") ? (fakeOf.get(addr) || "?") : (truth.get(addr) || {}).label || "?";
+    const right = (lab === "real" && t.state !== "SUSPECT") || (lab !== "real" && lab !== "?" && t.state !== "VERIFIED");
+    if (lab !== "?") { n++; if (right) ok++; }
+    return `<tr data-state="${t.state}"><td>${t.id}</td><td>${lab}</td><td class="st">${t.state}</td><td>${t.trust}</td>`
+      + `<td title="${(t.reasons || []).join(" · ")}">${lab === "?" ? "" : right ? "✓" : "✗"}</td></tr>`;
+  }).join("");
+  const html = rows || `<tr><td colspan="5" class="muted">no traffic heard by ${own}</td></tr>`;
+  if ($("god-verify").innerHTML !== html) $("god-verify").innerHTML = html;
+  $("god-verify-sum").textContent = `${own}'s unit · ${ok}/${n} correct · ${v.targets.filter((t) => t.state === "SUSPECT").length} suspect`;
+}
+
+// Attacks (ground truth): the ghost where it CLAIMS to be (red dashed plane) and the transmitter that is really
+// sending it (tower mark), joined by a dotted line.
+function drawGhosts(ctx, s, LL, k) {
+  for (const e of (s.truth && s.truth.emitters) || []) {
+    if (e.label === "real") {
+      if (!s.ac.has(e.id) && !s.ac.has(e.callsign)) {      // replayed REAL traffic (world/replay.py): not a world aircraft
+        const [x, y] = LL(e.lat, e.lon);
+        ctx.fillStyle = css("var(--live)"); ctx.strokeStyle = css("var(--live)");
+        drawPlane(ctx, x, y, (e.trk_deg || 0) * D2R, 9 * k, true);
+        text(ctx, x + 11 * k, y - 3 * k, `${e.callsign} · recorded`, 11 * k, "left", css("var(--live)"));
+      }
+      continue;
+    }
+    const [x, y] = LL(e.lat, e.lon), [tx, ty] = LL(e.tx_lat, e.tx_lon);
+    const col = css("var(--trust-fake)");
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5 * k;
+    ctx.setLineDash([3 * k, 4 * k]); ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    drawPlane(ctx, x, y, (e.trk_deg || 0) * D2R, 11 * k, false);
+    ctx.beginPath(); ctx.moveTo(tx, ty - 9 * k); ctx.lineTo(tx - 6 * k, ty + 6 * k); ctx.lineTo(tx + 6 * k, ty + 6 * k); ctx.closePath(); ctx.stroke();
+    text(ctx, x + 13 * k, y - 4 * k, `${e.callsign} · ${e.label.toUpperCase()}`, 12 * k, "left", col, true);
+    text(ctx, tx + 10 * k, ty + 4 * k, "spoofer tx", 10 * k, "left", col);
   }
 }
 
@@ -587,6 +651,8 @@ function draw(cv, s) {
     const a = s.ac.get(id);
     if (a && m.mfi != null) { const [x, y] = LL(a.lat, a.lon); text(ctx, x + 13 * k, y + 38 * k, `MFI ${m.mfi.toFixed(2)}`, 11 * k, "left", css("var(--trust-ok)")); }
   }
+
+  drawGhosts(ctx, s, LL, k);
 
   // aircraft
   for (const a of s.ac.values()) {

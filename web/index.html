@@ -50,6 +50,7 @@
           <div id="ck-bounds-body"></div>
         </aside>
         <ul id="ck-trust" class="ck-trust"></ul>
+        <section id="ck-detail" class="ck-detail" hidden></section>
       </div>
     </section>
     <footer class="ck-foot">
@@ -73,6 +74,23 @@
         <button id="god-reset-demo" type="button" title="Both judge aircraft back to their scenario start points (Shift+R). Click twice.">⟲ Reset demo</button>
         <span id="god-traffic" class="muted"></span>
       </div>
+      <h2>Verification (FLOCK onboard)</h2>
+      <div id="god-attacks" class="attack-row" title="Spoofing attacks on judge A's equipment - simulated radio only, never broadcast">
+        <button type="button" data-attack="ghost" title="one ADS-B-only aircraft that does not exist">Ghost</button>
+        <button type="button" data-attack="flock" title="four ghosts from one transmitter">Ghost flock</button>
+        <button type="button" data-attack="drift" title="a real aircraft's ADS-B position slowly walks away (frog-boiling)">Drift</button>
+        <button type="button" data-attack="replay" title="old recorded ADS-B of a real aircraft re-broadcast">Replay</button>
+        <button type="button" data-attack="masquerade" title="a fake using a real aircraft's ICAO address">ICAO masquerade</button>
+        <button type="button" data-attack="jamming" title="noise on 1090 MHz around judge A">Jamming</button>
+        <button type="button" data-attack="gps" title="judge A's own GPS position drifts">Own GPS spoof</button>
+        <button type="button" data-attack="all" class="stop" title="stop every attack">Stop all</button>
+        <label class="speed">speed <select id="god-speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label>
+      </div>
+      <p id="god-verify-sum" class="muted">no onboard unit connected</p>
+      <table class="god-table god-verify">
+        <thead><tr><th>Target</th><th>Truth</th><th>FLOCK</th><th>Trust</th><th></th></tr></thead>
+        <tbody id="god-verify"></tbody>
+      </table>
       <h2>Weather</h2>
       <p class="muted wx-src">METAR (what nodes know): <span id="god-metar" class="mono"></span></p>
       <p id="god-wx-line" class="mono wx-line"></p>

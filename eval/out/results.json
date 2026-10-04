@@ -1,0 +1,503 @@
+{
+ "per_attack": {
+  "none": {
+   "detection": null,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": null,
+   "ttd_max": null,
+   "n_fake": 0,
+   "n_real": 31
+  },
+  "ghost": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": 5.0,
+   "ttd_max": 5.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "flock": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": 3.0,
+   "ttd_max": 5.0,
+   "n_fake": 16,
+   "n_real": 31
+  },
+  "drift": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9886169607285145,
+   "ttd_median": 73.0,
+   "ttd_max": 76.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "replay": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9904952476238119,
+   "ttd_median": 32.0,
+   "ttd_max": 32.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "masquerade": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": 1.0,
+   "ttd_max": 1.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "jamming": {
+   "detection": null,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9810558221773175,
+   "ttd_median": null,
+   "ttd_max": null,
+   "n_fake": 0,
+   "n_real": 31
+  },
+  "gps": {
+   "detection": null,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9869902426820115,
+   "ttd_median": null,
+   "ttd_max": null,
+   "n_fake": 0,
+   "n_real": 31
+  },
+  "ghost beyond TCAS (14 NM)": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": 21.0,
+   "ttd_max": 21.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "flock beyond TCAS (14 NM)": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9912434325744308,
+   "ttd_median": 3.0,
+   "ttd_max": 8.0,
+   "n_fake": 16,
+   "n_real": 31
+  },
+  "ghost, own TCAS off": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9992488733099649,
+   "ttd_median": 21.0,
+   "ttd_max": 21.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "masquerade, own TCAS off": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9834752128192289,
+   "ttd_median": 1.0,
+   "ttd_max": 21.0,
+   "n_fake": 4,
+   "n_real": 31
+  },
+  "quiet, own TCAS off": {
+   "detection": null,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9992488733099649,
+   "ttd_median": null,
+   "ttd_max": null,
+   "n_fake": 0,
+   "n_real": 31
+  }
+ },
+ "ablation": {
+  "all checks": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9933358188088358,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without tcas_consistency": {
+   "detection": 0.9333333333333333,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9948271041103551,
+   "ttd_median": 3.0,
+   "ttd_max": 32.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without modes_presence": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.006060606060606061,
+   "false_alarm_time": 0.0013514773045018174,
+   "real_verified_time": 0.968310187342716,
+   "ttd_median": 5.0,
+   "ttd_max": 88.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without timing_1030": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.006060606060606061,
+   "false_alarm_time": 0.001398079970174294,
+   "real_verified_time": 0.9923571628297139,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without rssi": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9933358188088358,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without emitter_cluster": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9933358188088358,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without kinematics": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9947805014446827,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without replay_detect": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9935222294715258,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "without popin": {
+   "detection": 1.0,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9933358188088358,
+   "ttd_median": 5.0,
+   "ttd_max": 73.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "TCAS only": {
+   "detection": 0.8666666666666667,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.6926554198900177,
+   "ttd_median": 5.0,
+   "ttd_max": 76.0,
+   "n_fake": 30,
+   "n_real": 165
+  },
+  "no TCAS": {
+   "detection": 0.9333333333333333,
+   "false_alarm_aircraft": 0.0,
+   "false_alarm_time": 0.0,
+   "real_verified_time": 0.9948271041103551,
+   "ttd_median": 3.0,
+   "ttd_max": 32.0,
+   "n_fake": 30,
+   "n_real": 165
+  }
+ },
+ "roc": [
+  [
+   0,
+   1.0,
+   1.0
+  ],
+  [
+   2,
+   0.9793785310734463,
+   0.29912694206577223
+  ],
+  [
+   4,
+   0.9783898305084746,
+   0.2909821204429444
+  ],
+  [
+   6,
+   0.9774011299435028,
+   0.28423196005690216
+  ],
+  [
+   8,
+   0.9759887005649718,
+   0.024239212295333462
+  ],
+  [
+   10,
+   0.9651129943502825,
+   0.009929988005913364
+  ],
+  [
+   12,
+   0.9651129943502825,
+   0.008340074195977798
+  ],
+  [
+   14,
+   0.9651129943502825,
+   0.008256394521770662
+  ],
+  [
+   16,
+   0.9649717514124294,
+   0.007837996150734987
+  ],
+  [
+   18,
+   0.9649717514124294,
+   0.00772642325179214
+  ],
+  [
+   20,
+   0.9648305084745763,
+   0.00772642325179214
+  ],
+  [
+   22,
+   0.9648305084745763,
+   0.006527014588156537
+  ],
+  [
+   24,
+   0.9648305084745763,
+   0.0051881398008423755
+  ],
+  [
+   26,
+   0.9648305084745763,
+   0.004072410811413908
+  ],
+  [
+   28,
+   0.9648305084745763,
+   0.002761429248835458
+  ],
+  [
+   30,
+   0.9648305084745763,
+   0.0024267105520069175
+  ],
+  [
+   32,
+   0.9648305084745763,
+   0.0024267105520069175
+  ],
+  [
+   34,
+   0.9648305084745763,
+   0.002370924102535494
+  ],
+  [
+   36,
+   0.9648305084745763,
+   0.0021477783046498005
+  ],
+  [
+   38,
+   0.9648305084745763,
+   0.002036205405706954
+  ],
+  [
+   40,
+   0.9648305084745763,
+   0.0018967392820283954
+  ],
+  [
+   42,
+   0.9648305084745763,
+   0.0017851663830855484
+  ],
+  [
+   44,
+   0.9648305084745763,
+   0.0017572731583498369
+  ],
+  [
+   46,
+   0.9648305084745763,
+   0.0017572731583498369
+  ],
+  [
+   48,
+   0.964406779661017,
+   0.0016735934841427018
+  ],
+  [
+   50,
+   0.96045197740113,
+   0.0016735934841427018
+  ],
+  [
+   52,
+   0.953954802259887,
+   0.0014225544615212966
+  ],
+  [
+   54,
+   0.9508474576271186,
+   0.0012551951131070263
+  ],
+  [
+   56,
+   0.9498587570621468,
+   0.0010041560904856211
+  ],
+  [
+   58,
+   0.9480225988700565,
+   0.0
+  ],
+  [
+   60,
+   0.9457627118644067,
+   0.0
+  ],
+  [
+   62,
+   0.928954802259887,
+   0.0
+  ],
+  [
+   64,
+   0.926271186440678,
+   0.0
+  ],
+  [
+   66,
+   0.9255649717514124,
+   0.0
+  ],
+  [
+   68,
+   0.9244350282485876,
+   0.0
+  ],
+  [
+   70,
+   0.9227401129943503,
+   0.0
+  ],
+  [
+   72,
+   0.9180790960451978,
+   0.0
+  ],
+  [
+   74,
+   0.9161016949152543,
+   0.0
+  ],
+  [
+   76,
+   0.9155367231638418,
+   0.0
+  ],
+  [
+   78,
+   0.9148305084745763,
+   0.0
+  ],
+  [
+   80,
+   0.9059322033898305,
+   0.0
+  ],
+  [
+   82,
+   0.889406779661017,
+   0.0
+  ],
+  [
+   84,
+   0.8834745762711864,
+   0.0
+  ],
+  [
+   86,
+   0.8682203389830508,
+   0.0
+  ],
+  [
+   88,
+   0.817090395480226,
+   0.0
+  ],
+  [
+   90,
+   0.7529661016949153,
+   0.0
+  ],
+  [
+   92,
+   0.7412429378531074,
+   0.0
+  ],
+  [
+   94,
+   0.7199152542372881,
+   0.0
+  ],
+  [
+   96,
+   0.713135593220339,
+   0.0
+  ],
+  [
+   98,
+   0.6949152542372882,
+   0.0
+  ],
+  [
+   100,
+   0.3865819209039548,
+   0.0
+  ]
+ ]
+}

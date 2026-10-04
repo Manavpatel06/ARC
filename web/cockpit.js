@@ -38,7 +38,16 @@ export function startCockpit(role) {
         s.adv = m; s.advT = performance.now();
         sayAdvisory(m);
         break;
-      case "TRUST": s.trust = m; trackTraffic(s, m); break;
+      case "TRUST":                                   // legacy node; the FLOCK unit's VERIFY wins when present
+        if (!s.verify || performance.now() - s.verifyAt > VERIFY_STALE_MS) { s.trust = m; trackTraffic(s, m); }
+        // AirWitness (Lane B): one alert when a target turns SUSPICIOUS / QUARANTINED or our GNSS goes inconsistent
+        for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
+        break;
+      case "VERIFY":
+        s.verify = m; s.verifyAt = performance.now();
+        s.trust = verifyAsTrust(m); trackTraffic(s, s.trust);
+        for (const a of (m.alerts || [])) { toast(a.text, "warn", 7000); sayNow(a.speak); }
+        break;
       case "LIVE_TRAFFIC": onLive(s.live, m); break;        // real ADS-B (live demo), display only
       case "COMMAND": s.cmd = m; break;
       case "STICK": s.stickT = performance.now(); hap.bump(); break;
@@ -83,7 +92,7 @@ export function startCockpit(role) {
   const hap = startHaptics(() => {
     let nearest = null;
     for (const t of (s.trust && s.trust.targets) || []) {
-      if (t.state === "TRUSTED" && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
+      if ((t.state === "TRUSTED" || t.state === "VERIFIED") && t.rel && t.rel.rng_m != null) nearest = nearest == null ? t.rel.rng_m : Math.min(nearest, t.rel.rng_m);
     }
     return { level: s.adv && s.adv.level, levelAt: s.advT, takeover: !!(s.own && s.own.cmd), nearestTrustedM: nearest,
              turb: s.own ? s.own.turb || 0 : 0, taws: s.own ? s.own.taws : null };
@@ -104,6 +113,14 @@ export function startCockpit(role) {
   const cycleRange = (d) => { s.map.range = (s.map.range + d + MAP_RANGES_NM.length) % MAP_RANGES_NM.length; saveMap(s.map); };
   const flipOrient = () => { s.map.northUp = !s.map.northUp; saveMap(s.map); };
   $("ck-traffic").addEventListener("click", () => cycleRange(1));
+  $("ck-detail").addEventListener("click", (e) => {           // details panel: Report to ATC
+    const b = e.target.closest("button[data-report]");
+    if (b) openReport(s, b.dataset.report);
+  });
+  $("ck-trust").addEventListener("click", (e) => {            // a target chip: show / hide why FLOCK trusts it
+    const li = e.target.closest("li[data-key]");
+    if (li) { s.detail = s.detail === li.dataset.key ? null : li.dataset.key; renderTrust(s); }
+  });
   addEventListener("keydown", (e) => {
     if (e.repeat) return;
     if (e.code === "KeyZ") cycleRange(1);
@@ -261,7 +278,7 @@ function update3D(s) {
     const th = Math.max(h + (q.alt_ft - p.alt_msl_ft) * 0.3048, surf);   // relative to own height, never underground
     const tpos = C.Cartesian3.fromDegrees(q.lon, q.lat, th + MODEL_WHEELS_M);
     const col = C.Color.fromCssColorString(css(TRUST_COLOR[t.state] || "#fff"));
-    const fake = t.state === "FAKE";
+    const fake = t.state === "FAKE" || t.state === "SUSPECT";
     let e = s.v3.targets.get(t.id);
     if (!e) {
       e = viewer.entities.add({
@@ -276,10 +293,10 @@ function update3D(s) {
     e.position = tpos;
     e.orientation = C.Transforms.headingPitchRollQuaternion(tpos, new C.HeadingPitchRoll(
       C.Math.toRadians(q.trk_deg + MODEL_HDG_OFFSET), C.Math.toRadians(q.pitch_deg), C.Math.toRadians(q.bank_deg)));
-    e.model.color = fake ? col.withAlpha(0.3) : col.withAlpha(1.0);
+    e.model.color = fake ? col.withAlpha(0.45) : col.withAlpha(1.0);
     e.model.silhouetteColor = col;
     const rng = t.rel ? t.rel.rng_m : null, d = Math.round(((t.rel && t.rel.dalt_ft) || 0) / 100);
-    e.label.text = `${t.id}${rng != null ? ` · ${(rng / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}` : ""}${fake ? " · FAKE" : ""}`;
+    e.label.text = `${t.id}${rng != null ? ` · ${(rng / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}` : ""}${fake ? ` · ${t.state}` : ""}`;
     e.label.fillColor = col;
   }
   for (const [id, e] of s.v3.targets) if (!seen.has(id)) { viewer.entities.remove(e); s.v3.targets.delete(id); }
@@ -345,6 +362,22 @@ function renderBanner(s) {
     if (r.predicted_miss_ft != null) bits.push(`miss ${Math.round(r.predicted_miss_ft)} ft`);
     if (r.method) bits.push(`${r.method}${r.confidence != null ? ` ${(+r.confidence).toFixed(2)}` : ""}`);
     sub = bits.join(" · ");
+  } else if (s.verify && now - s.verifyAt < VERIFY_STALE_MS) {
+    // FLOCK verification summary (advisory only: what to believe on the traffic display, never what to fly)
+    const ts = s.verify.targets || [], sus = ts.filter((t) => t.state === "SUSPECT");
+    const bn = s.verify.banners || [];
+    if (sus.length) {
+      level = "SUSPECT"; text = `SUSPECT TRAFFIC · ${sus.map((t) => t.id).join(" ")}`;
+      sub = `${sus[0].reasons[0] || "likely spoofed"} · advisory only - follow ATC and TCAS`;
+    } else if (bn.length) {                               // whole-picture warning: jamming / own GPS
+      level = "DEGRADED"; text = bn[0].split(" - ")[0];
+      sub = bn[0].split(" - ").slice(1).join(" - ");
+    } else {
+      const ok = ts.filter((t) => t.state === "VERIFIED").length;
+      level = "VERIFIED"; text = ts.length ? `TRAFFIC VERIFIED · ${ok} of ${ts.length}` : "NO TRAFFIC";
+      sub = ts.length - ok ? `${ts.length - ok} unverified (not enough evidence yet - not spoofed)` : "every target confirmed by TCAS / Mode S";
+    }
+    if (bn.length && level !== "DEGRADED") sub += ` · ${bn.map((b) => b.split(" - ")[0]).join(" · ")}`;
   }
   if (el.dataset.level !== level) el.dataset.level = level;
   $("ck-adv-text").textContent = text;
@@ -371,15 +404,95 @@ function renderBounds(s) {
 }
 
 // ---------- trust badges ----------
+// VERIFY (FLOCK onboard unit, verify/unit.py) -> the same {targets:[{id,state,score,rel}]} shape the traffic
+// display already draws, plus the full verdict for the details panel.
+const VERIFY_STALE_MS = 5000;
+function verifyAsTrust(m) {
+  return { type: "TRUST", ac_id: m.ac_id, t: m.t, targets: (m.targets || []).map((t) => ({
+    id: t.id, icao: t.icao, state: t.state, score: t.trust / 100, rel: t.rel, evidence: t.reasons, v: t })) };
+}
+
 function renderTrust(s) {
   const el = $("ck-trust");
   const targets = [...((s.trust && s.trust.targets) || [])]
     .sort((a, b) => ((a.rel && a.rel.rng_m) ?? 1e9) - ((b.rel && b.rel.rng_m) ?? 1e9));
   const html = targets.map((t) => {
     const nm = t.rel && t.rel.rng_m != null ? `${(t.rel.rng_m / NM).toFixed(1)} NM` : "—";
-    return `<li data-state="${t.state}"><b>${t.id}</b><i>${nm}</i><span>${t.state.replace("_", " ")}</span><em>${(+t.score).toFixed(2)}</em></li>`;
-  }).join("") || `<li class="muted">no traffic heard on the FLOCK radio</li>`;
+    const score = t.v ? String(t.v.trust) : (+t.score).toFixed(2);
+    const key = t.icao || t.id;
+    return `<li data-state="${t.state}" data-key="${key}" data-open="${s.detail === key ? 1 : 0}" title="click: why">`
+      + `<b>${t.id}</b><i>${nm}</i><span>${t.state.replace("_", " ")}</span><em>${score}</em></li>`;
+  }).join("") || `<li class="muted">${s.verify ? "no traffic received" : "no traffic heard on the FLOCK radio"}</li>`;
   if (el.innerHTML !== html) el.innerHTML = html;
+  renderDetail(s, targets);
+}
+
+// "Report to ATC": a pre-filled spoofing report the pilot can read out / copy (a UI artifact - nothing is sent).
+function atcReport(s, icao) {
+  const v = (s.verify && s.verify.targets || []).find((t) => t.icao === icao);
+  const o = s.own;
+  if (!v || !o) return "";
+  const r = v.rel || {};
+  const clock = Math.round((((r.brg_deg ?? 0) - o.hdg_deg + 360) % 360) / 30) || 12;
+  const nm = r.rng_m != null ? (r.rng_m / NM).toFixed(1) : "?";
+  const alt = Math.round((o.alt_ind_ft ?? o.alt_msl_ft) + (r.dalt_ft || 0));
+  const when = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  return [
+    "FLOCK SPOOFING REPORT  (advisory - generated on board, NOT transmitted)",
+    `Time        ${when}`,
+    `Reporting   ${s.acId}  ${o.lat.toFixed(4)}N ${Math.abs(o.lon).toFixed(4)}W  ${Math.round(o.alt_ind_ft ?? o.alt_msl_ft)} ft  hdg ${String(Math.round(o.hdg_deg)).padStart(3, "0")}`,
+    `Suspect     ${v.id}  ICAO ${v.icao.split("~")[0].toUpperCase()}`,
+    `Claimed     ${nm} NM at ${clock} o'clock (bearing ${String(Math.round(r.brg_deg ?? 0)).padStart(3, "0")}), ${alt} ft, track ${r.trk_deg != null ? String(Math.round(r.trk_deg)).padStart(3, "0") : "?"}`,
+    `FLOCK       ${v.state}, trust ${v.trust}/100  (sources heard: ${(v.sources || []).join(", ") || "none"})`,
+    "Evidence",
+    ...(v.reasons || []).map((x) => `  - ${x}`),
+    ...((s.verify.banners || []).length ? ["Picture", ...s.verify.banners.map((b) => `  - ${b}`)] : []),
+    "",
+    "Say (example):",
+    `  "${s.acId}, possible ADS-B spoofing: traffic ${v.id} shown ${nm} miles ${clock} o'clock at ${alt}, not confirmed by TCAS. Request traffic advisory."`,
+  ].join("\n");
+}
+
+function openReport(s, icao) {
+  let m = $("ck-report");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "ck-report"; m.className = "ck-report";
+    m.innerHTML = `<div><h2>Report to ATC</h2><textarea readonly spellcheck="false"></textarea>
+      <p class="muted">Nothing is sent: read it on frequency or hand it to your ATC / safety report.</p>
+      <footer><button type="button" data-act="copy">Copy</button><button type="button" data-act="close">Close</button></footer></div>`;
+    document.body.appendChild(m);
+    m.addEventListener("click", (e) => {
+      const act = e.target.dataset.act;
+      if (act === "close" || e.target === m) m.hidden = true;
+      if (act === "copy") { m.querySelector("textarea").select(); navigator.clipboard?.writeText(m.querySelector("textarea").value).catch(() => {}); }
+    });
+  }
+  m.querySelector("textarea").value = atcReport(s, icao);
+  m.hidden = false;
+}
+
+// Click a target: trust score, plain-English reasons and the per-check breakdown.
+const CHECK_NAMES = { tcas_consistency: "TCAS range / bearing", modes_presence: "Mode S replies", timing_1030: "1030/1090 timing",
+                      rssi: "Signal strength", emitter_cluster: "One transmitter?", kinematics: "Kinematics",
+                      replay_detect: "Replay / duplicate", popin: "Pop-in" };
+function renderDetail(s, targets) {
+  const box = $("ck-detail");
+  const t = s.detail && targets.find((x) => (x.icao || x.id) === s.detail);
+  if (!t || !t.v) { if (!box.hidden) { box.hidden = true; box.innerHTML = ""; } return; }
+  const v = t.v;
+  const rows = Object.entries(v.checks || {}).map(([k, c]) => {
+    const sc = c.score == null ? "n/a" : c.score >= 0.5 ? "✓" : "✗";
+    const lean = c.contribution > 0.05 ? "real" : c.contribution < -0.05 ? "spoof" : "—";
+    return `<tr data-lean="${lean}"><td>${CHECK_NAMES[k] || k}</td><td>${sc}</td><td>${c.reason}</td></tr>`;
+  }).join("");
+  const html = `<header data-state="${v.state}"><b>${v.id}</b><span>${v.state}</span><em>trust ${v.trust}/100</em>`
+    + `<i>${(v.sources || []).join(" · ")}${v.icao ? ` · ICAO ${v.icao.toUpperCase()}` : ""}</i></header>`
+    + `<ul>${(v.reasons || []).map((r) => `<li>${r}</li>`).join("")}</ul>`
+    + `<table>${rows}</table><p class="muted">Advisory only - FLOCK scores traffic, it never tells you to maneuver. Follow ATC and TCAS.</p>`
+    + (v.state === "SUSPECT" ? `<button type="button" class="report-btn" data-report="${v.icao}">Report to ATC…</button>` : "");
+  if (box.innerHTML !== html) box.innerHTML = html;
+  box.hidden = false;
 }
 
 function renderStatus(s, inp) {
@@ -647,7 +760,7 @@ function drawNavMap(cv, s) {
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
       ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
-    if (t.state !== "FAKE" && t.state !== "CAMERA_ONLY" && (!nearest || rel.rng_m < nearest.rel.rng_m)) nearest = { t, rel };
+    if (t.state !== "FAKE" && t.state !== "SUSPECT" && t.state !== "CAMERA_ONLY" && (!nearest || rel.rng_m < nearest.rel.rng_m)) nearest = { t, rel };
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2 * k;
     if (t.state === "CAMERA_ONLY") {                         // bearing wedge, not a dot
       const a = (rel.brg_deg - up) * D2R;
@@ -657,16 +770,16 @@ function drawNavMap(cv, s) {
     }
     const sz = (hot ? 13 : 10) * k;
     if (rel.trk_deg != null) {                              // an airplane pointing where it is going
-      drawPlane(ctx, x, y, (rel.trk_deg - up) * D2R, sz, t.state === "TRUSTED" || hot);
+      drawPlane(ctx, x, y, (rel.trk_deg - up) * D2R, sz, t.state === "TRUSTED" || t.state === "VERIFIED" || hot);
       const ta = (rel.trk_deg - up) * D2R;                  // short trend line ahead of the nose
       ctx.globalAlpha = 0.6; ctx.beginPath();
       ctx.moveTo(x + 1.4 * sz * Math.sin(ta), y - 1.4 * sz * Math.cos(ta));
       ctx.lineTo(x + 3.2 * sz * Math.sin(ta), y - 3.2 * sz * Math.cos(ta)); ctx.stroke(); ctx.globalAlpha = 1;
     } else {                                                // no track reported: diamond
       ctx.beginPath(); ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y); ctx.lineTo(x, y + sz); ctx.lineTo(x - sz, y); ctx.closePath();
-      if (t.state === "TRUSTED" || hot) ctx.fill(); else ctx.stroke();
+      if (t.state === "TRUSTED" || t.state === "VERIFIED" || hot) ctx.fill(); else ctx.stroke();
     }
-    if (t.state === "FAKE") { ctx.beginPath(); ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz); ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz); ctx.stroke(); }
+    if (t.state === "FAKE" || t.state === "SUSPECT") { ctx.beginPath(); ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz); ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz); ctx.stroke(); }
     const d = Math.round((rel.dalt_ft || 0) / 100);
     const arrow = rel.vs_fpm > 300 ? "↑" : rel.vs_fpm < -300 ? "↓" : "";
     label(ctx, x + sz + 3 * k, y + 4 * k, `${t.id} ${(rel.rng_m / NM).toFixed(1)} NM ${d >= 0 ? "+" : "-"}${String(Math.abs(d)).padStart(2, "0")}${arrow}`, 11 * k, "left", col);
